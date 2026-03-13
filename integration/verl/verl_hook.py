@@ -136,9 +136,8 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
     async def _acquire_server(self, request_id: str, prompt_ids: Optional[List[int]] = None) -> Tuple[str, ray.actor.ActorHandle]:
         """Overrides Verl's Native Global Load Balancer with py-inference-scheduler logic"""
         if self._metrics_task is None:
-            self._metrics_task = asyncio.create_task(self.poll_worker_metrics_loop())
+            self._metrics_task = asyncio.create_task(verl_metrics_polling_loop(self.endpoints, self.inflight_store))
 
-        self.ray_request_scheduler._maybe_reload_config()
         req = LLMRequest(request_id=request_id, body=prompt_ids)
         selected_endpoints = self.ray_request_scheduler.run(req, candidates=self.endpoints)
 
