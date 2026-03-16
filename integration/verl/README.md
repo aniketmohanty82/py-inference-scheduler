@@ -27,7 +27,7 @@ Use the provided example `RayCluster` configuration in `examples/` as a starting
 kubectl apply -f examples/verl-inference-scheduler.yaml
 ```
 
-### 3. Establish Head Node Connection
+### 4. Establish Head Node Connection
 
 Before you can submit a job, you must open a local tunnel to the Ray Head Node dashboard.
 
