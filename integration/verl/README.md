@@ -35,7 +35,7 @@ Before you can submit a job, you must open a local tunnel to the Ray Head Node d
     ```bash
     kubectl port-forward svc/verl-inference-scheduler-head-svc 8265:8265 -n default &
     ```
-2.  **Export the Ray address** so the CLI knows where to target:
+1.  **Export the Ray address** so the CLI knows where to target:
     ```bash
     export RAY_ADDRESS="http://127.0.0.1:8265"
     ```
@@ -59,7 +59,7 @@ To use the scheduler, you need to provide a `runtime-env.yaml` and a `scheduler.
     cp ../py-inference-scheduler/integration/verl/examples/runtime-env.yaml .
     cp ../py-inference-scheduler/integration/verl/examples/scheduler.yaml .
     ```
-2.  **Adjust `py_modules` paths** in `runtime-env.yaml` to point to your local `py-inference-scheduler` installation.
+1.  **Adjust `py_modules` paths** in `runtime-env.yaml` to point to your local `py-inference-scheduler` installation.
 
 Example `runtime-env.yaml`:
 ```yaml
