@@ -50,6 +50,15 @@ python3 examples/data_preprocess/gsm8k.py
 ```
 This script will download and process the GSM8K dataset, creating the necessary `.parquet` files in `data/gsm8k/` (e.g., `data/gsm8k/train.parquet` and `data/gsm8k/test.parquet`).
 
+### 4. Data Preparation
+
+Before submitting the training job, you must generate the GSM8K dataset using `verl`'s data preparation scripts. Run the following command from the root of your `verl` directory:
+
+```bash
+python3 examples/data_preprocess/gsm8k.py
+```
+This script will download and process the GSM8K dataset, creating the necessary `.parquet` files in `data/gsm8k/` (e.g., `data/gsm8k/train.parquet` and `data/gsm8k/test.parquet`).
+
 ### 5. Submission Configuration
 
 To use the scheduler, you need to provide a `runtime-env.yaml` and a `scheduler.yaml` (`scheduler.yaml` and `configs/scheduler-configmap.yaml` are the same file - you modify these with your ideal scorer config) in your `verl` working directory.
@@ -70,6 +79,7 @@ py_modules:
   - "../py-inference-scheduler/scheduling"
 ```
 
+### 6. Hook Injection via Hydra Overrides
 ### 6. Hook Injection via Hydra Overrides
 
 To activate the scheduler, use the `+actor_rollout_ref.rollout.agent.agent_loop_manager_class` Hydra override. Removing it would run the job with vERL's native scheduler.
@@ -100,6 +110,7 @@ ray job submit \
 - **`disable_log_stats=False`**: Required for vLLM to emit local metrics.
 - **`prometheus.enable=True`**: Required to expose the `/metrics` endpoint that the scheduler polls.
 
+### 7. View the results
 ### 7. View the results
 
 This is a very small training loop for tetsing with 10 steps configured in the `trainer.total_training_steps=10` flag. Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs in my opinion. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard. (localhost:8265). vERL gives us output by step, don't be concerned if you se `ppo` tags on the labels for the logs - vERL uses the same tetsing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer.
