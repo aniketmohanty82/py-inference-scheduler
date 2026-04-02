@@ -18,8 +18,7 @@ import logging
 import ray
 import os
 import uuid
-import yaml
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional, Tuple
 from omegaconf import DictConfig
 
 from verl.experimental.agent_loop.agent_loop import (
@@ -28,17 +27,8 @@ from verl.experimental.agent_loop.agent_loop import (
     AgentLoopManager
 )
 
-from scheduling.scheduler import Scheduler
-from scheduling.scheduler_config import SchedulerConfig
 from scheduling.types import LLMRequest, Endpoint
 from scheduling.inflight_store import InflightStore
-from scheduling.plugins import (
-    SimpleFilter,
-    WaitingQueueScorer,
-    MaxScorePicker,
-    SingleProfileHandler
-)
-from scheduling.framework import SchedulerProfile
 from scheduling.ray_request_scheduler import RayRequestScheduler
 
 logger = logging.getLogger(__name__)
@@ -47,18 +37,28 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
     """
     Subclass of verl's AsyncLLMServerManager that delegates routing
     to the native py-inference-scheduler engine.
+    Compatible with verl v0.7.1.
     """
-    def __init__(self, config: DictConfig, server_handles: list[ray.actor.ActorHandle], *args, **kwargs):
-        super().__init__(config, server_handles, *args, **kwargs)
+    def __init__(
+        self, 
+        config: DictConfig, 
+        servers: List[Tuple[str, ray.actor.ActorHandle]], 
+        load_balancer_handle: ray.actor.ActorHandle,
+        *args, 
+        **kwargs
+    ):
+        super().__init__(config, servers, load_balancer_handle, *args, **kwargs)
         self.ray_request_scheduler = RayRequestScheduler()
         self.inflight_store = InflightStore()
         self.endpoints = []
+        self._lb_acquired_requests = set()
 
-        for i, rep_handle in enumerate(self.server_handles):
+        # Reconstruct endpoints from the new (id, handle) tuple structure
+        for server_id, handle in servers:
             ep = Endpoint(
-                name=f"verl-worker-{i}",
+                name=server_id,
                 attributes={
-                    "replica_obj": rep_handle,
+                    "replica_obj": handle,
                     "routing_stats": {}
                 }
             )
@@ -68,7 +68,6 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
 
     async def poll_worker_metrics_loop(self):
         """Asynchronously scrapes metrics to update endpoint queue sizes (50ms interval)"""
-        import os
         import aiohttp
 
         self._worker_urls = None
@@ -132,40 +131,10 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
                 except Exception as e:
                     logger.error(f"Metrics poll error: {e}")
 
-                # Poll at 50ms - same as gateway
                 await asyncio.sleep(0.05)
 
-    async def generate(self, request_id: str, **kwargs):
-        """Overrides Verl's native generate to forcefully yield to the metrics poller"""
-
-        # Yield CPU to check for metrics poller
-        await asyncio.sleep(0)
-
-        prompt_ids = kwargs.get("prompt_ids", None)
-        winning_endpoint = self._choose_server(request_id, prompt_ids=prompt_ids)
-
-        if isinstance(winning_endpoint, Endpoint):
-            server = winning_endpoint.attributes["replica_obj"]
-            endpoint_name = winning_endpoint.name
-            self.inflight_store.increment(endpoint_name)
-            stats = winning_endpoint.attributes.setdefault("routing_stats", {})
-            stats["num_running_reqs"] = max(stats.get("num_running_reqs", 0), self.inflight_store.get(endpoint_name))
-            stats["queue_len"] = stats.get("num_waiting_reqs", 0) + stats["num_running_reqs"]
-        else:
-            server = winning_endpoint
-            endpoint_name = None
-
-        # vLLM requires a fresh request_id per generation to prevent KV cache collisions.
-        kwargs["request_id"] = uuid.uuid4().hex
-
-        try:
-            return await server.generate.remote(**kwargs)
-        finally:
-            if endpoint_name:
-                self.inflight_store.decrement(endpoint_name)
-
-    def _choose_server(self, request_id: str, prompt_ids: List[int] = None) -> ray.actor.ActorHandle:
-        """Overrides Verl's Native LRU Router"""
+    async def _acquire_server(self, request_id: str, prompt_ids: Optional[List[int]] = None) -> Tuple[str, ray.actor.ActorHandle]:
+        """Overrides Verl's Native Global Load Balancer with py-inference-scheduler logic"""
         if self._metrics_task is None:
             self._metrics_task = asyncio.create_task(self.poll_worker_metrics_loop())
 
@@ -173,24 +142,68 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
         req = LLMRequest(request_id=request_id, body=prompt_ids)
         selected_endpoints = self.ray_request_scheduler.run(req, candidates=self.endpoints)
 
+        # fall back to verl LB
         if not selected_endpoints:
-            logger.warning("py-inference-scheduler returned no endpoints, falling back to basic LRU.")
-            return super()._choose_server(request_id)
+            logger.warning("py-inference-scheduler returned no endpoints, falling back to verl global LB.")
+            self._lb_acquired_requests.add(request_id)
+            return await super()._acquire_server(request_id)
 
         winning_endpoint: Endpoint = selected_endpoints[0].endpoint
         stats = winning_endpoint.attributes.get('routing_stats', {})
         logger.info(f"[{request_id[:6]}] Routed to {winning_endpoint.name} (stats: {stats})")
-        return winning_endpoint
+        
+        return winning_endpoint.name, winning_endpoint.attributes["replica_obj"]
+
+    def _release_server(self, server_id: str, request_id: Optional[str] = None) -> None:
+        """Decrements local inflight tracking and notifies global LB if it originated there"""
+        self.inflight_store.decrement(server_id)
+        if request_id and request_id in self._lb_acquired_requests:
+            super()._release_server(server_id)
+            self._lb_acquired_requests.remove(request_id)
+
+    async def generate(
+        self, 
+        request_id: str, 
+        *, 
+        prompt_ids: List[int], 
+        sampling_params: Dict[str, Any], 
+        image_data: Optional[List[Any]] = None, 
+        video_data: Optional[List[Any]] = None
+    ):
+        """Overrides Verl's generate to manage lifecycle with scheduler"""
+        server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
+        self.inflight_store.increment(server_id)
+        
+        # vLLM requires a fresh request_id per generation to prevent KV cache collisions. verl has sticky request_ids for multi-turn rollouts.
+        vllm_request_id = uuid.uuid4().hex
+        try:
+            return await server.generate.remote(
+                request_id=vllm_request_id,
+                prompt_ids=prompt_ids,
+                sampling_params=sampling_params,
+                image_data=image_data,
+                video_data=video_data
+            )
+        finally:
+            self._release_server(server_id, request_id)
 
 
 class PyInferenceAgentLoopWorker(AgentLoopWorker):
     """
     Overrides the Ray worker actor to inject the custom ServerManager
     before calling super().__init__
+    Compatible with verl v0.7.1.
     """
-    def __init__(self, config: DictConfig, server_handles: list[ray.actor.ActorHandle], *args, **kwargs):
-        self.server_manager = InferenceSchedulerServerManager(config, server_handles)
-        super().__init__(config, server_handles, *args, **kwargs)
+    def __init__(
+        self, 
+        config: DictConfig, 
+        servers: List[Tuple[str, ray.actor.ActorHandle]], 
+        load_balancer_handle: ray.actor.ActorHandle,
+        reward_loop_worker_handles: Optional[List[ray.actor.ActorHandle]] = None
+    ):
+        # Inject our manager
+        self.server_manager = InferenceSchedulerServerManager(config, servers, load_balancer_handle)
+        super().__init__(config, servers, load_balancer_handle, reward_loop_worker_handles)
 
 
 class PyInferenceAgentLoopManager(AgentLoopManager):
