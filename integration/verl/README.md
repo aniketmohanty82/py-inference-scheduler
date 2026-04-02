@@ -15,7 +15,9 @@ If you have a `verl` instance and want to enable scheduling:
 
 ### 1. Requirements
 
-Ensure you have both `verl` and `py-inference-scheduler` repositories available.
+Ensure you have both `verl` and `py-inference-scheduler` repositories available. 
+
+You will also need a Docker image with `verl` and the scheduler dependencies installed. You can build your own image or use ours. If you'd like help building a compatible image, we provide an example [Dockerfile](./examples/Dockerfile.verl.ray) to do so. **Note:** if you build your own image, you must update the `image:` fields in [verl-inference-scheduler.yaml](./examples/verl-inference-scheduler.yaml) to point to your new image.
 
 ### 2. Configure the Ray Cluster
 
@@ -39,7 +41,16 @@ Before you can submit a job, you must open a local tunnel to the Ray Head Node d
     ```
 3.  **View the Dashboard**: Visit `http://localhost:8265` in your browser to monitor job progress and cluster health.
 
-### 4. Submission Configuration
+### 4. Data Preparation
+
+Before submitting the training job, you must generate the GSM8K dataset using `verl`'s data preparation scripts. Run the following command from the root of your `verl` directory:
+
+```bash
+python3 examples/data_preprocess/gsm8k.py
+```
+This script will download and process the GSM8K dataset, creating the necessary `.parquet` files in `data/gsm8k/` (e.g., `data/gsm8k/train.parquet` and `data/gsm8k/test.parquet`).
+
+### 5. Submission Configuration
 
 To use the scheduler, you need to provide a `runtime-env.yaml` and a `scheduler.yaml` (`scheduler.yaml` and `configs/scheduler-configmap.yaml` are the same file - you modify these with your ideal scorer config) in your `verl` working directory.
 
@@ -59,7 +70,7 @@ py_modules:
   - "../py-inference-scheduler/scheduling"
 ```
 
-### 5. Hook Injection via Hydra Overrides
+### 6. Hook Injection via Hydra Overrides
 
 To activate the scheduler, use the `+actor_rollout_ref.rollout.agent.agent_loop_manager_class` Hydra override. Removing it would run the job with vERL's native scheduler.
 
@@ -69,8 +80,8 @@ ray job submit \
     --runtime-env runtime-env.yaml \
     -- bash examples/grpo_trainer/run_qwen2-7b_math.sh \
     algorithm.adv_estimator=grpo \
-    data.train_files="['code_benchmark/train.parquet']" \
-    data.val_files="['code_benchmark/test.parquet']" \
+    data.train_files="['data/gsm8k/train.parquet']" \
+    data.val_files="['data/gsm8k/test.parquet']" \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=2 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=64 \
@@ -89,7 +100,7 @@ ray job submit \
 - **`disable_log_stats=False`**: Required for vLLM to emit local metrics.
 - **`prometheus.enable=True`**: Required to expose the `/metrics` endpoint that the scheduler polls.
 
-### 6. View the results
+### 7. View the results
 
 This is a very small training loop for tetsing with 10 steps configured in the `trainer.total_training_steps=10` flag. Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs in my opinion. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard. (localhost:8265). vERL gives us output by step, don't be concerned if you se `ppo` tags on the labels for the logs - vERL uses the same tetsing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer.
 
@@ -178,4 +189,4 @@ Logs look as follows:
  - perf/total_num_tokens:4388173
  - perf/time_per_step:93.52434759191237
  - perf/throughput:2932.5070910595373
-```
+ ```
