@@ -60,18 +60,19 @@ Before you can submit a job, you must open a local tunnel to the Ray Head Node d
 Before submitting the training job, you must generate the GSM8K dataset using `verl`'s data preparation scripts. Run the following command from the root of your `verl` directory:
 
 ```bash
-python3 examples/data_preprocess/gsm8k.py
+python3 examples/data_preprocess/gsm8k.py --local_save_dir ./data/gsm8k
 ```
 This script will download and process the GSM8K dataset, creating the necessary `.parquet` files in `data/gsm8k/` (e.g., `data/gsm8k/train.parquet` and `data/gsm8k/test.parquet`).
 
-### 4. Data Preparation
-
-Before submitting the training job, you must generate the GSM8K dataset using `verl`'s data preparation scripts. Run the following command from the root of your `verl` directory:
-
-```bash
-python3 examples/data_preprocess/gsm8k.py
-```
-This script will download and process the GSM8K dataset, creating the necessary `.parquet` files in `data/gsm8k/` (e.g., `data/gsm8k/train.parquet` and `data/gsm8k/test.parquet`).
+> **Note: Ray Upload Issue with `.parquet` files**
+>
+> By default, the official `verl` repository includes `*.parquet` in its `.gitignore` file. When you submit a Ray job with `--working-dir .`, Ray respects the `.gitignore` rules and will silently strip out your training data, causing a `FileNotFoundError` during training.
+> 
+> **To fix this:** Open `.gitignore` in the root of your `verl` repository and comment out the `*.parquet` line under the `# data` section before submitting the job:
+> ```text
+> # data
+> # *.parquet
+> ```
 
 ### 5. Submission Configuration
 
@@ -89,8 +90,9 @@ Example `runtime-env.yaml`:
 env_vars:
   ROUTER_CONFIG_PATH: "./scheduler.yaml"
 py_modules:
-  - "../py-inference-scheduler/integration"
-  - "../py-inference-scheduler/scheduling"
+  - "../py-inference-scheduler-llmd/integration"
+  - "../py-inference-scheduler-llmd/scheduling"
+  - "../py-inference-scheduler-llmd/datalayer"
 ```
 
 ### 6. Hook Injection via Hydra Overrides
