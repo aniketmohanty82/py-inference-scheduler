@@ -15,23 +15,16 @@
 import asyncio
 import aiohttp
 import logging
-from typing import Sequence, Optional
+from typing import Sequence
 from scheduling.framework import Endpoint
 from datalayer.verl.datastore import InflightStore
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def fetch_verl_metrics(server_handles):
-    """Placeholder for synchronous RPC or Prometheus-based metric fetching for Verl workers."""
-    # TODO: Implement the logic migrated from verl_hook.py once polling is abstracted
-    return {}
-
 
 async def verl_metrics_polling_loop(endpoints: Sequence[Endpoint], inflight_store: InflightStore):
-    """Asynchronously scrapes metrics to update endpoint queue sizes (50ms interval)"""
     _worker_urls = None
-    logger.info("DEBUG: verl_metrics_polling_loop started!")
 
     async with aiohttp.ClientSession() as session:
         while True:
@@ -57,7 +50,6 @@ async def verl_metrics_polling_loop(endpoints: Sequence[Endpoint], inflight_stor
                 async def fetch_worker_metrics(session, idx, url):
                     if url is None:
                         return
-                    logger.info(f"DEBUG: fetching metrics from {url}")
                     try:
                         async with session.get(url, timeout=2.0) as response:
                             text = await response.text()
@@ -72,10 +64,8 @@ async def verl_metrics_polling_loop(endpoints: Sequence[Endpoint], inflight_stor
                                 try:
                                     if line.startswith("vllm:num_requests_waiting"):
                                         stats["num_waiting_reqs"] = int(float(line.split(" ")[-1]))
-                                        # logger.debug(f"Waiting requests for {endpoints[idx].name}: {stats['num_waiting_reqs']}")
                                     elif line.startswith("vllm:num_requests_running"):
                                         stats["num_running_reqs"] = int(float(line.split(" ")[-1]))
-                                        # logger.debug(f"Running requests for {endpoints[idx].name}: {stats['num_running_reqs']}")
                                     elif line.startswith("vllm:kv_cache_usage_perc"):
                                         stats["kv"] = float(line.split(" ")[-1])
                                 except IndexError:
@@ -83,9 +73,7 @@ async def verl_metrics_polling_loop(endpoints: Sequence[Endpoint], inflight_stor
 
                             endpoint = endpoints[idx]
                             local_inflight = inflight_store.get(endpoint.name)
-                            stats["num_running_reqs"] = max(stats["num_running_reqs"], local_inflight)
-
-                            stats["queue_len"] = stats["num_waiting_reqs"] + stats["num_running_reqs"]
+                            stats["queue_len"] = local_inflight
                             endpoint.attributes["routing_stats"] = stats
 
                     except asyncio.TimeoutError:
@@ -98,6 +86,6 @@ async def verl_metrics_polling_loop(endpoints: Sequence[Endpoint], inflight_stor
 
             except Exception as e:
                 logger.error(f"Metrics poll error: {e}")
-
-            # Poll at 50ms - same as gateway
-            await asyncio.sleep(0.05)
+            
+            # doesn't matter - its 5s on vllm, this is just wishful thinking
+            await asyncio.sleep(2.0)
