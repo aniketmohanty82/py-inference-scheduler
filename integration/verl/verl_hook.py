@@ -72,8 +72,7 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
             self._metrics_task = asyncio.create_task(verl_metrics_polling_loop(self.endpoints, self.inflight_store))
 
         for ep in self.endpoints:
-            stats = ep.attributes.setdefault("routing_stats", {})
-            stats["queue_len"] = self.inflight_store.get(ep.name)
+            ep.attributes["queue_len"] = self.inflight_store.get(ep.name)
 
         req = LLMRequest(request_id=request_id, body=prompt_ids)
         selected_endpoints = self.ray_request_scheduler.run(req, candidates=self.endpoints)
@@ -85,8 +84,7 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
             return await super()._acquire_server(request_id)
 
         winning_endpoint: Endpoint = selected_endpoints[0].endpoint
-        stats = winning_endpoint.attributes.get('routing_stats', {})
-        logger.info(f"[{request_id[:6]}] Routed to {winning_endpoint.name} (stats: {stats})")
+        logger.info(f"[{request_id[:6]}] Routed to {winning_endpoint.name}")
         
         return winning_endpoint.name, winning_endpoint.attributes["replica_obj"]
 

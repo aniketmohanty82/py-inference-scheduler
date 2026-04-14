@@ -73,7 +73,7 @@ async def verl_metrics_polling_loop(endpoints: Sequence[Endpoint], inflight_stor
 
                             endpoint = endpoints[idx]
                             local_inflight = inflight_store.get(endpoint.name)
-                            stats["queue_len"] = local_inflight
+                            endpoint.attributes["queue_len"] = local_inflight
                             endpoint.attributes["routing_stats"] = stats
 
                     except asyncio.TimeoutError:
