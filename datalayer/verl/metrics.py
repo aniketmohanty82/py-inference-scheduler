@@ -56,8 +56,7 @@ async def verl_metrics_polling_loop(endpoints: Sequence[Endpoint], inflight_stor
                             stats = {
                                 "num_waiting_reqs": 0,
                                 "num_running_reqs": 0,
-                                "kv": 0.0,
-                                "queue_len": 0
+                                "kv": 0.0
                             }
 
                             for line in text.split('\n'):
@@ -86,6 +85,5 @@ async def verl_metrics_polling_loop(endpoints: Sequence[Endpoint], inflight_stor
 
             except Exception as e:
                 logger.error(f"Metrics poll error: {e}")
-            
             # doesn't matter - its 5s on vllm, this is just wishful thinking
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(0.05)
