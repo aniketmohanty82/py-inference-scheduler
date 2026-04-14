@@ -1,5 +1,11 @@
 # verl Integration with py-inference-scheduler
 
+## Compatibility Notice
+
+**This integration is designed specifically for [vERL v0.7.1](https://github.com/volcengine/verl/releases/tag/v0.7.1).** 
+
+It utilizes internal API signatures (such as `load_balancer_handle` and specific `_acquire_server` patterns) that were introduced or modified in this release. It is **not backwards compatible** with earlier versions of vERL and may require updates for future releases.
+
 ## Architecture
 
 `verl` manages its own set of Ray Actors for rollouts. By default, it uses a simple LRU cache or least-requests routing. This integration overrides `verl`'s `AgentLoopManager` to delegate routing decisions to the `py-inference-scheduler` engine.
@@ -90,14 +96,18 @@ Example `runtime-env.yaml`:
 env_vars:
   ROUTER_CONFIG_PATH: "./scheduler.yaml"
 py_modules:
-  - "../py-inference-scheduler-llmd/integration"
-  - "../py-inference-scheduler-llmd/scheduling"
-  - "../py-inference-scheduler-llmd/datalayer"
+  - "../py-inference-scheduler/integration"
+  - "../py-inference-scheduler/scheduling"
+  - "../py-inference-scheduler/datalayer"
 ```
 
-### 6. Hook Injection via Hydra Overrides
+### 6. Running a Training Job
 
-To activate the scheduler, use the `+actor_rollout_ref.rollout.agent.agent_loop_manager_class` Hydra override. Removing it would run the job with vERL's native scheduler.
+There are two primary ways to submit a training job using the scheduler hook.
+
+#### Option A: Using Hydra overrides in CLI:
+
+To activate the scheduler on a standard run, use the `+actor_rollout_ref.rollout.agent.agent_loop_manager_class` Hydra override. Below is an example of doing this with Qwen2-7B using a script provided to us by verl. 
 
 ```bash
 ray job submit \
@@ -124,6 +134,23 @@ ray job submit \
 - **`agent_loop_manager_class`**: Points to the integration hook.
 - **`disable_log_stats=False`**: Required for vLLM to emit local metrics.
 - **`prometheus.enable=True`**: Required to expose the `/metrics` endpoint that the scheduler polls.
+
+#### Option B: Pre-configured Shell Script
+
+For models like Qwen 2.5 32B, we provide a pre-tuned shell script that handles the memory and parallelism settings automatically. This is an augmentation of verl's example script ```run_qwen2-7b_math.sh```.
+
+1.  **Copy the script** to your `verl` examples folder:
+    ```bash
+    cp ../py-inference-scheduler/integration/verl/examples/run_qwen2_5-32b_math.sh examples/grpo_trainer/
+    ```
+2.  **Submit the job**:
+    ```bash
+    ray job submit \
+        --working-dir . \
+        --submission-id "run-32b-$(date +%s)" \
+        --runtime-env runtime-env.yaml \
+        -- bash examples/grpo_trainer/run_qwen2_5-32b_math.sh
+    ```
 
 ### 7. View the results
 
@@ -215,3 +242,5 @@ Logs look as follows:
  - perf/time_per_step:93.52434759191237
  - perf/throughput:2932.5070910595373
  ```
+
+ Key metrics to look out for are ```perf/throughput``` for sampling throughput and ```timing_s/agent_loop/slowest/generate_sequences``` for your tail latency. Addtionally, if you enable preemptions, ```timing_s/agent_loop/slowest/num_preempted``` can be useful too. 
