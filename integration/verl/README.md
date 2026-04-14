@@ -39,7 +39,25 @@ kubectl create secret docker-registry artifact-registry-secret \
     --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-### 2. Configure the Ray Cluster
+### 2. Configure Docker Registry
+
+The `RayCluster` example configuration (`examples/verl-inference-scheduler.yaml`) points to a placeholder image. You must build your own Docker image and host it in your own container registry to ensure reproducibility.
+
+1. **Build and push your image**: Build the `verl-ray` image using the provided Dockerfiles in the repository and push it to your own container registry (e.g., Docker Hub, AWS ECR, or your own GCP Artifact Registry).
+1. **Update the YAML configuration**: Open `examples/verl-inference-scheduler.yaml` and replace all occurrences of `us-central1-docker.pkg.dev/gke-shared-ai-dev/verl-grpo/verl-ray:latest` with your newly pushed image URL.
+1. **Configure Image Pull Secrets (Optional)**: If your registry is private, you need to [create a Kubernetes docker-registry secret](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/#create-a-secret-by-providing-credentials-on-the-command-line) to allow nodes to pull the image. Ensure the `imagePullSecrets` configuration in the `verl-inference-scheduler.yaml` file points to the name of your new secret instead of the default `artifact-registry-secret`.
+
+Run the following command as an example to create a secret if you are using GCP Artifact Registry:
+
+```bash
+kubectl create secret docker-registry artifact-registry-secret \
+    --docker-server=us-central1-docker.pkg.dev \
+    --docker-username=oauth2accesstoken \
+    --docker-password=$(gcloud auth print-access-token) \
+    --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### 3. Configure the Ray Cluster
 
 Use the provided example `RayCluster` configuration in `examples/` as a starting point. It specifically targets GKE A3 Ultra instances with H200 GPUs.
 
@@ -59,7 +77,7 @@ Before you can submit a job, you must open a local tunnel to the Ray Head Node d
     ```bash
     export RAY_ADDRESS="http://127.0.0.1:8265"
     ```
-3.  **View the Dashboard**: Visit `http://localhost:8265` in your browser to monitor job progress and cluster health.
+1.  **View the Dashboard**: Visit `http://localhost:8265` in your browser to monitor job progress and cluster health.
 
 ### 4. Data Preparation
 
