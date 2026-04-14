@@ -48,6 +48,12 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
         **kwargs
     ):
         super().__init__(config, servers, load_balancer_handle, *args, **kwargs)
+        # Extract rollout config to support configurable ignore_eos
+        if config.get("actor_rollout_ref"):
+            self.rollout_config = config.actor_rollout_ref.rollout
+        else:
+            self.rollout_config = config.rollout
+
         self.ray_request_scheduler = Scheduler()
         self.inflight_store = InflightStore()
         self.endpoints = []
@@ -115,10 +121,11 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
         vllm_request_id = uuid.uuid4().hex
 
         # vLLMAsyncServer ignores ignore_eos from config, so we must pass it explicitly.
+        ignore_eos = self.rollout_config.get("ignore_eos", False)
         if isinstance(sampling_params, dict):
-            sampling_params["ignore_eos"] = True
+            sampling_params["ignore_eos"] = ignore_eos
         elif hasattr(sampling_params, "ignore_eos"):
-             setattr(sampling_params, "ignore_eos", True)
+             setattr(sampling_params, "ignore_eos", ignore_eos)
 
         try:
             return await server.generate.remote(
