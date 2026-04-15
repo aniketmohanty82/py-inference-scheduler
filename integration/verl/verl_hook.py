@@ -59,10 +59,10 @@ class vllmEnginePatchForRoutingStats:
 
             # Capture stats directly on the logger manager instance during record().
             original_record = StatLoggerManager.record
-            def patched_record(self, scheduler_stats, iteration_stats, engine_idx=0):
+            def patched_record(self, scheduler_stats, *args, **kwargs):
                 if scheduler_stats is not None:
                     self._latest_captured_stats = scheduler_stats
-                return original_record(self, scheduler_stats, iteration_stats, engine_idx)
+                return original_record(self, scheduler_stats, *args, **kwargs)
             StatLoggerManager.record = patched_record
 
         except (ImportError, AttributeError):
