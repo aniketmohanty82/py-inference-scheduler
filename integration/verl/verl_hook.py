@@ -35,7 +35,7 @@ from verl.workers.rollout.vllm_rollout.vllm_async_server import vLLMHttpServer
 
 logger = logging.getLogger(__name__)
 
-class vllmEnginePatchForRoutingStats:
+class vllmEnginePatch:
     """
     Monkey-patching vLLM V1 (0.11.0+) to allow metrics extraction.
     This bypasses verl's default behavior of disabling engine stats logging and
@@ -44,7 +44,49 @@ class vllmEnginePatchForRoutingStats:
     Done here since verl_hook is on the GPU worker nodes.
     """
     @staticmethod
-    def apply():
+    async def _get_routing_stats(self):
+        """
+        RPC entry point injected into vLLMHttpServer.
+        Retrieves real-time engine stats (KV cache, running requests) for the scheduler.
+        """
+        stats = {"num_waiting_reqs": 0, "num_running_reqs": 0, "kv": 0.0, "error": None}
+        try:
+            engine = getattr(self, "engine", None)
+            if engine is None:
+                stats["error"] = "No engine attribute on vLLMHttpServer"
+                return stats
+
+            # vLLM V1
+            logger_manager = getattr(engine, "logger_manager", None)
+            if logger_manager:
+                scheduler_stats = getattr(logger_manager, "_latest_captured_stats", None)
+
+                if scheduler_stats is None and hasattr(logger_manager, "last_scheduler_stats"):
+                    scheduler_stats = logger_manager.last_scheduler_stats
+
+                if scheduler_stats:
+                    stats["num_waiting_reqs"] = getattr(scheduler_stats, "num_waiting_reqs", 0)
+                    stats["num_running_reqs"] = getattr(scheduler_stats, "num_running_reqs", 0)
+                    stats["kv"] = getattr(scheduler_stats, "kv_cache_usage", 0.0) * 100.0
+                else:
+                    stats["error"] = "No stats recorded yet"
+                return stats
+
+            # vLLM V0
+            legacy_engine = getattr(engine, "engine", None)
+            if legacy_engine and hasattr(legacy_engine, "scheduler"):
+                legacy_scheduler = legacy_engine.scheduler[0]
+                stats["num_waiting_reqs"] = len(getattr(legacy_scheduler, "waiting", []))
+                stats["num_running_reqs"] = len(getattr(legacy_scheduler, "running", []))
+                return stats
+
+            stats["error"] = "Could not identify vLLM engine type (V0 or V1)"
+        except Exception as e:
+            stats["error"] = f"Exception in get_routing_stats: {e}"
+        return stats
+
+    @classmethod
+    def apply(cls):
         try:
             from vllm.v1.metrics.loggers import StatLoggerManager
             from vllm.v1.engine.async_llm import AsyncLLM
@@ -52,7 +94,7 @@ class vllmEnginePatchForRoutingStats:
             # Ensure stats logging is always ON.
             original_from_config = AsyncLLM.from_vllm_config
             @classmethod
-            def patched_from_config(cls, *args, **kwargs):
+            def patched_from_config(cls_vllm, *args, **kwargs):
                 kwargs["disable_log_stats"] = False
                 return original_from_config(*args, **kwargs)
             AsyncLLM.from_vllm_config = patched_from_config
@@ -68,51 +110,12 @@ class vllmEnginePatchForRoutingStats:
         except (ImportError, AttributeError):
             # vLLM V0 fallback (symbols don't exist, which is expected)
             pass
+        
+        # Attach the RPC endpoint to the server actor class
+        vLLMHttpServer.get_routing_stats = cls._get_routing_stats
 
-async def get_routing_stats(self):
-    """
-    RPC entry point injected into vLLMHttpServer.
-    Retrieves real-time engine stats (KV cache, running requests) for the scheduler.
-    """
-    stats = {"num_waiting_reqs": 0, "num_running_reqs": 0, "kv": 0.0, "error": None}
-    try:
-        engine = getattr(self, "engine", None)
-        if engine is None:
-            stats["error"] = "No engine attribute on vLLMHttpServer"
-            return stats
-
-        # vLLM V1
-        logger_manager = getattr(engine, "logger_manager", None)
-        if logger_manager:
-            scheduler_stats = getattr(logger_manager, "_latest_captured_stats", None)
-
-            if scheduler_stats is None and hasattr(logger_manager, "last_scheduler_stats"):
-                scheduler_stats = logger_manager.last_scheduler_stats
-
-            if scheduler_stats:
-                stats["num_waiting_reqs"] = getattr(scheduler_stats, "num_waiting_reqs", 0)
-                stats["num_running_reqs"] = getattr(scheduler_stats, "num_running_reqs", 0)
-                stats["kv"] = getattr(scheduler_stats, "kv_cache_usage", 0.0) * 100.0
-            else:
-                stats["error"] = "No stats recorded yet"
-            return stats
-
-        # vLLM V0
-        legacy_engine = getattr(engine, "engine", None)
-        if legacy_engine and hasattr(legacy_engine, "scheduler"):
-            legacy_scheduler = legacy_engine.scheduler[0]
-            stats["num_waiting_reqs"] = len(getattr(legacy_scheduler, "waiting", []))
-            stats["num_running_reqs"] = len(getattr(legacy_scheduler, "running", []))
-            return stats
-
-        stats["error"] = "Could not identify vLLM engine type (V0 or V1)"
-    except Exception as e:
-        stats["error"] = f"Exception in get_routing_stats: {e}"
-    return stats
-
-# Initialize patches and RPC hooks
-vllmEnginePatchForRoutingStats.apply()
-vLLMHttpServer.get_routing_stats = get_routing_stats
+# Initialize entire patch
+vllmEnginePatch.apply()
 
 
 class InferenceSchedulerServerManager(AsyncLLMServerManager):
