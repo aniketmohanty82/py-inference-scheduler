@@ -45,6 +45,9 @@ class DirectKVCacheLogger(StatLoggerBase):
                 scheduler_stats, "num_running_reqs", 0
             )
 
+        if self.target_dict is not None and iteration_stats is not None:
+            self.target_dict["num_preempted"] += getattr(iteration_stats, "num_preempted_reqs", 0)
+
 
 class MetricsAwareVLLMEngine(VLLMEngine):
     def _start_async_llm_engine(
@@ -53,7 +56,12 @@ class MetricsAwareVLLMEngine(VLLMEngine):
         engine_config: object,
         pg: object,
     ) -> object:
-        self.live_metrics = {"kv": 0.0, "num_waiting_reqs": 0, "num_running_reqs": 0}
+        self.live_metrics = {
+            "kv": 0.0,
+            "num_waiting_reqs": 0,
+            "num_running_reqs": 0,
+            "num_preempted": 0,
+        }
 
         # vLLM expects a StatLoggerFactory, so use a closure that attaches
         # our metrics dict to each logger instance.
@@ -85,6 +93,7 @@ class MetricsAwareVLLMEngine(VLLMEngine):
             "kv": self.live_metrics.get("kv", 0.0),
             "num_waiting_reqs": self.live_metrics.get("num_waiting_reqs", 0),
             "num_running_reqs": self.live_metrics.get("num_running_reqs", 0),
+            "num_preempted": self.live_metrics.get("num_preempted", 0),
         }
 
         if not hasattr(self, "_total_kv_tokens"):
