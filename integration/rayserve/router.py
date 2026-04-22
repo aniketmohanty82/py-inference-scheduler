@@ -86,6 +86,7 @@ class IGWRouter(RequestRouter):
         self._last_drip_at = 0.0
         self._loop: asyncio.AbstractEventLoop | None = None
         self._budgeted_requests: set[str] = set()
+        self._replica_kv_cache_size: dict[ReplicaID, int] = {}
 
     async def _get_routing_stats(
         self, replicas: list[RunningReplica], pending_request: PendingRequest
@@ -99,7 +100,9 @@ class IGWRouter(RequestRouter):
         return [res if not isinstance(res, Exception) else {} for res in results]
 
     def _get_request_id(self, pending_request: PendingRequest) -> tuple[str, int]:
-        """Deterministic request ID from prompt and approx character length."""
+        """Request ID from prompt and approx character length.
+        We don't require character length to be accurate, it is used as a fail-safe and for edge cases.
+        """
         try:
             if not pending_request or not pending_request.args:
                 return "", 0
@@ -142,15 +145,19 @@ class IGWRouter(RequestRouter):
     def _get_available_replicas(
         self,
         candidate_replicas: list[RunningReplica],
-        total_required: int,
-        kv_budget_tokens: int,
+        tokens_required: int,
     ) -> list[RunningReplica]:
         """Return subset of replicas that can fit the required tokens."""
-        return [
-            r
-            for r in candidate_replicas
-            if self._replica_token_usage.get(r.replica_id, 0) + total_required <= kv_budget_tokens
-        ]
+        res = []
+        for r in candidate_replicas:
+            budget = self._replica_kv_cache_size.get(r.replica_id)
+            if budget is not None and budget > 0:
+                if (
+                    self._replica_token_usage.get(r.replica_id, 0) + tokens_required
+                    <= budget
+                ):
+                    res.append(r)
+        return res
 
     async def choose_replicas(  # noqa: PLR0912
         self,
@@ -187,6 +194,15 @@ class IGWRouter(RequestRouter):
                     print(f"Failed to fetch metrics via RPC for {replica_id}: {routing_stats}")
                     routing_stats = {}  # noqa: PLW2901
 
+                # Discover and cache KV Cache size if not already known
+                if replica_id not in self._replica_kv_cache_size:
+                    kv_cache_size = routing_stats.get("kv_cache_size", -1)
+                    if kv_cache_size > 0:
+                        self._replica_kv_cache_size[replica_id] = kv_cache_size
+                        print(
+                            f"[BUDGET] Discovered KV Cache size for replica {replica_id}: {kv_cache_size} tokens"
+                        )
+
                 candidates.append(
                     Endpoint(
                         name=str(replica.replica_id),
@@ -200,28 +216,31 @@ class IGWRouter(RequestRouter):
             fc = self.scheduler.get_flow_control_config()
             use_token_budget = fc.get("use_token_budget", _DEFAULT_USE_TOKEN_BUDGET)
 
-            total_required = 0
+            tokens_required = 0
             is_budgeted = False
 
-            if use_token_budget and request_id and request_id not in self._budgeted_requests:
-                kv_budget_tokens = fc.get("kv_budget_tokens", 727_936)
-                default_osl = fc.get("default_osl", 2000)
+            if (
+                use_token_budget
+                and request_id
+                and request_id not in self._budgeted_requests
+            ):
+                default_osl = fc.get("default_osl", 1024)
                 drip_threshold_kv = fc.get("drip_threshold_kv", 0.1)
                 drip_interval_s = fc.get("drip_interval_s", 2.0)
                 stats = self._rollout_request_stats.get(rollout_request_id)
 
                 if stats:
-                    total_required = stats["isl"] + stats["osl"]
+                    tokens_required = stats["isl"] + stats["osl"]
                     is_budgeted = True
                 else:
                     # Fallback for first contact with prompt
-                    total_required = (char_len // 4) + default_osl
+                    tokens_required = (char_len // 4) + default_osl
                     is_budgeted = True
 
                 if is_budgeted:
                     while True:
                         available_replicas = self._get_available_replicas(
-                            candidate_replicas, total_required, kv_budget_tokens
+                            candidate_replicas, tokens_required
                         )
 
                         if available_replicas:
@@ -299,11 +318,11 @@ class IGWRouter(RequestRouter):
             # Commit the reservation for the selected replica
             if is_budgeted:
                 self._replica_token_usage[target_replica_id] = (
-                    self._replica_token_usage.get(target_replica_id, 0) + total_required
+                    self._replica_token_usage.get(target_replica_id, 0) + tokens_required
                 )
                 self._request_at_replica[request_id] = (
                     target_replica_id,
-                    total_required,
+                    tokens_required,
                 )
                 self._budgeted_requests.add(request_id)
                 print(

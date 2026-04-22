@@ -81,11 +81,28 @@ class MetricsAwareVLLMEngine(VLLMEngine):
 
     def record_routing_stats(self) -> dict[str, object]:
         # Ray natively expects this to return a dictionary
-        return {
+        res = {
             "kv": self.live_metrics.get("kv", 0.0),
             "num_waiting_reqs": self.live_metrics.get("num_waiting_reqs", 0),
             "num_running_reqs": self.live_metrics.get("num_running_reqs", 0),
         }
+
+        if not hasattr(self, "_total_kv_tokens"):
+            try:
+                engine = self._engine_client
+                vllm_config = getattr(engine, "vllm_config", None)
+                if vllm_config:
+                    num_blocks = vllm_config.cache_config.num_gpu_blocks
+                    block_size = vllm_config.cache_config.block_size
+                    self._total_kv_tokens = num_blocks * block_size
+                else:
+                    self._total_kv_tokens = -1
+            except Exception as e:
+                print(f"[METRICS ERROR] Failed to extract KV Cache size: {e}")
+                self._total_kv_tokens = -1
+
+        res["kv_cache_size"] = self._total_kv_tokens
+        return res
 
 
 class MetricsAwareLLMServer(LLMServer):
