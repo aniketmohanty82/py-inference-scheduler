@@ -17,7 +17,7 @@ The KV Saturation system eliminates this by ensuring a request is **only** admit
 ### 2. The Drip Mechanism
 In batch-heavy workloads, requests often finish in "cliffs"—where utilization drops significantly because the router waits for a full completion before admitting the next batch. This creates significant GPU idle time.
 
-The **Drip** functionality acts as a controlled "pressure valve" to smooth out these utilization cliffs. If a replica's physical KV cache usage falls below a specific threshold (decided by the user for now), the router will "drip" one extra request into that replica, even if the virtual budget is technically full. This ensures that as one batch finishes, there are still requests partially through their prefill/decode phase, raising the floor of average utilization.
+The **Drip** functionality acts as a controlled "pressure valve" to smooth out these utilization cliffs. This is used only when the virtual KV Cache for a replica is already exhausted.If a replica's physical KV cache usage falls below a specific threshold (decided by the user for now), the router will "drip" one extra request into that replica, even if the virtual budget is technically full. This ensures that as one batch finishes, there are still requests partially through their prefill/decode phase, raising the floor of average utilization.
 
 ## Configuration
 
