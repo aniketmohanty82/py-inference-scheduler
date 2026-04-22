@@ -30,7 +30,6 @@ profiles:
   default_profile:
     flow_control:
       use_token_budget: true      # Toggle to use KV saturation flow control
-      kv_budget_tokens: 727936    # Total tokens available on the hardware (this is a H200 at tp=2). In the future, this will be obtained programatically
       default_osl: 1024           # OSL estimate for the very first contact (profiling)
       drip_threshold_kv: 0.2      # Drip if physical KV usage < 20%
       drip_interval_s: 2.0        # Limit drips to one every 2 seconds per replica
