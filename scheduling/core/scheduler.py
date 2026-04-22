@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 import pathlib
-from typing import Sequence
+from typing import Any, Sequence
 
 import yaml
 
@@ -33,29 +33,32 @@ from scheduling.framework import (
 
 
 class Scheduler:
-    def __init__(self, config_path: str | None = None) -> None:
-        if config_path:
-            self.config_path = config_path
-        else:
-            self.config_path = os.environ.get("ROUTER_CONFIG_PATH")
-            if not self.config_path:
-                raise ValueError(
-                    "ROUTER_CONFIG_PATH environment variable is missing and no "
-                    "config_path provided. Ensure the ConfigMap is mounted or "
-                    "path is passed."
-                )
-
+    def __init__(self):
+        self.profiles = {}
+        self.profile_handler = None
+        self.config_path = None
         self.last_mtime = 0
-        self._maybe_reload_config()
 
     @classmethod
-    def new_with_config(cls, config: SchedulerConfig) -> Scheduler:
-        instance = object.__new__(cls)
-        instance.config_path = None
-        instance.last_mtime = 0
+    def from_config(cls, config_path: str) -> "Scheduler":
+        instance = cls()
+        instance.config_path = config_path
+        instance._maybe_reload_config()
+        return instance
+
+    @classmethod
+    def from_object(cls, config: SchedulerConfig) -> "Scheduler":
+        instance = cls()
         instance.profile_handler = config.profile_handler
         instance.profiles = config.profiles
         return instance
+
+    def get_flow_control_config(self) -> dict[str, Any]:
+        """Returns the flow_control configuration from the primary profile, or an empty dict."""
+        if hasattr(self, "profiles") and self.profiles:
+            primary_profile = next(iter(self.profiles.values()))
+            return getattr(primary_profile, "flow_control", {})
+        return {}
 
     def _maybe_reload_config(self) -> None:
         if self.config_path is None:
@@ -106,35 +109,21 @@ class Scheduler:
 
         # Build SchedulingResult
         result = SchedulingResult(
-            profile_results={
-                k: v or ProfileRunResult() for k, v in profile_results.items()
-            },
-            primary_profile_name=primary,
+            request=request,
+            profile_results=profile_results,
+            selected_profile=primary,
         )
-        selected_eps = (
-            result.profile_results[primary].endpoint_list[:1]
-            if primary in result.profile_results
-            else []
-        )
-        print(f"Selected endpoint {selected_eps}")
-        if selected_eps:
-            for w in self.profiles[primary].scorers:
-                if hasattr(w.scorer, "pre_request"):
-                    w.scorer.pre_request(cycle_state, request, selected_eps[0].endpoint)
+
+        # update scores on candidates
+        if primary and profile_results.get(primary):
+            res = profile_results[primary]
+            # update candidate scores
+            for ep in candidates:
+                if ep.name in res.scores:
+                    ep.score = res.scores[ep.name]
+                else:
+                    ep.score = 0.0
+            result.endpoint = res.endpoint
+            result.metadata = res.metadata
+
         return result
-
-    def run(
-        self, request: LLMRequest, candidates: Sequence[Endpoint]
-    ) -> Sequence[ScoredEndpoint]:
-        self._maybe_reload_config()
-        scheduler_output = self.schedule(request, candidates)
-        profile_name = scheduler_output.primary_profile_name
-        profile_results = scheduler_output.profile_results.get(profile_name)
-
-        print(f"Profile {profile_name} results: {profile_results}")
-        selected_endpoint = profile_results.endpoint_list[:1]
-
-        if len(selected_endpoint) > 0:
-            return selected_endpoint  # pick top 1
-        print("No endpoint selected, defaulting to framework routing logic")
-        return []

@@ -22,13 +22,15 @@ data:
     profile_handler:
       type: single_profile
     profiles:
-      epp_backpressure:
+      without_router:
+        flow_control:
+          use_token_budget: true
+          kv_budget_tokens: 727936
+          default_osl: 1024
+          drip_threshold_kv: 0.2
+          drip_interval_s: 2.0
         scorers:
-          - type: waiting_queue
+          - type: round_robin
             weight: 1.0
-          - type: running_queue
-            weight: 1.0
-          - type: kv_cache
-            weight: 2.0
         picker:
           type: max_score

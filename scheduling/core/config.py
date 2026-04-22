@@ -62,13 +62,12 @@ class SchedulerConfig:
 
         profiles_dict = config_dict.get("profiles")
         if not profiles_dict:
-            raise ValueError(
-                "Scheduler configuration must include a 'profiles' dictionary."
-            )
+            raise ValueError("Scheduler configuration must include a 'profiles' dictionary.")
 
         parsed_profiles: dict[str, SchedulerProfile] = {}
         for profile_name, prof_data in profiles_dict.items():
             profile = SchedulerProfile(name=profile_name)
+            profile.flow_control = prof_data.get("flow_control", {})
 
             for filter_config in prof_data.get("filters", []):
                 cfg = dict(filter_config)
@@ -81,9 +80,7 @@ class SchedulerConfig:
                 s_type = cfg.pop("type")
                 weight = cfg.pop("weight", 1.0)
                 s_instance = build_scorer(s_type, **cfg)
-                profile.with_scorers(
-                    WeightedScorer(scorer=s_instance, weight=float(weight))
-                )
+                profile.with_scorers(WeightedScorer(scorer=s_instance, weight=float(weight)))
 
             picker_config = prof_data.get("picker")
             if picker_config:

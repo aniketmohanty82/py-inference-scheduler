@@ -15,30 +15,36 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping, Protocol, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 
 from .types import CycleState, Endpoint, LLMRequest, ProfileRunResult, ScoredEndpoint
 
 
 class FilterPlugin(Protocol):
     def filter(
-        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
-    ) -> Mapping[str, Endpoint]: ...
+        self,
+        request: LLMRequest,
+        cycle_state: CycleState,
+        endpoints: Sequence[Endpoint],
+    ) -> Sequence[Endpoint]:
+        ...
 
 
 class ScorerPlugin(Protocol):
     def score(
-        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
-    ) -> dict[str, float]: ...
+        self, request: LLMRequest, endpoints: Sequence[Endpoint]
+    ) -> Mapping[str, float]:
+        ...
 
 
 class PickerPlugin(Protocol):
     def pick(
         self,
-        cycle_state: CycleState,
         request: LLMRequest,
-        scored_pods: Sequence[ScoredEndpoint],
-    ) -> ScoredEndpoint | None: ...
+        cycle_state: CycleState,
+        endpoints: Sequence[ScoredEndpoint],
+    ) -> ScoredEndpoint | None:
+        ...
 
 
 class ProfileHandler(Protocol):
@@ -46,16 +52,18 @@ class ProfileHandler(Protocol):
         self,
         cycle_state: CycleState,
         request: LLMRequest,
-        profiles: dict[str, SchedulerProfile],
-        profile_results: dict[str, ProfileRunResult | None],
-    ) -> dict[str, SchedulerProfile]: ...
+        profiles: Mapping[str, SchedulerProfile],
+        profile_results: Mapping[str, ProfileRunResult | None],
+    ) -> Mapping[str, SchedulerProfile]:
+        ...
 
     def process_results(
         self,
         cycle_state: CycleState,
         request: LLMRequest,
-        profile_results: dict[str, ProfileRunResult | None],
-    ) -> str | None: ...
+        profile_results: Mapping[str, ProfileRunResult | None],
+    ) -> str | None:
+        ...
 
 
 @dataclass
@@ -70,6 +78,7 @@ class SchedulerProfile:
     filters: list[FilterPlugin] = field(default_factory=list)
     scorers: list[WeightedScorer] = field(default_factory=list)
     picker: PickerPlugin | None = None
+    flow_control: dict[str, Any] = field(default_factory=dict)
 
     def with_filters(self, *fs: FilterPlugin) -> SchedulerProfile:
         self.filters.extend(fs)
@@ -87,38 +96,24 @@ class SchedulerProfile:
         self,
         request: LLMRequest,
         cycle_state: CycleState,
-        candidates: Sequence[Endpoint],
+        endpoints: Sequence[Endpoint],
     ) -> ProfileRunResult:
-        # normalize candidates into a mapping name->Endpoint
-        endpoints_map: dict[str, Endpoint] = {e.name: e for e in candidates}
-
-        # run filters: each filter returns a mapping of name->Endpoint
+        # 1. run filters
+        filtered = endpoints
         for f in self.filters:
-            endpoints_map = dict(f.filter(cycle_state, request, endpoints_map))
+            filtered = f.filter(request, cycle_state, filtered)
 
-        # if no endpoints left, return empty result
-        if not endpoints_map:
-            return ProfileRunResult()
+        # map to quickly find endpoints by name
+        endpoints_map = {e.name: e for e in endpoints}
 
-        # combine scores (score plugins return name->float)
-        total_scores: dict[str, float] = dict.fromkeys(endpoints_map.keys(), 0.0)
-        for w in self.scorers:
-            raw_sc = w.scorer.score(cycle_state, request, endpoints_map)
-            print(f"Scorer {w.scorer} raw scores: {raw_sc}")
-            # normalize raw_sc values to [0,1] across endpoints present in endpoints_map
-            vals = [float(raw_sc.get(name, 0.0)) for name in endpoints_map]
-            if vals:
-                min_v = min(vals)
-                max_v = max(vals)
-                if max_v > min_v:
-                    for name in endpoints_map:
-                        v = float(raw_sc.get(name, 0.0))
-                        norm = (v - min_v) / (max_v - min_v)
-                        total_scores[name] += norm * w.weight
-                else:
-                    # all values equal -> give full score to all
-                    for name in endpoints_map:
-                        total_scores[name] += 1.0 * w.weight
+        # 2. run scorers
+        total_scores = {}
+        for ws in self.scorers:
+            scores = ws.scorer.score(request, filtered)
+            for name, score in scores.items():
+                total_scores[name] = (
+                    total_scores.get(name, 0.0) + score * ws.weight
+                )
 
         # create ScoredEndpoint list preserving endpoint info
         scored = [
@@ -130,13 +125,12 @@ class SchedulerProfile:
         # sort descending
         scored.sort(key=lambda sp: sp.score, reverse=True)
 
-        chosen = []
-        if self.picker is not None:
-            picked = self.picker.pick(cycle_state, request, scored)
-            if picked is not None:
-                chosen = [picked]
-        # default: take highest-scoring endpoint
-        elif scored:
-            chosen = [scored[0]]
+        # 3. run picker
+        if self.picker and len(scored) > 0:
+            picked = self.picker.pick(request, cycle_state, scored)
+        else:
+            picked = scored[0] if len(scored) > 0 else None
 
-        return ProfileRunResult(endpoint_list=chosen)
+        return ProfileRunResult(
+            profile_name=self.name, scores=total_scores, endpoint=picked
+        )
