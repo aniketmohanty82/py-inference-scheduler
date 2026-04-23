@@ -7,7 +7,7 @@ Currently, this feature is only available in the **Ray Serve** implementation.
 ## Core Concepts
 
 ### 1. Token Budgeting
-We have found that one of the causes of throughput collapse in vLLM is the "Recompute Tax" incurred when a GPU runs out of KV cache and must preempt (evict) a running request. Re-admitting that request requires a full recomputation of its prefix, which starves the GPU's compute bandwidth.
+We have found that one of the causes of throughput collapse in vLLM is the "Recompute Tax" incurred when a GPU runs out of KV cache and must preempt (evict) a running request. Re-admitting that request requires recomputation of the preempted tokens, which creates bubbles in the GPU decode batch.
 
 The KV Saturation system eliminates this by ensuring a request is **only** admitted to a replica if that replica has enough theoretical capacity to serve the request from start to finish.
 
