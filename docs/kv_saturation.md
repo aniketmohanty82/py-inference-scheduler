@@ -9,7 +9,7 @@ Currently, this feature is only available in the **Ray Serve** implementation.
 ### 1. Token Budgeting
 We have found that one of the causes of throughput collapse in vLLM is the "Recompute Tax" incurred when a GPU runs out of KV cache and must preempt (evict) a running request. Re-admitting that request requires recomputation of the preempted tokens, which creates bubbles in the GPU decode batch.
 
-The KV Saturation system eliminates this by ensuring a request is **only** admitted to a replica if that replica has enough theoretical capacity to serve the request from start to finish.
+The KV Saturation system reduces this by ensuring a request is **only** admitted to a replica if that replica has enough theoretical capacity to serve the request from start to finish.
 
 *   **Learning Phase:** During the first encounter with a prompt, the router records the actual Input Sequence Length (ISL) and Output Sequence Length (OSL).
 *   **Virtual Reservation:** For all subsequent requests with the same fingerprint, the router calculates the full memory footprint of the request (ISL + OSL). It maintains a virtual counter of tokens occupied on each replica and will park new requests in an asynchronous queue if the addition of the new request would exceed the hardware's KV token budget.
