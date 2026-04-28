@@ -18,7 +18,7 @@ import asyncio
 import random
 import struct
 import time
-from typing import Callable
+from typing import Any, Callable
 import uuid
 
 from ray import serve
@@ -99,17 +99,37 @@ class IGWRouter(RequestRouter):
         results = await asyncio.gather(*futures, return_exceptions=True)
         return [res if not isinstance(res, Exception) else {} for res in results]
 
-    def _get_request_id(self, pending_request: PendingRequest) -> tuple[str, int]:
-        """Request ID from prompt and approx character length.
+    def _parse_to_llm_request(self, pending_request: PendingRequest) -> LLMRequest:
+        """Converts Ray request to LLMRequest."""
+        if pending_request:
+            req_id = pending_request.metadata.request_id
+        else:
+            req_id = str(uuid.uuid4())
+
+        if not pending_request or not pending_request.args:
+            return LLMRequest(request_id=req_id, body="", target_model="qwen-32b")
+        request_args = pending_request.args[0]
+
+        if hasattr(request_args, "messages"):
+            body = request_args.messages
+        elif hasattr(request_args, "prompt"):
+            body = request_args.prompt
+        else:
+            body = request_args
+
+        # make configurable in LLMConfig
+        target_model = getattr(request_args, "model", "qwen-32b")
+
+        return LLMRequest(request_id=req_id, body=body, target_model=target_model)
+
+    def _get_rollout_request_id(self, body: Any) -> tuple[str, int]:
+        """Generates a rollout request ID and approximate character length from the request body.
         We don't require character length to be accurate, it is used as a fail-safe and for edge cases.
         """
+        if not body:
+            return "", 0
+
         try:
-            if not pending_request or not pending_request.args:
-                return "", 0
-
-            request_args = pending_request.args[0]
-            body = getattr(request_args, "messages", getattr(request_args, "prompt", ""))
-
             # Case 1: Pre-tokenized prompt ids (List[int])
             if isinstance(body, list) and len(body) > 0 and isinstance(body[0], int):
                 prompt_bytes = struct.pack(f"{len(body)}i", *body)
@@ -170,8 +190,9 @@ class IGWRouter(RequestRouter):
         if not candidate_replicas:
             return []
 
-        request_id = pending_request.metadata.request_id if pending_request else None
-        rollout_request_id, char_len = self._get_request_id(pending_request)
+        llm_req = self._parse_to_llm_request(pending_request)
+        rollout_request_id, char_len = self._get_rollout_request_id(llm_req.body)
+        request_id = llm_req.request_id
 
         # for health check empty requests
         if not pending_request or not pending_request.args or char_len == 0:
@@ -190,10 +211,6 @@ class IGWRouter(RequestRouter):
                     if cached_val is not None:
                         queue_len = cached_val
 
-                if isinstance(routing_stats, Exception):
-                    print(f"Failed to fetch metrics via RPC for {replica_id}: {routing_stats}")
-                    routing_stats = {}  # noqa: PLW2901
-
                 # Discover and cache KV Cache size if not already known
                 if replica_id not in self._replica_kv_cache_size:
                     kv_cache_size = routing_stats.get("kv_cache_size", -1)
@@ -202,6 +219,10 @@ class IGWRouter(RequestRouter):
                         print(
                             f"[BUDGET] Discovered KV Cache size for replica {replica_id}: {kv_cache_size} tokens"
                         )
+
+                if isinstance(routing_stats, Exception):
+                    print(f"Failed to fetch metrics via RPC for {replica_id}: {routing_stats}")
+                    routing_stats = {}  # noqa: PLW2901
 
                 candidates.append(
                     Endpoint(
@@ -289,17 +310,7 @@ class IGWRouter(RequestRouter):
 
             self.scheduler._maybe_reload_config()
 
-            request_args = pending_request.args[0]
-            if hasattr(request_args, "messages"):
-                body = request_args.messages
-            elif hasattr(request_args, "prompt"):
-                body = request_args.prompt
-            else:
-                body = request_args
-
-            igw_req = LLMRequest(request_id="1", body=body, target_model="qwen-32b")
-
-            selected_endpoints = self.scheduler.run(igw_req, candidates)
+            selected_endpoints = self.scheduler.run(llm_req, candidates)
 
             index = -1
             for i, replica in enumerate(candidate_replicas):
@@ -341,8 +352,9 @@ class IGWRouter(RequestRouter):
         replica_id: ReplicaID,
         result: ReplicaResult,
     ):
-        request_id = pending_request.metadata.request_id
-        rollout_request_id, char_len = self._get_request_id(pending_request)
+        llm_req = self._parse_to_llm_request(pending_request)
+        request_id = llm_req.request_id
+        rollout_request_id, char_len = self._get_rollout_request_id(llm_req.body)
         routed_at = time.time()
         is_streaming = pending_request.metadata.is_streaming
 
