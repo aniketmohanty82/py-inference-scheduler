@@ -125,6 +125,8 @@ class IGWRouter(RequestRouter):
     def _get_rollout_request_id(self, body: Any) -> tuple[str, int]:
         """Generates a rollout request ID and approximate character length from the request body.
         We don't require character length to be accurate, it is used as a fail-safe and for edge cases.
+        rollout_request_id -> id used to track ISL/OSL of a single prompt across rollouts/steps. Calculated using promptIDs
+        request_id -> id used to uniquely identify a request (vLLM encourages this). 
         """
         if not body:
             return "", 0
@@ -195,7 +197,8 @@ class IGWRouter(RequestRouter):
         request_id = llm_req.request_id
 
         # for health check empty requests
-        if not pending_request or not pending_request.args or char_len == 0:
+        if char_len == 0:
+            print("No pending request or args, defaulting to random choice")
             index = random.randint(0, len(candidate_replicas) - 1)
             return [[candidate_replicas[index]]]
 
@@ -307,8 +310,6 @@ class IGWRouter(RequestRouter):
                                 break
 
                         await self._wait_for_space()
-
-            self.scheduler._maybe_reload_config()
 
             selected_endpoints = self.scheduler.run(llm_req, candidates)
 
