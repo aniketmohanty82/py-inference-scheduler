@@ -55,6 +55,7 @@ class Scheduler:
 
     def get_flow_control_config(self) -> dict[str, Any]:
         """Returns the flow_control configuration from the primary profile, or an empty dict."""
+        self._maybe_reload_config()
         if hasattr(self, "profiles") and self.profiles:
             primary_profile = next(iter(self.profiles.values()))
             return getattr(primary_profile, "flow_control", {})
@@ -127,3 +128,16 @@ class Scheduler:
             result.metadata = res.metadata
 
         return result
+
+    def run(
+        self, request: LLMRequest, candidates: Sequence[Endpoint]
+    ) -> Sequence[ScoredEndpoint]:
+        scheduler_output = self.schedule(request, candidates)
+        profile_name = scheduler_output.selected_profile
+        profile_results = scheduler_output.profile_results.get(profile_name)
+
+        print(f"Profile {profile_name} results: {profile_results}")
+        if profile_results and profile_results.endpoint:
+            return [profile_results.endpoint]
+        print("No endpoint selected, defaulting to framework routing logic")
+        return []

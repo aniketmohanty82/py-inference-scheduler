@@ -125,8 +125,6 @@ class IGWRouter(RequestRouter):
     def _get_rollout_request_id(self, body: Any) -> tuple[str, int]:
         """Generates a rollout request ID and approximate character length from the request body.
         We don't require character length to be accurate, it is used as a fail-safe and for edge cases.
-        rollout_request_id -> id used to track ISL/OSL of a single prompt across rollouts/steps. Calculated using promptIDs
-        request_id -> id used to uniquely identify a request (vLLM encourages this). 
         """
         if not body:
             return "", 0
@@ -181,6 +179,63 @@ class IGWRouter(RequestRouter):
                     res.append(r)
         return res
 
+    def _token_budget_needed(self, request_id: str | None, fc: dict) -> bool:
+        """Decide if this request requires token budgeting."""
+        use_token_budget = fc.get("use_token_budget", _DEFAULT_USE_TOKEN_BUDGET)
+        return (
+            use_token_budget and request_id and request_id not in self._budgeted_requests
+        )
+
+    def _estimate_tokens_required(self, rollout_id: str, char_len: int, fc: dict) -> int:
+        """Estimate the tokens required for this request."""
+        stats = self._rollout_request_stats.get(rollout_id)
+        if stats:
+            return stats["isl"] + stats["osl"]
+
+        # Fallback for first contact with prompt
+        default_osl = fc.get("default_osl", 1024)
+        return (char_len // 4) + default_osl
+
+    def _maybe_drip(
+        self, replicas: list[RunningReplica], stats: list[dict], fc: dict
+    ) -> RunningReplica | None:
+        """Check if any replica qualifies for drip admission."""
+        now = time.time()
+        drip_interval_s = fc.get("drip_interval_s", 2.0)
+        if (now - self._last_drip_at) < drip_interval_s:
+            return None
+
+        drip_threshold_kv = fc.get("drip_threshold_kv", 0.1)
+        for i, r in enumerate(replicas):
+            physical_kv = stats[i].get("kv", 1.0)
+            if physical_kv < drip_threshold_kv:
+                self._last_drip_at = now
+                print(
+                    f"[BUDGET] Drip Admission to {r.replica_id} (Physical KV: {physical_kv:.2f})"
+                )
+                return r
+        return None
+
+    async def _wait_for_admission(
+        self,
+        replicas: list[RunningReplica],
+        tokens: int,
+        pending_request: PendingRequest,
+        fc: dict,
+    ) -> list[RunningReplica]:
+        """Wait loop until replicas are available or a drip admission occurs."""
+        while True:
+            available = self._get_available_replicas(replicas, tokens)
+            if available:
+                return available
+
+            new_stats = await self._get_routing_stats(replicas, pending_request)
+            drip_replica = self._maybe_drip(replicas, new_stats, fc)
+            if drip_replica:
+                return [drip_replica]
+
+            await self._wait_for_space()
+
     async def choose_replicas(  # noqa: PLR0912
         self,
         candidate_replicas: list[RunningReplica],
@@ -197,8 +252,7 @@ class IGWRouter(RequestRouter):
         request_id = llm_req.request_id
 
         # for health check empty requests
-        if char_len == 0:
-            print("No pending request or args, defaulting to random choice")
+        if not pending_request or not pending_request.args or char_len == 0:
             index = random.randint(0, len(candidate_replicas) - 1)
             return [[candidate_replicas[index]]]
 
@@ -208,18 +262,19 @@ class IGWRouter(RequestRouter):
             candidates = []
             for replica, routing_stats in zip(candidate_replicas, metrics_results):
                 queue_len = 0
+                replica_id = replica.replica_id
                 if self.replica_queue_len_cache:
-                    cached_val = self.replica_queue_len_cache.get(replica.replica_id)
+                    cached_val = self.replica_queue_len_cache.get(replica_id)
                     if cached_val is not None:
                         queue_len = cached_val
 
                 # Discover and cache KV Cache size if not already known
-                if replica.replica_id not in self._replica_kv_cache_size:
+                if replica_id not in self._replica_kv_cache_size:
                     kv_cache_size = routing_stats.get("kv_cache_size", -1)
                     if kv_cache_size > 0:
-                        self._replica_kv_cache_size[replica.replica_id] = kv_cache_size
+                        self._replica_kv_cache_size[replica_id] = kv_cache_size
                         print(
-                            f"[BUDGET] Discovered KV Cache size for replica {replica.replica_id}: {kv_cache_size} tokens"
+                            f"[BUDGET] Discovered KV Cache size for replica {replica_id}: {kv_cache_size} tokens"
                         )
 
                 if isinstance(routing_stats, Exception):
@@ -237,78 +292,23 @@ class IGWRouter(RequestRouter):
                 )
 
             fc = self.scheduler.get_flow_control_config()
-            use_token_budget = fc.get("use_token_budget", _DEFAULT_USE_TOKEN_BUDGET)
-
             tokens_required = 0
             is_budgeted = False
 
-            if (
-                use_token_budget
-                and request_id
-                and request_id not in self._budgeted_requests
-            ):
-                default_osl = fc.get("default_osl", 1024)
-                drip_threshold_kv = fc.get("drip_threshold_kv", 0.1)
-                drip_interval_s = fc.get("drip_interval_s", 2.0)
-                stats = self._rollout_request_stats.get(rollout_request_id)
+            if self._token_budget_needed(request_id, fc):
+                tokens_required = self._estimate_tokens_required(
+                    rollout_request_id, char_len, fc
+                )
+                candidate_replicas = await self._wait_for_admission(
+                    candidate_replicas, tokens_required, pending_request, fc
+                )
+                is_budgeted = True
 
-                if stats:
-                    tokens_required = stats["isl"] + stats["osl"]
-                    is_budgeted = True
-                else:
-                    # Fallback for first contact with prompt
-                    tokens_required = (char_len // 4) + default_osl
-                    is_budgeted = True
+                # Sync scheduler candidates with available replicas
+                available_replica_ids = {str(r.replica_id) for r in candidate_replicas}
+                candidates = [c for c in candidates if c.name in available_replica_ids]
 
-                if is_budgeted:
-                    while True:
-                        available_replicas = self._get_available_replicas(
-                            candidate_replicas, tokens_required
-                        )
-
-                        if available_replicas:
-                            candidate_replicas = available_replicas
-                            candidates = [
-                                c
-                                for c in candidates
-                                if c.name in [str(r.replica_id) for r in candidate_replicas]
-                            ]
-                            break
-                        else:
-                            new_metrics = await self._get_routing_stats(
-                                candidate_replicas, pending_request
-                            )
-                            for i, res in enumerate(new_metrics):
-                                candidates[i].attributes["routing_stats"] = res
-
-                            now = time.time()
-                            best_drip_replica = None
-                            for i, r in enumerate(candidate_replicas):
-                                stats = candidates[i].attributes.get("routing_stats", {})
-                                physical_kv = stats.get("kv", 1.0)
-
-                                if (
-                                    physical_kv < drip_threshold_kv
-                                    and (now - self._last_drip_at) > drip_interval_s
-                                ):
-                                    best_drip_replica = r
-                                    break
-
-                            if best_drip_replica:
-                                self._last_drip_at = now
-                                print(
-                                    f"[BUDGET] Drip Admission: req={request_id} to {best_drip_replica.replica_id} (Physical KV: {physical_kv:.2f})"
-                                )
-                                candidate_replicas = [best_drip_replica]
-                                candidates = [
-                                    c
-                                    for c in candidates
-                                    if c.name == str(best_drip_replica.replica_id)
-                                ]
-                                is_budgeted = True
-                                break
-
-                        await self._wait_for_space()
+            self.scheduler._maybe_reload_config()
 
             selected_endpoints = self.scheduler.run(llm_req, candidates)
 
@@ -324,19 +324,20 @@ class IGWRouter(RequestRouter):
                 index = random.randint(0, len(candidate_replicas) - 1)
 
             target_replica = candidate_replicas[index]
+            target_replica_id = target_replica.replica_id
 
             # Commit the reservation for the selected replica
             if is_budgeted:
-                self._replica_token_usage[target_replica.replica_id] = (
-                    self._replica_token_usage.get(target_replica.replica_id, 0) + tokens_required
+                self._replica_token_usage[target_replica_id] = (
+                    self._replica_token_usage.get(target_replica_id, 0) + tokens_required
                 )
                 self._request_at_replica[request_id] = (
-                    target_replica.replica_id,
+                    target_replica_id,
                     tokens_required,
                 )
                 self._budgeted_requests.add(request_id)
                 print(
-                    f"[BUDGET] Admission committed for req={request_id} to replica={target_replica.replica_id} (Usage: {self._replica_token_usage[target_replica.replica_id]})"
+                    f"[BUDGET] Admission committed for req={request_id} to replica={target_replica_id} (Usage: {self._replica_token_usage[target_replica_id]})"
                 )
 
             return [[target_replica]]
