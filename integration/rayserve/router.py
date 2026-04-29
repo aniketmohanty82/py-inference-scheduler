@@ -78,6 +78,7 @@ class IGWRouter(RequestRouter):
             **kwargs,
         )
         self.scheduler = Scheduler()
+        self.deployment_name = deployment_id.name
         self._rollout_request_stats: dict[str, dict[str, int]] = {}  # rollout_request_id -> {isl, max_osl}
         self._replica_token_usage: dict[ReplicaID, int] = {}  # replica_id -> token_usage_at_replica
         self._request_at_replica: dict[str, tuple[ReplicaID, int]] = {}  # request_id -> (replica_id, tokens)
@@ -107,7 +108,10 @@ class IGWRouter(RequestRouter):
             req_id = str(uuid.uuid4())
 
         if not pending_request or not pending_request.args:
-            return LLMRequest(request_id=req_id, body="", target_model="qwen-32b")
+            print("No pending request or args, defaulting to random choice")
+            return LLMRequest(
+                request_id=req_id, body="", target_model=self.deployment_name
+            )
         request_args = pending_request.args[0]
 
         if hasattr(request_args, "messages"):
@@ -117,8 +121,7 @@ class IGWRouter(RequestRouter):
         else:
             body = request_args
 
-        # make configurable in LLMConfig
-        target_model = getattr(request_args, "model", "qwen-32b")
+        target_model = getattr(request_args, "model", self.deployment_name)
 
         return LLMRequest(request_id=req_id, body=body, target_model=target_model)
 
