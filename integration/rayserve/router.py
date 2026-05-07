@@ -265,24 +265,23 @@ class IGWRouter(RequestRouter):
             candidates = []
             for replica, routing_stats in zip(candidate_replicas, metrics_results):
                 queue_len = 0
-                replica_id = replica.replica_id
                 if self.replica_queue_len_cache:
-                    cached_val = self.replica_queue_len_cache.get(replica_id)
+                    cached_val = self.replica_queue_len_cache.get(replica.replica_id)
                     if cached_val is not None:
                         queue_len = cached_val
 
                 # Discover and cache KV Cache size if not already known
-                if replica_id not in self._replica_kv_cache_size:
+                if replica.replica_id not in self._replica_kv_cache_size:
                     kv_cache_size = routing_stats.get("kv_cache_size", -1)
                     if kv_cache_size > 0:
-                        self._replica_kv_cache_size[replica_id] = kv_cache_size
+                        self._replica_kv_cache_size[replica.replica_id] = kv_cache_size
                         print(
-                            f"[BUDGET] Discovered KV Cache size for replica {replica_id}: "
+                            f"[BUDGET] Discovered KV Cache size for replica {replica.replica_id}: "
                             f"{kv_cache_size} tokens"
                         )
 
                 if isinstance(routing_stats, Exception):
-                    print(f"Failed to fetch metrics via RPC for {replica_id}: {routing_stats}")
+                    print(f"Failed to fetch metrics via RPC for {replica.replica_id}: {routing_stats}")
                     routing_stats = {}  # noqa: PLW2901
 
                 candidates.append(
@@ -328,22 +327,21 @@ class IGWRouter(RequestRouter):
                 index = random.randint(0, len(candidate_replicas) - 1)  # noqa: S311
 
             target_replica = candidate_replicas[index]
-            target_replica_id = target_replica.replica_id
 
             # Commit the reservation for the selected replica
             if is_budgeted:
-                self._replica_token_usage[target_replica_id] = (
-                    self._replica_token_usage.get(target_replica_id, 0) + tokens_required
+                self._replica_token_usage[target_replica.replica_id] = (
+                    self._replica_token_usage.get(target_replica.replica_id, 0) + tokens_required
                 )
                 self._request_at_replica[request_id] = (
-                    target_replica_id,
+                    target_replica.replica_id,
                     tokens_required,
                 )
                 self._budgeted_requests.add(request_id)
                 print(
                     f"[BUDGET] Admission committed for req={request_id} "
-                    f"to replica={target_replica_id} "
-                    f"(Usage: {self._replica_token_usage[target_replica_id]})"
+                    f"to replica={target_replica.replica_id} "
+                    f"(Usage: {self._replica_token_usage[target_replica.replica_id]})"
                 )
 
             return [[target_replica]]  # noqa: TRY300
