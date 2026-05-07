@@ -22,7 +22,7 @@ from vllm.v1.metrics.loggers import StatLoggerBase  # type: ignore[import-not-fo
 class DirectKVCacheLogger(StatLoggerBase):
     def __init__(self, vllm_config: object, engine_idx: int = 0) -> None:
         # The factory signature mandates these arguments.
-        self.target_dict: dict[str, object] | None = None
+        self.target_dict: dict[str, float | int] | None = None
 
     def log(self) -> None:
         pass
@@ -89,7 +89,7 @@ class MetricsAwareVLLMEngine(VLLMEngine):
 
     def record_routing_stats(self) -> dict[str, object]:
         # Ray natively expects this to return a dictionary
-        res = {
+        res: dict[str, object] = {
             "kv": self.live_metrics.get("kv", 0.0),
             "num_waiting_reqs": self.live_metrics.get("num_waiting_reqs", 0),
             "num_running_reqs": self.live_metrics.get("num_running_reqs", 0),

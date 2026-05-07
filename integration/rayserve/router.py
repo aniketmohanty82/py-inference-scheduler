@@ -106,7 +106,7 @@ class IGWRouter(RequestRouter):
             for r in replicas
         ]
         results = await asyncio.gather(*futures, return_exceptions=True)
-        return [res if not isinstance(res, Exception) else {} for res in results]
+        return [res if not isinstance(res, BaseException) else {} for res in results]
 
     def _parse_to_llm_request(self, pending_request: PendingRequest) -> LLMRequest:
         """Converts Ray request to LLMRequest."""
@@ -166,6 +166,8 @@ class IGWRouter(RequestRouter):
 
     async def _wait_for_space(self) -> None:
         """Wait until at least one replica has space freed up."""
+        if self._loop is None:
+            raise RuntimeError("Event loop is not initialized")
         fut = self._loop.create_future()
         self._admission_queue.append(fut)
         await fut
@@ -190,7 +192,7 @@ class IGWRouter(RequestRouter):
     def _token_budget_needed(self, request_id: str | None, fc: dict) -> bool:
         """Decide if this request requires token budgeting."""
         use_token_budget = fc.get("use_token_budget", _DEFAULT_USE_TOKEN_BUDGET)
-        return use_token_budget and request_id and request_id not in self._budgeted_requests
+        return bool(use_token_budget and request_id and request_id not in self._budgeted_requests)
 
     def _estimate_tokens_required(self, rollout_id: str, char_len: int, fc: dict) -> int:
         """Estimate the tokens required for this request."""
@@ -199,7 +201,7 @@ class IGWRouter(RequestRouter):
             return stats["isl"] + stats["osl"]
 
         # Fallback for first contact with prompt
-        default_osl = fc.get("default_osl", 1024)
+        default_osl: int = fc.get("default_osl", 1024)
         return (char_len // 4) + default_osl
 
     def _maybe_drip(
@@ -451,14 +453,14 @@ llm_config = LLMConfig(
 
 def build_custom_openai_app(builder_config: dict[str, object]) -> object:
     # Same internal logic as build_openai_app, but we map our deployment_cls
-    builder_config = LLMServingArgs.model_validate(builder_config)
-    llm_configs = builder_config.llm_configs
+    builder_args = LLMServingArgs.model_validate(builder_config)
+    llm_configs = builder_args.llm_configs
 
     llm_deployments = [
         build_llm_deployment(c, deployment_cls=MetricsAwareLLMServer) for c in llm_configs
     ]
 
-    ingress_cls_config = builder_config.ingress_cls_config
+    ingress_cls_config = builder_args.ingress_cls_config
     ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(llm_configs)
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
 
