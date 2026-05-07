@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from ray.llm._internal.serve.core.server.llm_server import LLMServer  # noqa: PLC2701
 from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine  # noqa: PLC2701
-from vllm.v1.metrics.loggers import StatLoggerBase
+from vllm.v1.metrics.loggers import StatLoggerBase  # type: ignore[import-not-found]
 
 
 class DirectKVCacheLogger(StatLoggerBase):
@@ -69,21 +69,21 @@ class MetricsAwareVLLMEngine(VLLMEngine):
             vllm_config: object, engine_idx: int = 0
         ) -> DirectKVCacheLogger:
             logger = DirectKVCacheLogger(vllm_config, engine_idx)
-            logger.target_dict = self.live_metrics
+            logger.target_dict = self.live_metrics  # type: ignore[assignment]
             return logger
 
         # Needed for injecting the logger
-        from vllm.v1.engine.async_llm import AsyncLLM
-        from vllm.v1.executor.abstract import Executor
+        from vllm.v1.engine.async_llm import AsyncLLM  # type: ignore[import-not-found]
+        from vllm.v1.executor.abstract import Executor  # type: ignore[import-not-found]
 
-        engine_config.parallel_config.placement_group = pg
+        engine_config.parallel_config.placement_group = pg  # type: ignore[attr-defined]
         executor_class = Executor.get_class(engine_config)
 
         # Return the engine client, passing the FACTORY instead of the instance
         return AsyncLLM(
             vllm_config=engine_config,
             executor_class=executor_class,
-            log_stats=not engine_args.disable_log_stats,
+            log_stats=not engine_args.disable_log_stats,  # type: ignore[attr-defined]
             stat_loggers=[logger_factory],
         )
 
@@ -118,4 +118,4 @@ class MetricsAwareLLMServer(LLMServer):
     _default_engine_cls = MetricsAwareVLLMEngine
 
     async def record_routing_stats(self) -> dict[str, object]:
-        return self.engine.record_routing_stats()
+        return self.engine.record_routing_stats()  # type: ignore[no-any-return]

@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import OrderedDict
-from typing import Mapping, Sequence
+from typing import Mapping, Sequence, cast
 
 from scheduling.framework import CycleState, Endpoint, LLMRequest, register_scorer
 
@@ -30,7 +30,7 @@ class PrefixIndexer:
 
     def __init__(self, lru_capacity_per_server: int = 31250) -> None:
         self._hash_to_servers: dict[int, set[str]] = {}
-        self._server_to_hashes: dict[str, OrderedDict[int]] = {}
+        self._server_to_hashes: dict[str, OrderedDict[int, None]] = {}
         self._lru_capacity_per_server = lru_capacity_per_server
 
     def add(self, hashes: Sequence[int], server: str) -> None:
@@ -55,7 +55,9 @@ class PrefixIndexer:
         return set(self._hash_to_servers.get(h, set()))
 
     def remove_server(self, server: str) -> None:
-        hashes = self._server_to_hashes.pop(server, set())
+        hashes = self._server_to_hashes.pop(server, None)
+        if hashes is None:
+            return
         for h in hashes:
             servs = self._hash_to_servers.get(h)
             if not servs:
@@ -140,11 +142,8 @@ class PrefixCacheScorer:
         self,
         cycle_state: CycleState,
         request: LLMRequest,
-        endpoints: Sequence[Endpoint],
+        pods: Mapping[str, Endpoint],
     ) -> dict[str, float]:
-        # normalize endpoints to mapping name->Endpoint
-        eps = endpoints if isinstance(endpoints, Mapping) else {e.name: e for e in endpoints}
-
         body_bytes = _get_user_input_bytes(request.body)
         hashes = _hash_prompt_bytes(
             request.target_model,
@@ -157,13 +156,13 @@ class PrefixCacheScorer:
 
         total = len(hashes)
         if total == 0:
-            return dict.fromkeys(eps.keys(), 0.0)
+            return dict.fromkeys(pods.keys(), 0.0)
 
         scores: dict[str, float] = {}
         for h in hashes:
             servs = self.indexer.get(h)
             for name in servs:
-                if name not in eps:
+                if name not in pods:
                     continue
                 if name not in scores:
                     scores[name] = 1.0
@@ -173,9 +172,9 @@ class PrefixCacheScorer:
         # If a novel prompt has no matching prefixes, route to the least-loaded servers.
         if len(scores) == 0:
             min_count = min(
-                len(self.indexer._server_to_hashes.get(name, {})) for name in eps
+                len(self.indexer._server_to_hashes.get(name, {})) for name in pods
             )
-            for name in eps:
+            for name in pods:
                 if len(self.indexer._server_to_hashes.get(name, {})) == min_count:
                     scores[name] = 1.0
 
@@ -189,7 +188,7 @@ class PrefixCacheScorer:
     ) -> None:
         hashes = cycle_state.get("prefix_hashes")
         if hashes is not None:
-            self.add_prefixes_for_server(selected_endpoint.name, hashes)
+            self.add_prefixes_for_server(selected_endpoint.name, cast(Sequence[int], hashes))
         else:
             print("Warning: prefix_hashes not found in cycle_state in pre_request")
             body_bytes = _get_user_input_bytes(request.body)

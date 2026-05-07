@@ -14,13 +14,13 @@
 
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from typing import Callable, Mapping
 
 from .types import Endpoint
 
 
 def score_by_metric(
-    endpoints: Sequence[Endpoint],
+    pods: Mapping[str, Endpoint],
     metric_extractor: Callable[[Endpoint], float],
     *,
     lower_is_better: bool = True,
@@ -29,7 +29,7 @@ def score_by_metric(
     Helper function to score endpoints relative to each other based on a numeric metric.
 
     Args:
-        endpoints: A sequence or dictionary values of Endpoint objects.
+        pods: Mapping of endpoint name to Endpoint.
         metric_extractor: A callable that takes an Endpoint and returns a float metric.
         lower_is_better: If True, lower metric values receive higher scores (close to 1.0).
                          If False, higher metric values receive higher scores.
@@ -37,7 +37,7 @@ def score_by_metric(
     Returns:
         A dictionary mapping endpoint names to a normalized score between 0.0 and 1.0.
     """
-    eps = endpoints.values() if isinstance(endpoints, dict) else endpoints
+    eps = list(pods.values())
 
     min_val = float("inf")
     max_val = float("-inf")

@@ -13,3 +13,29 @@ jobs:
     - uses: astral-sh/ruff-action@v4.0.0
       with:
         args: check
+
+  py-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6.0.2
+    - uses: actions/setup-python@v6.2.0
+      with:
+        python-version: "3.12"
+    - uses: astral-sh/setup-uv@v3
+    - name: Install dependencies
+      run: uv sync --all-groups
+    - name: Run mypy
+      run: uv run mypy scheduling datalayer integration tests
+
+  py-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6.0.2
+    - uses: actions/setup-python@v6.2.0
+      with:
+        python-version: "3.12"
+    - uses: astral-sh/setup-uv@v3
+    - name: Install dependencies
+      run: uv sync --all-groups
+    - name: Run pytest
+      run: uv run pytest

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Mapping, Sequence
+from typing import Mapping
 
 from scheduling.framework import (
     CycleState,
@@ -34,11 +34,9 @@ class ConstantScorer(ScorerPlugin):
         self.value = value
 
     def score(
-        self, cycle_state: CycleState, request: LLMRequest, endpoints: Sequence[Endpoint]
+        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
     ) -> dict[str, float]:
-        if isinstance(endpoints, Mapping):
-            return {name: float(self.value) for name in endpoints}
-        return {p.name: float(self.value) for p in endpoints}
+        return {name: float(self.value) for name in pods}
 
 
 @register_scorer("round_robin")

@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import Mapping, Sequence
+from typing import Mapping
 
 from scheduling.framework import (
     CycleState,
@@ -37,23 +37,17 @@ class QueueLengthScorer(ScorerPlugin):
         self.attribute_key = attribute_key
 
     def score(
-        self, cycle_state: CycleState, request: LLMRequest, endpoints: Sequence[Endpoint]
+        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
     ) -> dict[str, float]:
-        if isinstance(endpoints, Mapping):
-            result: dict[str, float] = {}
-            for name, ep in endpoints.items():
-                raw = ep.attributes.get(self.attribute_key, 0)
-                try:
-                    size = int(raw)
-                except Exception:  # noqa: BLE001
-                    size = 0
-                result[name] = float(-size)
-            return result
-
-        return {
-            ep.name: float(-int(ep.attributes.get(self.attribute_key, 0)))
-            for ep in endpoints
-        }
+        result: dict[str, float] = {}
+        for name, ep in pods.items():
+            raw = ep.attributes.get(self.attribute_key, 0)
+            try:
+                size = int(raw)  # type: ignore[call-overload]
+            except Exception:  # noqa: BLE001
+                size = 0
+            result[name] = float(-size)
+        return result
 
 
 @register_scorer("least_queue")
@@ -61,11 +55,11 @@ class LeastQueueScorer(ScorerPlugin):
     """Scores endpoints based on their real-time Ray Serve actor queue length."""
 
     def score(
-        self, cycle_state: CycleState, request: LLMRequest, endpoints: Sequence[Endpoint]
+        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
     ) -> dict[str, float]:
         return score_by_metric(
-            endpoints,
-            metric_extractor=lambda ep: float(ep.attributes.get("queue_len", 0)),
+            pods,
+            metric_extractor=lambda ep: float(ep.attributes.get("queue_len", 0)),  # type: ignore[arg-type]
             lower_is_better=True,
         )
 
@@ -75,12 +69,12 @@ class WaitingQueueScorer(ScorerPlugin):
     """Scores candidate endpoints based on the number of waiting requests inside the vLLM engine."""
 
     def score(
-        self, cycle_state: CycleState, request: LLMRequest, endpoints: Sequence[Endpoint]
+        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
     ) -> dict[str, float]:
         return score_by_metric(
-            endpoints,
+            pods,
             metric_extractor=lambda ep: float(
-                ep.attributes.get("routing_stats", {}).get("num_waiting_reqs", 0)
+                ep.attributes.get("routing_stats", {}).get("num_waiting_reqs", 0)  # type: ignore[attr-defined]
             ),
             lower_is_better=True,
         )
@@ -91,12 +85,12 @@ class RunningQueueScorer(ScorerPlugin):
     """Scores candidate endpoints based on the number of running requests inside the vLLM engine."""
 
     def score(
-        self, cycle_state: CycleState, request: LLMRequest, endpoints: Sequence[Endpoint]
+        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
     ) -> dict[str, float]:
         return score_by_metric(
-            endpoints,
+            pods,
             metric_extractor=lambda ep: float(
-                ep.attributes.get("routing_stats", {}).get("num_running_reqs", 0)
+                ep.attributes.get("routing_stats", {}).get("num_running_reqs", 0)  # type: ignore[attr-defined]
             ),
             lower_is_better=True,
         )
@@ -107,12 +101,12 @@ class KVCacheScorer(ScorerPlugin):
     """Scores candidate endpoints based on KV cache utilization."""
 
     def score(
-        self, cycle_state: CycleState, request: LLMRequest, endpoints: Sequence[Endpoint]
+        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
     ) -> dict[str, float]:
         return score_by_metric(
-            endpoints,
+            pods,
             metric_extractor=lambda ep: float(
-                ep.attributes.get("routing_stats", {}).get("kv", 0.0)
+                ep.attributes.get("routing_stats", {}).get("kv", 0.0)  # type: ignore[attr-defined]
             ),
             lower_is_better=True,
         )

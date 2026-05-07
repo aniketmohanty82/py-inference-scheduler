@@ -65,7 +65,11 @@ def test_prefix_cache_scorer_scores():
     if len(hashes) >= 2:
         scorer.add_prefixes_for_server("ep2", [hashes[1]])
 
-    endpoints = [Endpoint(name="ep1"), Endpoint(name="ep2"), Endpoint(name="ep3")]
+    endpoints = {
+        "ep1": Endpoint(name="ep1"),
+        "ep2": Endpoint(name="ep2"),
+        "ep3": Endpoint(name="ep3"),
+    }
     cs = CycleState()
     scores = scorer.score(cs, req, endpoints)
 

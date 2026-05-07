@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from scheduling.framework import (
     ProfileHandler,
@@ -40,7 +41,7 @@ class SchedulerConfig:
         )
 
     @classmethod
-    def from_dict(cls, config_dict: dict[str, object]) -> SchedulerConfig:
+    def from_dict(cls, config_dict: dict[str, Any]) -> SchedulerConfig:
         """
         Parse a nested dictionary into a SchedulerConfig.
 

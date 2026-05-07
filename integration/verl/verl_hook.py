@@ -19,13 +19,15 @@ import logging
 import uuid
 
 import ray
-from omegaconf import DictConfig
-from verl.experimental.agent_loop.agent_loop import (
+from omegaconf import DictConfig  # type: ignore[import-not-found]
+from verl.experimental.agent_loop.agent_loop import (  # type: ignore[import-not-found]
     AgentLoopManager,
     AgentLoopWorker,
     AsyncLLMServerManager,
 )
-from verl.workers.rollout.vllm_rollout.vllm_async_server import vLLMHttpServer
+from verl.workers.rollout.vllm_rollout.vllm_async_server import (  # type: ignore[import-not-found]
+    vLLMHttpServer,  # type: ignore[import-not-found]
+)
 
 from datalayer.verl.datastore import InflightStore
 from datalayer.verl.metrics import verl_metrics_polling_loop
@@ -96,13 +98,13 @@ class VllmEnginePatch:
     @classmethod
     def apply(cls) -> None:
         try:
-            from vllm.v1.engine.async_llm import AsyncLLM
-            from vllm.v1.metrics.loggers import StatLoggerManager
+            from vllm.v1.engine.async_llm import AsyncLLM  # type: ignore[import-not-found]
+            from vllm.v1.metrics.loggers import StatLoggerManager  # type: ignore[import-not-found]
 
             # Ensure stats logging is always ON.
             original_from_config = AsyncLLM.from_vllm_config
 
-            @classmethod
+            @classmethod  # type: ignore[misc]
             def patched_from_config(
                 cls_vllm: object, *args: object, **kwargs: object
             ) -> object:
@@ -121,7 +123,7 @@ class VllmEnginePatch:
                 **kwargs: object,
             ) -> object:
                 if scheduler_stats is not None:
-                    self._latest_captured_stats = scheduler_stats
+                    self._latest_captured_stats = scheduler_stats  # type: ignore[attr-defined]
                 return original_record(self, scheduler_stats, *args, **kwargs)
 
             StatLoggerManager.record = patched_record
@@ -162,7 +164,7 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
         self.ray_request_scheduler = Scheduler()
         self.inflight_store = InflightStore()
         self.endpoints = []
-        self._lb_acquired_requests = set()
+        self._lb_acquired_requests = set()  # type: ignore[var-annotated]
 
         # Reconstruct endpoints from the new (id, handle) tuple structure
         for server_id, handle in servers:
@@ -184,7 +186,7 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
     ) -> tuple[str, ray.actor.ActorHandle]:
         """Overrides Verl's Native Global Load Balancer with py-inference-scheduler logic."""
         if self._metrics_task is None:
-            self._metrics_task = asyncio.create_task(
+            self._metrics_task = asyncio.create_task(  # type: ignore[assignment]
                 verl_metrics_polling_loop(self.endpoints, self.inflight_store)
             )
 
@@ -202,7 +204,7 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
                 "py-inference-scheduler returned no endpoints, falling back to verl global LB."
             )
             self._lb_acquired_requests.add(request_id)
-            return await super()._acquire_server(request_id)
+            return await super()._acquire_server(request_id)  # type: ignore[no-any-return]
 
         winning_endpoint: Endpoint = selected_endpoints[0].endpoint
         logger.info("[%s] Routed to %s", request_id[:6], winning_endpoint.name)

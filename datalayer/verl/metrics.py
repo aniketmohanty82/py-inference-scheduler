@@ -28,7 +28,7 @@ async def fetch_worker_metrics(ep: Endpoint, inflight_store: InflightStore) -> N
     if not actor:
         return
     try:
-        stats = await actor.get_routing_stats.remote()
+        stats = await actor.get_routing_stats.remote()  # type: ignore[attr-defined]
         if stats.get("error"):
             logger.error("RPC stats error for %s: %s", ep.name, stats["error"])
         local_inflight = inflight_store.get(ep.name)

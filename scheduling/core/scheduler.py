@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
 from typing import Any, Sequence
 
@@ -24,6 +25,7 @@ from scheduling.framework import (
     CycleState,
     Endpoint,
     LLMRequest,
+    ProfileHandler,
     ProfileRunResult,
     SchedulerProfile,
     SchedulingResult,
@@ -32,22 +34,31 @@ from scheduling.framework import (
 
 
 class Scheduler:
-    def __init__(self) -> None:
-        self.profiles = {}
-        self.profile_handler = None
-        self.config_path = None
-        self.last_mtime = 0
+    config_path: str | None
+    last_mtime: float
+    profile_handler: ProfileHandler
+    profiles: dict[str, SchedulerProfile]
 
-    @classmethod
-    def from_config(cls, config_path: str) -> Scheduler:
-        instance = cls()
-        instance.config_path = config_path
-        instance._maybe_reload_config()
-        return instance
+    def __init__(self, config_path: str | None = None) -> None:
+        if config_path:
+            self.config_path = config_path
+        else:
+            self.config_path = os.environ.get("ROUTER_CONFIG_PATH")
+            if not self.config_path:
+                raise ValueError(
+                    "ROUTER_CONFIG_PATH environment variable is missing and no "
+                    "config_path provided. Ensure the ConfigMap is mounted or "
+                    "path is passed."
+                )
+
+        self.last_mtime = 0.0
+        self._maybe_reload_config()
 
     @classmethod
     def new_with_config(cls, config: SchedulerConfig) -> Scheduler:
-        instance = cls()
+        instance = object.__new__(cls)
+        instance.config_path = None
+        instance.last_mtime = 0.0
         instance.profile_handler = config.profile_handler
         instance.profiles = config.profiles
         return instance
@@ -115,15 +126,14 @@ class Scheduler:
 
         selected_eps = (
             result.profile_results[primary].endpoint_list[:1]
-            if primary in result.profile_results
+            if primary is not None and primary in result.profile_results
             else []
         )
         print(f"Selected endpoint {selected_eps}")
-        if selected_eps:
+        if selected_eps and primary is not None:
             for w in self.profiles[primary].scorers:
                 if hasattr(w.scorer, "pre_request"):
-                    w.scorer.pre_request(cycle_state, request, selected_eps[0].endpoint)
-
+                    w.scorer.pre_request(cycle_state, request, selected_eps[0].endpoint)  # type: ignore[attr-defined]
         return result
 
     def run(
@@ -131,10 +141,16 @@ class Scheduler:
     ) -> Sequence[ScoredEndpoint]:
         scheduler_output = self.schedule(request, candidates)
         profile_name = scheduler_output.primary_profile_name
-        profile_results = scheduler_output.profile_results.get(profile_name)
+        profile_results = (
+            scheduler_output.profile_results.get(profile_name)
+            if profile_name is not None
+            else None
+        )
 
         print(f"Profile {profile_name} results: {profile_results}")
-        if profile_results and profile_results.endpoint_list:
-            return profile_results.endpoint_list[:1]
+        selected_endpoint = profile_results.endpoint_list[:1] if profile_results else []
+
+        if len(selected_endpoint) > 0:
+            return selected_endpoint  # pick top 1
         print("No endpoint selected, defaulting to framework routing logic")
         return []

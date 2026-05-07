@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import Mapping, Sequence
+from typing import Mapping
 
 from scheduling.framework import (
     CycleState,
@@ -41,22 +41,14 @@ class SimpleFilter(FilterPlugin):
         self,
         cycle_state: CycleState,
         request: LLMRequest,
-        endpoints: Sequence[Endpoint],
+        pods: Mapping[str, Endpoint],
     ) -> Mapping[str, Endpoint]:
-        if isinstance(endpoints, Mapping):
-            result: dict[str, Endpoint] = {}
-            for name, p in endpoints.items():
-                v = p.attributes.get(self.key)
-                if self.value is None or v == self.value:
-                    result[name] = p
-            return result
-
-        out: list[Endpoint] = []
-        for p in endpoints:
+        result: dict[str, Endpoint] = {}
+        for name, p in pods.items():
             v = p.attributes.get(self.key)
             if self.value is None or v == self.value:
-                out.append(p)
-        return {p.name: p for p in out}
+                result[name] = p
+        return result
 
 
 @register_profile_handler("single_profile")
