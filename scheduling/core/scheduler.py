@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import os
 import pathlib
 from typing import Any, Sequence
 
@@ -33,21 +32,21 @@ from scheduling.framework import (
 
 
 class Scheduler:
-    def __init__(self):
+    def __init__(self) -> None:
         self.profiles = {}
         self.profile_handler = None
         self.config_path = None
         self.last_mtime = 0
 
     @classmethod
-    def from_config(cls, config_path: str) -> "Scheduler":
+    def from_config(cls, config_path: str) -> Scheduler:
         instance = cls()
         instance.config_path = config_path
         instance._maybe_reload_config()
         return instance
 
     @classmethod
-    def from_object(cls, config: SchedulerConfig) -> "Scheduler":
+    def new_with_config(cls, config: SchedulerConfig) -> Scheduler:
         instance = cls()
         instance.profile_handler = config.profile_handler
         instance.profiles = config.profiles
@@ -110,22 +109,20 @@ class Scheduler:
 
         # Build SchedulingResult
         result = SchedulingResult(
-            request=request,
-            profile_results=profile_results,
-            selected_profile=primary,
+            profile_results={k: v or ProfileRunResult() for k, v in profile_results.items()},
+            primary_profile_name=primary,
         )
 
-        # update scores on candidates
-        if primary and profile_results.get(primary):
-            res = profile_results[primary]
-            # update candidate scores
-            for ep in candidates:
-                if ep.name in res.scores:
-                    ep.score = res.scores[ep.name]
-                else:
-                    ep.score = 0.0
-            result.endpoint = res.endpoint
-            result.metadata = res.metadata
+        selected_eps = (
+            result.profile_results[primary].endpoint_list[:1]
+            if primary in result.profile_results
+            else []
+        )
+        print(f"Selected endpoint {selected_eps}")
+        if selected_eps:
+            for w in self.profiles[primary].scorers:
+                if hasattr(w.scorer, "pre_request"):
+                    w.scorer.pre_request(cycle_state, request, selected_eps[0].endpoint)
 
         return result
 
@@ -133,11 +130,11 @@ class Scheduler:
         self, request: LLMRequest, candidates: Sequence[Endpoint]
     ) -> Sequence[ScoredEndpoint]:
         scheduler_output = self.schedule(request, candidates)
-        profile_name = scheduler_output.selected_profile
+        profile_name = scheduler_output.primary_profile_name
         profile_results = scheduler_output.profile_results.get(profile_name)
 
         print(f"Profile {profile_name} results: {profile_results}")
-        if profile_results and profile_results.endpoint:
-            return [profile_results.endpoint]
+        if profile_results and profile_results.endpoint_list:
+            return profile_results.endpoint_list[:1]
         print("No endpoint selected, defaulting to framework routing logic")
         return []

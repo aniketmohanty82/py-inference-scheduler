@@ -106,7 +106,7 @@ class MetricsAwareVLLMEngine(VLLMEngine):
                     self._total_kv_tokens = num_blocks * block_size
                 else:
                     self._total_kv_tokens = -1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"[METRICS ERROR] Failed to extract KV Cache size: {e}")
                 self._total_kv_tokens = -1
 

@@ -18,8 +18,8 @@ import asyncio
 import random
 import struct
 import time
-from typing import Any, Callable
 import uuid
+from typing import Any, Callable
 
 from ray import serve
 from ray.actor import ActorHandle
@@ -79,9 +79,11 @@ class IGWRouter(RequestRouter):
         )
         self.scheduler = Scheduler()
         self.deployment_name = deployment_id.name
-        self._rollout_request_stats: dict[str, dict[str, int]] = {}  # rollout_request_id -> {isl, max_osl}
+        # rollout_request_id -> {isl, max_osl}
+        self._rollout_request_stats: dict[str, dict[str, int]] = {}
         self._replica_token_usage: dict[ReplicaID, int] = {}  # replica_id -> token_usage_at_replica
-        self._request_at_replica: dict[str, tuple[ReplicaID, int]] = {}  # request_id -> (replica_id, tokens)
+        # request_id -> (replica_id, tokens)
+        self._request_at_replica: dict[str, tuple[ReplicaID, int]] = {}
         self._admission_queue: list[asyncio.Future] = []  # FIFO queue for blocked requests
 
         self._last_drip_at = 0.0
@@ -102,10 +104,7 @@ class IGWRouter(RequestRouter):
 
     def _parse_to_llm_request(self, pending_request: PendingRequest) -> LLMRequest:
         """Converts Ray request to LLMRequest."""
-        if pending_request:
-            req_id = pending_request.metadata.request_id
-        else:
-            req_id = str(uuid.uuid4())
+        req_id = pending_request.metadata.request_id if pending_request else str(uuid.uuid4())
 
         if not pending_request or not pending_request.args:
             print("No pending request or args, defaulting to random choice")
@@ -125,9 +124,11 @@ class IGWRouter(RequestRouter):
 
         return LLMRequest(request_id=req_id, body=body, target_model=target_model)
 
-    def _get_rollout_request_id(self, body: Any) -> tuple[str, int]:
+    def _get_rollout_request_id(self, body: Any) -> tuple[str, int]:  # noqa: ANN401
         """Generates a rollout request ID and approximate character length from the request body.
-        We don't require character length to be accurate, it is used as a fail-safe and for edge cases.
+
+        We don't require character length to be accurate, it is used as a
+        fail-safe and for edge cases.
         """
         if not body:
             return "", 0
@@ -154,7 +155,7 @@ class IGWRouter(RequestRouter):
                 char_len = len(extracted_text)
                 return uuid.uuid5(NAMESPACE_FOR_UUID, extracted_text).hex, char_len
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"[ROUTER ERROR] Failed to parse request ID securely: {e}")
 
         return "", 0
@@ -174,12 +175,11 @@ class IGWRouter(RequestRouter):
         res = []
         for r in candidate_replicas:
             budget = self._replica_kv_cache_size.get(r.replica_id)
-            if budget is not None and budget > 0:
-                if (
-                    self._replica_token_usage.get(r.replica_id, 0) + tokens_required
-                    <= budget
-                ):
-                    res.append(r)
+            if budget is not None and budget > 0 and (
+                self._replica_token_usage.get(r.replica_id, 0) + tokens_required
+                <= budget
+            ):
+                res.append(r)
         return res
 
     def _token_budget_needed(self, request_id: str | None, fc: dict) -> bool:
@@ -239,7 +239,7 @@ class IGWRouter(RequestRouter):
 
             await self._wait_for_space()
 
-    async def choose_replicas(  # noqa: PLR0912
+    async def choose_replicas(  # noqa: PLR0912, PLR0914, C901, PLR0915
         self,
         candidate_replicas: list[RunningReplica],
         pending_request: PendingRequest | None = None,
@@ -256,7 +256,7 @@ class IGWRouter(RequestRouter):
 
         # for health check empty requests
         if not pending_request or not pending_request.args or char_len == 0:
-            index = random.randint(0, len(candidate_replicas) - 1)
+            index = random.randint(0, len(candidate_replicas) - 1)  # noqa: S311
             return [[candidate_replicas[index]]]
 
         try:
@@ -277,7 +277,8 @@ class IGWRouter(RequestRouter):
                     if kv_cache_size > 0:
                         self._replica_kv_cache_size[replica_id] = kv_cache_size
                         print(
-                            f"[BUDGET] Discovered KV Cache size for replica {replica_id}: {kv_cache_size} tokens"
+                            f"[BUDGET] Discovered KV Cache size for replica {replica_id}: "
+                            f"{kv_cache_size} tokens"
                         )
 
                 if isinstance(routing_stats, Exception):
@@ -324,7 +325,7 @@ class IGWRouter(RequestRouter):
                     index = i
                     break
             if index == -1:
-                index = random.randint(0, len(candidate_replicas) - 1)
+                index = random.randint(0, len(candidate_replicas) - 1)  # noqa: S311
 
             target_replica = candidate_replicas[index]
             target_replica_id = target_replica.replica_id
@@ -340,13 +341,15 @@ class IGWRouter(RequestRouter):
                 )
                 self._budgeted_requests.add(request_id)
                 print(
-                    f"[BUDGET] Admission committed for req={request_id} to replica={target_replica_id} (Usage: {self._replica_token_usage[target_replica_id]})"
+                    f"[BUDGET] Admission committed for req={request_id} "
+                    f"to replica={target_replica_id} "
+                    f"(Usage: {self._replica_token_usage[target_replica_id]})"
                 )
 
-            return [[target_replica]]
-        except Exception as e:
+            return [[target_replica]]  # noqa: TRY300
+        except Exception as e:  # noqa: BLE001
             print(f"Error of: {e!r} during scheduling: {e}, defaulting to random choice")
-            index = random.randint(0, len(candidate_replicas) - 1)
+            index = random.randint(0, len(candidate_replicas) - 1)  # noqa: S311
             return [[candidate_replicas[index]]]
 
     def on_request_routed(
@@ -354,7 +357,7 @@ class IGWRouter(RequestRouter):
         pending_request: PendingRequest,
         replica_id: ReplicaID,
         result: ReplicaResult,
-    ):
+    ) -> None:
         llm_req = self._parse_to_llm_request(pending_request)
         request_id = llm_req.request_id
         rollout_request_id, char_len = self._get_rollout_request_id(llm_req.body)
@@ -371,7 +374,8 @@ class IGWRouter(RequestRouter):
                 self._budgeted_requests.discard(request_id)
                 print(
                     f"[BUDGET] Released req={request_id} from replica={replica_id_to_reclaim}. "
-                    f"Elapsed={elapsed:.3f}s. Usage={self._replica_token_usage[replica_id_to_reclaim]}"
+                    f"Elapsed={elapsed:.3f}s. "
+                    f"Usage={self._replica_token_usage[replica_id_to_reclaim]}"
                 )
 
                 if self._admission_queue:
@@ -413,26 +417,25 @@ class IGWRouter(RequestRouter):
 # Hooking into Ray Serve's Request Router
 
 llm_config = LLMConfig(
-    model_loading_config=dict(
-        model_id="qwen-32b",
-        model_source="Qwen/Qwen2.5-32B-Instruct",
-    ),
-    engine_kwargs=dict(
-        enable_prefix_caching=True,
-        tensor_parallel_size=2,
-    ),
-    deployment_config=dict(
-        # max_ongoing_requests=10,
-        autoscaling_config=dict(
-            min_replicas=1,
-            max_replicas=1,
-        ),
-        request_router_config=dict(
+    model_loading_config={
+        "model_id": "qwen-32b",
+        "model_source": "Qwen/Qwen2.5-32B-Instruct",
+    },
+    engine_kwargs={
+        "enable_prefix_caching": True,
+        "tensor_parallel_size": 2,
+    },
+    deployment_config={
+        "autoscaling_config": {
+            "min_replicas": 1,
+            "max_replicas": 1,
+        },
+        "request_router_config": {
             # Note our custom IGWRouter here
-            request_router_class=IGWRouter,
-        ),
-        ray_actor_options=dict(num_cpus=1),
-    ),
+            "request_router_class": IGWRouter,
+        },
+        "ray_actor_options": {"num_cpus": 1},
+    },
     runtime_env={
         "env_vars": {
             "NCCL_NET_PLUGIN": "/usr/local/gib/lib64/libnccl-net_internal.so",
