@@ -234,7 +234,7 @@ class IGWRouter(RequestRouter):
 
             await self._wait_for_space()
 
-    async def choose_replicas(  # noqa: PLR0912, PLR0914, C901, PLR0915
+    async def choose_replicas(  # noqa: PLR0912, PLR0914, C901
         self,
         candidate_replicas: list[RunningReplica],
         pending_request: PendingRequest | None = None,
@@ -305,9 +305,6 @@ class IGWRouter(RequestRouter):
                 # Sync scheduler candidates with available replicas
                 available_replica_ids = {str(r.replica_id) for r in candidate_replicas}
                 candidates = [c for c in candidates if c.name in available_replica_ids]
-
-            self.scheduler._maybe_reload_config()
-
             selected_endpoints = self.scheduler.run(llm_req, candidates)
 
             index = -1
