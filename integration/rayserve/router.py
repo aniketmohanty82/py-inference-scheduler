@@ -108,9 +108,7 @@ class IGWRouter(RequestRouter):
 
         if not pending_request or not pending_request.args:
             print("No pending request or args, defaulting to random choice")
-            return LLMRequest(
-                request_id=req_id, body="", target_model=self.deployment_name
-            )
+            return LLMRequest(request_id=req_id, body="", target_model=self.deployment_name)
         request_args = pending_request.args[0]
 
         if hasattr(request_args, "messages"):
@@ -175,9 +173,10 @@ class IGWRouter(RequestRouter):
         res = []
         for r in candidate_replicas:
             budget = self._replica_kv_cache_size.get(r.replica_id)
-            if budget is not None and budget > 0 and (
-                self._replica_token_usage.get(r.replica_id, 0) + tokens_required
-                <= budget
+            if (
+                budget is not None
+                and budget > 0
+                and (self._replica_token_usage.get(r.replica_id, 0) + tokens_required <= budget)
             ):
                 res.append(r)
         return res
@@ -185,9 +184,7 @@ class IGWRouter(RequestRouter):
     def _token_budget_needed(self, request_id: str | None, fc: dict) -> bool:
         """Decide if this request requires token budgeting."""
         use_token_budget = fc.get("use_token_budget", _DEFAULT_USE_TOKEN_BUDGET)
-        return (
-            use_token_budget and request_id and request_id not in self._budgeted_requests
-        )
+        return use_token_budget and request_id and request_id not in self._budgeted_requests
 
     def _estimate_tokens_required(self, rollout_id: str, char_len: int, fc: dict) -> int:
         """Estimate the tokens required for this request."""
@@ -213,9 +210,7 @@ class IGWRouter(RequestRouter):
             physical_kv = stats[i].get("kv", 1.0)
             if physical_kv < drip_threshold_kv:
                 self._last_drip_at = now
-                print(
-                    f"[BUDGET] Drip Admission to {r.replica_id} (Physical KV: {physical_kv:.2f})"
-                )
+                print(f"[BUDGET] Drip Admission to {r.replica_id} (Physical KV: {physical_kv:.2f})")
                 return r
         return None
 
@@ -281,7 +276,9 @@ class IGWRouter(RequestRouter):
                         )
 
                 if isinstance(routing_stats, Exception):
-                    print(f"Failed to fetch metrics via RPC for {replica.replica_id}: {routing_stats}")
+                    print(
+                        f"Failed to fetch metrics via RPC for {replica.replica_id}: {routing_stats}"
+                    )
                     routing_stats = {}  # noqa: PLW2901
 
                 candidates.append(
@@ -299,9 +296,7 @@ class IGWRouter(RequestRouter):
             is_budgeted = False
 
             if self._token_budget_needed(request_id, fc):
-                tokens_required = self._estimate_tokens_required(
-                    rollout_request_id, char_len, fc
-                )
+                tokens_required = self._estimate_tokens_required(rollout_request_id, char_len, fc)
                 candidate_replicas = await self._wait_for_admission(
                     candidate_replicas, tokens_required, pending_request, fc
                 )
@@ -470,11 +465,9 @@ def build_custom_openai_app(builder_config: dict[str, object]) -> object:
     ).bind(llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs)
 
 
-app = build_custom_openai_app(
-    {
-        "llm_configs": [llm_config],
-    }
-)
+app = build_custom_openai_app({
+    "llm_configs": [llm_config],
+})
 
 if __name__ == "__main__":
     serve.run(app, blocking=True)
