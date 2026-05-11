@@ -17,6 +17,9 @@ from .interface import (
     FilterPlugin as FilterPlugin,
 )
 from .interface import (
+    FlowControlPlugin as FlowControlPlugin,
+)
+from .interface import (
     PickerPlugin as PickerPlugin,
 )
 from .interface import (
@@ -35,6 +38,9 @@ from .registry import (
     _FILTERS as _FILTERS,
 )
 from .registry import (
+    _FLOW_CONTROLS as _FLOW_CONTROLS,
+)
+from .registry import (
     _PICKERS as _PICKERS,
 )
 from .registry import (
@@ -45,6 +51,9 @@ from .registry import (
 )
 from .registry import (
     build_filter as build_filter,
+)
+from .registry import (
+    build_flow_control as build_flow_control,
 )
 from .registry import (
     build_picker as build_picker,
@@ -60,6 +69,9 @@ from .registry import (
 )
 from .registry import (
     register_filter as register_filter,
+)
+from .registry import (
+    register_flow_control as register_flow_control,
 )
 from .registry import (
     register_picker as register_picker,

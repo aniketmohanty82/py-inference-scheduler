@@ -41,6 +41,20 @@ class PickerPlugin(Protocol):
     ) -> ScoredEndpoint | None: ...
 
 
+class FlowControlPlugin(Protocol):
+    def get_allowed_candidates(
+        self, request: LLMRequest, candidates: Sequence[Endpoint]
+    ) -> Sequence[Endpoint]: ...
+
+    def reserve(self, request: LLMRequest, selected: Endpoint) -> None: ...
+
+    def release(self, request: LLMRequest, endpoint_name: str) -> None: ...
+
+    def update_learned_stats(self, rollout_request_id: str, isl: int, osl: int) -> None: ...
+
+    def _get_rollout_request_id(self, body: Any) -> tuple[str, int]: ...  # noqa: ANN401
+
+
 class ProfileHandler(Protocol):
     def pick(
         self,
@@ -70,7 +84,7 @@ class SchedulerProfile:
     filters: list[FilterPlugin] = field(default_factory=list)
     scorers: list[WeightedScorer] = field(default_factory=list)
     picker: PickerPlugin | None = None
-    flow_control: dict[str, Any] = field(default_factory=dict)
+    flow_controls: list[FlowControlPlugin] = field(default_factory=list)
 
     def with_filters(self, *fs: FilterPlugin) -> SchedulerProfile:
         self.filters.extend(fs)

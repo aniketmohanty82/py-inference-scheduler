@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Callable, TypeVar
 
-from .interface import FilterPlugin, PickerPlugin, ProfileHandler, ScorerPlugin
+from .interface import FilterPlugin, FlowControlPlugin, PickerPlugin, ProfileHandler, ScorerPlugin
 
 T = TypeVar("T")
 
@@ -25,6 +25,7 @@ _SCORERS: dict[str, type[ScorerPlugin]] = {}
 _PICKERS: dict[str, type[PickerPlugin]] = {}
 _FILTERS: dict[str, type[FilterPlugin]] = {}
 _PROFILE_HANDLERS: dict[str, type[ProfileHandler]] = {}
+_FLOW_CONTROLS: dict[str, type[FlowControlPlugin]] = {}
 
 
 def register_scorer(name: str) -> Callable[[type[ScorerPlugin]], type[ScorerPlugin]]:
@@ -69,6 +70,18 @@ def register_profile_handler(
     return wrapper
 
 
+def register_flow_control(
+    name: str,
+) -> Callable[[type[FlowControlPlugin]], type[FlowControlPlugin]]:
+    """Decorator to register a custom FlowControl class under a specific string name."""
+
+    def wrapper(cls: type[FlowControlPlugin]) -> type[FlowControlPlugin]:
+        _FLOW_CONTROLS[name] = cls
+        return cls
+
+    return wrapper
+
+
 def build_plugin(registry: dict[str, type[T]], type_name: str, **kwargs: object) -> T:
     """Helper method to instantiate a class from a specific registry category by its string name."""
     cls = registry.get(type_name)
@@ -99,3 +112,8 @@ def build_filter(type_name: str, **kwargs: object) -> FilterPlugin:
 def build_profile_handler(type_name: str, **kwargs: object) -> ProfileHandler:
     """Instantiate a registered ProfileHandler class based on its string identifier and config."""
     return build_plugin(_PROFILE_HANDLERS, type_name, **kwargs)
+
+
+def build_flow_control(type_name: str, **kwargs: object) -> FlowControlPlugin:
+    """Instantiate a registered FlowControl class based on its string identifier and config."""
+    return build_plugin(_FLOW_CONTROLS, type_name, **kwargs)
