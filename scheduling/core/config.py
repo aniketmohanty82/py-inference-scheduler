@@ -22,6 +22,7 @@ from scheduling.framework import (
     SchedulerProfile,
     WeightedScorer,
     build_filter,
+    build_flow_control,
     build_picker,
     build_profile_handler,
     build_scorer,
@@ -41,7 +42,7 @@ class SchedulerConfig:
         )
 
     @classmethod
-    def from_dict(cls, config_dict: dict[str, Any]) -> SchedulerConfig:
+    def from_dict(cls, config_dict: dict[str, Any]) -> SchedulerConfig:  # noqa: PLR0914
         """
         Parse a nested dictionary into a SchedulerConfig.
 
@@ -68,7 +69,12 @@ class SchedulerConfig:
         parsed_profiles: dict[str, SchedulerProfile] = {}
         for profile_name, prof_data in profiles_dict.items():
             profile = SchedulerProfile(name=profile_name)
-            profile.flow_control = prof_data.get("flow_control", {})
+
+            fc_config = prof_data.get("flow_control")
+            if fc_config:
+                cfg = dict(fc_config)
+                fc_type = cfg.pop("type")
+                profile.flow_controls = [build_flow_control(fc_type, **cfg)]
 
             for filter_config in prof_data.get("filters", []):
                 cfg = dict(filter_config)

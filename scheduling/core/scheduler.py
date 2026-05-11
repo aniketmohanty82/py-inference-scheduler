@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 import pathlib
-from typing import Any, Sequence
+from typing import Sequence
 
 import yaml
 
@@ -24,6 +24,7 @@ from scheduling.core.config import SchedulerConfig
 from scheduling.framework import (
     CycleState,
     Endpoint,
+    FlowControlPlugin,
     LLMRequest,
     ProfileHandler,
     ProfileRunResult,
@@ -63,13 +64,18 @@ class Scheduler:
         instance.profiles = config.profiles
         return instance
 
-    def get_flow_control_config(self) -> dict[str, Any]:
-        """Returns the flow_control configuration from the primary profile, or an empty dict."""
-        self._maybe_reload_config()
+    def has_flow_control(self) -> bool:
+        """Returns True if any profile has any flow control plugins."""
+        return bool(self.get_flow_control_plugins())
+
+    def get_flow_control_plugins(self) -> list[FlowControlPlugin]:
+        """Returns all flow control plugins from all profiles."""
+        all_plugins = []
         if hasattr(self, "profiles") and self.profiles:
-            primary_profile = next(iter(self.profiles.values()))
-            return getattr(primary_profile, "flow_control", {})
-        return {}
+            for profile in self.profiles.values():
+                if profile.flow_controls:
+                    all_plugins.extend(profile.flow_controls)
+        return all_plugins
 
     def _maybe_reload_config(self) -> None:
         if self.config_path is None:
