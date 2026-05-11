@@ -12,33 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Import sub-modules to trigger registration side-effects
-from .handlers import generic as generic_handlers  # noqa: F401
-from .handlers.generic import SimpleFilter as SimpleFilter
-from .handlers.generic import SingleProfileHandler as SingleProfileHandler
-from .pickers import generic as generic_pickers  # noqa: F401
-from .pickers.generic import MaxScorePicker as MaxScorePicker
-from .pickers.generic import RandomPicker as RandomPicker
-from .scorers import backpressure as backpressure
-from .scorers import generic as generic
-from .scorers import prefix_plugin as prefix_plugin
-from .scorers.backpressure import (
-    KVCacheScorer as KVCacheScorer,
-)
-from .scorers.backpressure import (
-    LeastQueueScorer as LeastQueueScorer,
-)
-from .scorers.backpressure import (
-    QueueLengthScorer as QueueLengthScorer,
-)
-from .scorers.backpressure import (
-    RunningQueueScorer as RunningQueueScorer,
-)
-from .scorers.backpressure import (
-    WaitingQueueScorer as WaitingQueueScorer,
-)
-from .scorers.generic import ConstantScorer as ConstantScorer
-from .scorers.generic import RoundRobinScorer as RoundRobinScorer
+"""Plugins for the scheduler."""
 
-# Re-export key plugins if needed, but registry handles dynamic lookup
-from .scorers.prefix_plugin import PrefixCacheScorer as PrefixCacheScorer
+# Re-export plugins from sub-packages to maintain backward compatibility
+from .flow_control import KVSaturationPlugin as KVSaturationPlugin
+from .handlers import SimpleFilter as SimpleFilter
+from .handlers import SingleProfileHandler as SingleProfileHandler
+from .pickers import MaxScorePicker as MaxScorePicker
+from .pickers import RandomPicker as RandomPicker
+from .scorers import ConstantScorer as ConstantScorer
+from .scorers import KVCacheScorer as KVCacheScorer
+from .scorers import LeastQueueScorer as LeastQueueScorer
+from .scorers import PrefixCacheScorer as PrefixCacheScorer
+from .scorers import QueueLengthScorer as QueueLengthScorer
+from .scorers import RoundRobinScorer as RoundRobinScorer
+from .scorers import RunningQueueScorer as RunningQueueScorer
+from .scorers import WaitingQueueScorer as WaitingQueueScorer
