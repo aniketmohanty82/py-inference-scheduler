@@ -16,10 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import random
-import struct
-import time
 import uuid
-from typing import Any, Callable
+from typing import Callable, Sequence
 
 from ray import serve
 from ray.actor import ActorHandle
@@ -46,11 +44,111 @@ from datalayer.rayserve.engine import MetricsAwareLLMServer
 from scheduling.core.scheduler import Scheduler
 from scheduling.framework import (
     Endpoint,
+    FlowControlPlugin,
     LLMRequest,
 )
 
-NAMESPACE_FOR_UUID = uuid.uuid5(uuid.NAMESPACE_DNS, "llmd.inference.scheduler")
-_DEFAULT_USE_TOKEN_BUDGET = False
+
+class FlowControlManager:
+    def __init__(self, router: IGWRouter) -> None:
+        self.router = router
+        self.scheduler = router.scheduler
+        self.admission_queue: list[asyncio.Future] = []
+        self.loop: asyncio.AbstractEventLoop | None = None
+
+    def _get_plugins(self) -> list[FlowControlPlugin]:
+        return self.scheduler.get_flow_control_plugins()
+
+    async def admit(
+        self,
+        request: LLMRequest,
+        endpoints: Sequence[Endpoint],
+        candidate_replicas: list[RunningReplica],
+        pending_request: PendingRequest,
+    ) -> tuple[list[RunningReplica], Sequence[Endpoint]]:
+        if self.loop is None:
+            self.loop = asyncio.get_event_loop()
+
+        plugins = self._get_plugins()
+        if not plugins:
+            return candidate_replicas, endpoints
+
+        while True:
+            allowed_eps: Sequence[Endpoint] = endpoints
+            for plugin in plugins:
+                allowed_eps = plugin.get_allowed_candidates(request, allowed_eps)
+
+            if allowed_eps:
+                allowed_names = {e.name for e in allowed_eps}
+                allowed_replicas = [
+                    r for r in candidate_replicas if str(r.replica_id) in allowed_names
+                ]
+                return allowed_replicas, allowed_eps
+
+            fut = self.loop.create_future()
+            self.admission_queue.append(fut)
+            await fut
+
+            # Refetch stats because we blocked and conditions changed
+            endpoints = await self.router.build_endpoints(candidate_replicas, pending_request)
+
+    def commit(self, request: LLMRequest, selected: Endpoint) -> None:
+        for plugin in self._get_plugins():
+            plugin.reserve(request, selected)
+
+    def release(self, request: LLMRequest, replica_id: str) -> None:
+        plugins = self._get_plugins()
+        for plugin in plugins:
+            plugin.release(request, replica_id)
+
+        if plugins and self.admission_queue:
+            waiter = self.admission_queue.pop(0)
+            if not waiter.done():
+                waiter.set_result(True)
+
+    def attach_learning_callback(
+        self,
+        request: LLMRequest,
+        result: ReplicaResult,
+        is_streaming: bool,  # noqa: FBT001
+    ) -> None:
+        plugins = self._get_plugins()
+        if not plugins:
+            return
+
+        # we only have one flow control plugin right now
+        plugin = plugins[0]
+        rollout_request_id, _ = plugin._get_rollout_request_id(request.body)
+
+        if not is_streaming:
+            original_get_async = result.get_async
+
+            async def patched_get_async():
+                response = await original_get_async()
+                if response and hasattr(response, "usage") and response.usage:
+                    for plugin in plugins:
+                        plugin.update_learned_stats(
+                            rollout_request_id,
+                            response.usage.prompt_tokens,
+                            response.usage.completion_tokens,
+                        )
+                return response
+
+            result.get_async = patched_get_async
+        else:
+            original_anext = result.__anext__
+
+            async def patched_anext():
+                chunk = await original_anext()
+                if chunk and hasattr(chunk, "usage") and chunk.usage:
+                    for plugin in plugins:
+                        plugin.update_learned_stats(
+                            rollout_request_id,
+                            chunk.usage.prompt_tokens,
+                            chunk.usage.completion_tokens,
+                        )
+                return chunk
+            result.__anext__ = patched_anext
 
 
 class IGWRouter(RequestRouter):
@@ -79,23 +177,8 @@ class IGWRouter(RequestRouter):
         )
         self.scheduler = Scheduler()
         self.deployment_name = deployment_id.name
-
-        # rollout_request_id -> {isl, max_osl}
-        self._rollout_request_stats: dict[str, dict[str, int]] = {}
-
-        # replica_id -> token_usage_at_replica
-        self._replica_token_usage: dict[ReplicaID, int] = {}
-
-        # request_id -> (replica_id, tokens)
-        self._request_at_replica: dict[str, tuple[ReplicaID, int]] = {}
-
-        # FIFO queue for blocked requests
-        self._admission_queue: list[asyncio.Future] = []
-
-        self._last_drip_at = 0.0
+        self.fc_manager = FlowControlManager(self)
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._budgeted_requests: set[str] = set()
-        self._replica_kv_cache_size: dict[ReplicaID, int] = {}
 
     async def _get_routing_stats(
         self, replicas: list[RunningReplica], pending_request: PendingRequest
@@ -107,6 +190,40 @@ class IGWRouter(RequestRouter):
         ]
         results = await asyncio.gather(*futures, return_exceptions=True)
         return [res if not isinstance(res, BaseException) else {} for res in results]
+
+    async def build_endpoints(
+        self, replicas: list[RunningReplica], pending_request: PendingRequest
+    ) -> list[Endpoint]:
+        metrics_results = await self._get_routing_stats(replicas, pending_request)
+
+        endpoints = []
+        for replica, routing_stats in zip(replicas, metrics_results):
+            queue_len = 0
+            if self.replica_queue_len_cache:
+                cached_val = self.replica_queue_len_cache.get(replica.replica_id)
+                if cached_val is not None:
+                    queue_len = cached_val
+
+            kv_cache_size = routing_stats.get("kv_cache_size", -1)
+
+            endpoints.append(
+                Endpoint(
+                    name=str(replica.replica_id),
+                    attributes={
+                        "queue_len": queue_len,
+                        "routing_stats": routing_stats,
+                        "kv_cache_size": kv_cache_size,
+                    },
+                )
+            )
+        return endpoints
+
+    def _fallback_random_choice(
+        self, candidate_replicas: list[RunningReplica]
+    ) -> list[list[RunningReplica]]:
+        """Helper to pick a random replica as fallback."""
+        index = random.randint(0, len(candidate_replicas) - 1)  # noqa: S311
+        return [[candidate_replicas[index]]]
 
     def _parse_to_llm_request(self, pending_request: PendingRequest) -> LLMRequest:
         """Converts Ray request to LLMRequest."""
@@ -128,121 +245,7 @@ class IGWRouter(RequestRouter):
 
         return LLMRequest(request_id=req_id, body=body, target_model=target_model)
 
-    def _get_rollout_request_id(self, body: Any) -> tuple[str, int]:  # noqa: ANN401
-        """Generates a rollout request ID and approximate character length from the request body.
-
-        We don't require character length to be accurate, it is used as a
-        fail-safe and for edge cases.
-        """
-        if not body:
-            return "", 0
-
-        try:
-            # Case 1: Pre-tokenized prompt ids (List[int])
-            if isinstance(body, list) and len(body) > 0 and isinstance(body[0], int):
-                prompt_bytes = struct.pack(f"{len(body)}i", *body)
-                return uuid.uuid5(NAMESPACE_FOR_UUID, prompt_bytes.hex()).hex, len(body) * 4
-
-            # Case 2: Raw string or bytes prompt
-            if isinstance(body, (str, bytes)):
-                prompt_str = body if isinstance(body, str) else body.hex()
-                return uuid.uuid5(NAMESPACE_FOR_UUID, prompt_str).hex, len(body)
-
-            # Case 3: List of messages (Dicts/Pydantic models)
-            if isinstance(body, list):
-                extracted_text = ""
-                for m in body:
-                    if isinstance(m, dict):
-                        extracted_text += str(m.get("content", ""))
-                    else:
-                        extracted_text += str(getattr(m, "content", ""))
-                char_len = len(extracted_text)
-                return uuid.uuid5(NAMESPACE_FOR_UUID, extracted_text).hex, char_len
-
-        except Exception as e:  # noqa: BLE001
-            print(f"[ROUTER ERROR] Failed to parse request ID securely: {e}")
-
-        return "", 0
-
-    async def _wait_for_space(self) -> None:
-        """Wait until at least one replica has space freed up."""
-        if self._loop is None:
-            raise RuntimeError("Event loop is not initialized")
-        fut = self._loop.create_future()
-        self._admission_queue.append(fut)
-        await fut
-
-    def _get_available_replicas(
-        self,
-        candidate_replicas: list[RunningReplica],
-        tokens_required: int,
-    ) -> list[RunningReplica]:
-        """Return subset of replicas that can fit the required tokens."""
-        res = []
-        for r in candidate_replicas:
-            budget = self._replica_kv_cache_size.get(r.replica_id)
-            if (
-                budget is not None
-                and budget > 0
-                and (self._replica_token_usage.get(r.replica_id, 0) + tokens_required <= budget)
-            ):
-                res.append(r)
-        return res
-
-    def _token_budget_needed(self, request_id: str | None, fc: dict) -> bool:
-        """Decide if this request requires token budgeting."""
-        use_token_budget = fc.get("use_token_budget", _DEFAULT_USE_TOKEN_BUDGET)
-        return bool(use_token_budget and request_id and request_id not in self._budgeted_requests)
-
-    def _estimate_tokens_required(self, rollout_id: str, char_len: int, fc: dict) -> int:
-        """Estimate the tokens required for this request."""
-        stats = self._rollout_request_stats.get(rollout_id)
-        if stats:
-            return stats["isl"] + stats["osl"]
-
-        # Fallback for first contact with prompt
-        default_osl: int = fc.get("default_osl", 1024)
-        return (char_len // 4) + default_osl
-
-    def _maybe_drip(
-        self, replicas: list[RunningReplica], stats: list[dict], fc: dict
-    ) -> RunningReplica | None:
-        """Check if any replica qualifies for drip admission."""
-        now = time.time()
-        drip_interval_s = fc.get("drip_interval_s", 2.0)
-        if (now - self._last_drip_at) < drip_interval_s:
-            return None
-
-        drip_threshold_kv = fc.get("drip_threshold_kv", 0.1)
-        for i, r in enumerate(replicas):
-            physical_kv = stats[i].get("kv", 1.0)
-            if physical_kv < drip_threshold_kv:
-                self._last_drip_at = now
-                print(f"[BUDGET] Drip Admission to {r.replica_id} (Physical KV: {physical_kv:.2f})")
-                return r
-        return None
-
-    async def _wait_for_admission(
-        self,
-        replicas: list[RunningReplica],
-        tokens: int,
-        pending_request: PendingRequest,
-        fc: dict,
-    ) -> list[RunningReplica]:
-        """Wait loop until replicas are available or a drip admission occurs."""
-        while True:
-            available = self._get_available_replicas(replicas, tokens)
-            if available:
-                return available
-
-            new_stats = await self._get_routing_stats(replicas, pending_request)
-            drip_replica = self._maybe_drip(replicas, new_stats, fc)
-            if drip_replica:
-                return [drip_replica]
-
-            await self._wait_for_space()
-
-    async def choose_replicas(  # noqa: PLR0912, PLR0914, C901
+    async def choose_replicas(
         self,
         candidate_replicas: list[RunningReplica],
         pending_request: PendingRequest | None = None,
@@ -254,101 +257,61 @@ class IGWRouter(RequestRouter):
             return []
 
         llm_req = self._parse_to_llm_request(pending_request)
-        rollout_request_id, char_len = self._get_rollout_request_id(llm_req.body)
-        request_id = llm_req.request_id
 
         # for health check empty requests
-        if not pending_request or not pending_request.args or char_len == 0:
-            index = random.randint(0, len(candidate_replicas) - 1)  # noqa: S311
-            return [[candidate_replicas[index]]]
+        if not pending_request or not pending_request.args or not llm_req.body:
+            return self._fallback_random_choice(candidate_replicas)
 
         try:
-            metrics_results = await self._get_routing_stats(candidate_replicas, pending_request)
+            endpoints: Sequence[Endpoint] = await self.build_endpoints(
+                candidate_replicas, pending_request
+            )
+        except Exception as e:  # noqa: BLE001
+            print(
+                f"[ROUTER ERROR] Failed to build endpoints: {e!r}. Falling back to random choice."
+            )
+            return self._fallback_random_choice(candidate_replicas)
 
-            candidates = []
-            for replica, routing_stats in zip(candidate_replicas, metrics_results):
-                queue_len = 0
-                if self.replica_queue_len_cache:
-                    cached_val = self.replica_queue_len_cache.get(replica.replica_id)
-                    if cached_val is not None:
-                        queue_len = cached_val
-
-                # Discover and cache KV Cache size if not already known
-                if replica.replica_id not in self._replica_kv_cache_size:
-                    kv_cache_size = routing_stats.get("kv_cache_size", -1)
-                    if kv_cache_size > 0:
-                        self._replica_kv_cache_size[replica.replica_id] = kv_cache_size
-                        print(
-                            f"[BUDGET] Discovered KV Cache size for replica {replica.replica_id}: "
-                            f"{kv_cache_size} tokens"
-                        )
-
-                if isinstance(routing_stats, Exception):
-                    print(
-                        f"Failed to fetch metrics via RPC for {replica.replica_id}: {routing_stats}"
-                    )
-                    routing_stats = {}  # noqa: PLW2901
-
-                candidates.append(
-                    Endpoint(
-                        name=str(replica.replica_id),
-                        attributes={
-                            "queue_len": queue_len,
-                            "routing_stats": routing_stats,
-                        },
-                    )
+        try:
+            if self.scheduler.has_flow_control():
+                candidate_replicas, endpoints = await self.fc_manager.admit(
+                    llm_req, endpoints, candidate_replicas, pending_request
                 )
+        except Exception as e:  # noqa: BLE001
+            print(
+                f"[ROUTER ERROR] Flow control admission failed: {e!r}. "
+                f"Falling back to random choice."
+            )
+            return self._fallback_random_choice(candidate_replicas)
 
-            fc = self.scheduler.get_flow_control_config()
-            tokens_required = 0
-            is_budgeted = False
-
-            if self._token_budget_needed(request_id, fc):
-                tokens_required = self._estimate_tokens_required(rollout_request_id, char_len, fc)
-                candidate_replicas = await self._wait_for_admission(
-                    candidate_replicas, tokens_required, pending_request, fc
-                )
-                is_budgeted = True
-
-                # Sync scheduler candidates with available replicas
-                available_replica_ids = {str(r.replica_id) for r in candidate_replicas}
-                candidates = [c for c in candidates if c.name in available_replica_ids]
-            selected_endpoints = self.scheduler.run(llm_req, candidates)
-
+        try:
+            selected_endpoints = self.scheduler.run(llm_req, endpoints)
             index = -1
             for i, replica in enumerate(candidate_replicas):
                 if (
                     len(selected_endpoints) > 0
-                    and str(replica.replica_id) == selected_endpoints[0].endpoint.name
+                    and str(replica.replica_id)
+                    == selected_endpoints[0].endpoint.name
                 ):
                     index = i
                     break
             if index == -1:
                 index = random.randint(0, len(candidate_replicas) - 1)  # noqa: S311
-
             target_replica = candidate_replicas[index]
-
-            # Commit the reservation for the selected replica
-            if is_budgeted:
-                self._replica_token_usage[target_replica.replica_id] = (
-                    self._replica_token_usage.get(target_replica.replica_id, 0) + tokens_required
-                )
-                self._request_at_replica[request_id] = (
-                    target_replica.replica_id,
-                    tokens_required,
-                )
-                self._budgeted_requests.add(request_id)
-                print(
-                    f"[BUDGET] Admission committed for req={request_id} "
-                    f"to replica={target_replica.replica_id} "
-                    f"(Usage: {self._replica_token_usage[target_replica.replica_id]})"
-                )
-
-            return [[target_replica]]  # noqa: TRY300
         except Exception as e:  # noqa: BLE001
-            print(f"Error of: {e!r} during scheduling: {e}, defaulting to random choice")
-            index = random.randint(0, len(candidate_replicas) - 1)  # noqa: S311
-            return [[candidate_replicas[index]]]
+            print(
+                f"[ROUTER ERROR] Scheduling or mapping failed: {e!r}. "
+                f"Falling back to random choice."
+            )
+            return self._fallback_random_choice(candidate_replicas)
+
+        try:
+            if self.scheduler.has_flow_control() and selected_endpoints:
+                self.fc_manager.commit(llm_req, selected_endpoints[0].endpoint)
+        except Exception as e:  # noqa: BLE001
+            print(f"[ROUTER WARNING] Failed to commit reservation: {e!r}")
+
+        return [[target_replica]]
 
     def on_request_routed(
         self,
@@ -357,59 +320,11 @@ class IGWRouter(RequestRouter):
         result: ReplicaResult,
     ) -> None:
         llm_req = self._parse_to_llm_request(pending_request)
-        request_id = llm_req.request_id
-        rollout_request_id, char_len = self._get_rollout_request_id(llm_req.body)
-        routed_at = time.time()
         is_streaming = pending_request.metadata.is_streaming
 
-        def _on_done(_):
-            elapsed = time.time() - routed_at
-            if request_id in self._request_at_replica:
-                replica_id_to_reclaim, tokens = self._request_at_replica.pop(request_id)
-                self._replica_token_usage[replica_id_to_reclaim] = max(
-                    0, self._replica_token_usage.get(replica_id_to_reclaim, 0) - tokens
-                )
-                self._budgeted_requests.discard(request_id)
-                print(
-                    f"[BUDGET] Released req={request_id} from replica={replica_id_to_reclaim}. "
-                    f"Elapsed={elapsed:.3f}s. "
-                    f"Usage={self._replica_token_usage[replica_id_to_reclaim]}"
-                )
-
-                if self._admission_queue:
-                    waiter = self._admission_queue.pop(0)
-                    if not waiter.done():
-                        waiter.set_result(True)
-
-        result.add_done_callback(_on_done)
-
-        if char_len > 0:
-            if not is_streaming:
-                original_get_async = result.get_async
-
-                async def patched_get_async():
-                    response = await original_get_async()
-                    if response and hasattr(response, "usage") and response.usage:
-                        self._rollout_request_stats[rollout_request_id] = {
-                            "isl": response.usage.prompt_tokens,
-                            "osl": response.usage.completion_tokens,
-                        }
-                    return response
-
-                result.get_async = patched_get_async
-            else:
-                original_anext = result.__anext__
-
-                async def patched_anext():
-                    chunk = await original_anext()
-                    if chunk and hasattr(chunk, "usage") and chunk.usage:
-                        self._rollout_request_stats[rollout_request_id] = {
-                            "isl": chunk.usage.prompt_tokens,
-                            "osl": chunk.usage.completion_tokens,
-                        }
-                    return chunk
-
-                result.__anext__ = patched_anext
+        if self.scheduler.has_flow_control():
+            result.add_done_callback(lambda _: self.fc_manager.release(llm_req, str(replica_id)))
+            self.fc_manager.attach_learning_callback(llm_req, result, is_streaming)
 
 
 # Hooking into Ray Serve's Request Router
