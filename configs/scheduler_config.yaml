@@ -24,8 +24,9 @@ data:
     profiles:
       router_with_token_budget_and_drip:
         flow_control:
-          use_token_budget: true
-          default_osl: 1024
+          type: kv_saturation
+          enable_drip: true
+          default_osl: 2000
           drip_threshold_kv: 0.2
           drip_interval_s: 2.0
         scorers:
