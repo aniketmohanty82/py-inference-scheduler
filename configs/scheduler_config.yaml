@@ -22,15 +22,13 @@ data:
     profile_handler:
       type: single_profile
     profiles:
-      router_with_token_budget_and_drip:
-        flow_control:
-          type: kv_saturation
-          enable_drip: true
-          default_osl: 2000
-          drip_threshold_kv: 0.2
-          drip_interval_s: 2.0
+      epp_backpressure:
         scorers:
-          - type: round_robin
+          - type: waiting_queue
             weight: 1.0
+          - type: running_queue
+            weight: 1.0
+          - type: kv_cache
+            weight: 2.0
         picker:
           type: max_score
