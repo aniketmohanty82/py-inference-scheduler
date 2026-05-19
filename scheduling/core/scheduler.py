@@ -53,7 +53,6 @@ class Scheduler:
                 )
 
         self.last_mtime = 0.0
-        self._maybe_reload_config()
 
     @classmethod
     def new_with_config(cls, config: SchedulerConfig) -> Scheduler:
@@ -95,6 +94,7 @@ class Scheduler:
     def schedule(
         self, request: LLMRequest, candidates: Sequence[Endpoint]
     ) -> SchedulingResult:
+        self._maybe_reload_config()
         if not candidates:
             raise ValueError("no scheduling candidates provided")
 
