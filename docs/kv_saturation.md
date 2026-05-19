@@ -14,7 +14,7 @@ The KV Saturation system reduces this by ensuring a request is **only** admitted
 *   **Learning Phase:** During the first encounter with a prompt, the router records the actual Input Sequence Length (ISL) and Output Sequence Length (OSL).
 *   **Virtual Reservation:** For all subsequent requests with the same fingerprint, the router calculates the full memory footprint of the request (ISL + OSL). It maintains a virtual counter of tokens occupied on each replica and will park new requests in an asynchronous queue if the addition of the new request would exceed the hardware's KV token budget.
 
-### 2. The Drip Mechanism
+### 2. The Drip Mechanism - Experimental
 In batch-heavy workloads, requests often finish in "cliffs"—where utilization drops significantly because the router waits for a full completion before admitting the next batch. This creates significant GPU idle time.
 
 The **Drip** functionality acts as a controlled "pressure valve" to smooth out these utilization cliffs. This is used only when the virtual KV Cache for a replica is already exhausted. If a replica's physical KV cache usage falls below a specific threshold (decided by the user for now), the router will "drip" one extra request into that replica, even if the virtual budget is technically full. This ensures that as one batch finishes, there are still requests partially through their prefill/decode phase, raising the floor of average utilization.
