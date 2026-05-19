@@ -118,7 +118,7 @@ class FlowControlManager:
 
         # we only have one flow control plugin right now
         plugin = plugins[0]
-        rollout_request_id, _ = plugin._get_rollout_request_id(request.body)
+        rollout_request_id, _ = plugin._get_rollout_request_id(request.body)  # type: ignore[attr-defined]
 
         if not is_streaming:
             original_get_async = result.get_async
@@ -127,7 +127,7 @@ class FlowControlManager:
                 response = await original_get_async()
                 if response and hasattr(response, "usage") and response.usage:
                     for plugin in plugins:
-                        plugin.update_learned_stats(
+                        plugin.update_learned_stats(  # type: ignore[attr-defined]
                             rollout_request_id,
                             response.usage.prompt_tokens,
                             response.usage.completion_tokens,
@@ -142,7 +142,7 @@ class FlowControlManager:
                 chunk = await original_anext()
                 if chunk and hasattr(chunk, "usage") and chunk.usage:
                     for plugin in plugins:
-                        plugin.update_learned_stats(
+                        plugin.update_learned_stats(  # type: ignore[attr-defined]
                             rollout_request_id,
                             chunk.usage.prompt_tokens,
                             chunk.usage.completion_tokens,

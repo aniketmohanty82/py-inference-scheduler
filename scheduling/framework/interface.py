@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Mapping, Protocol, Sequence
 
 from .types import CycleState, Endpoint, LLMRequest, ProfileRunResult, ScoredEndpoint
 
@@ -49,10 +49,6 @@ class FlowControlPlugin(Protocol):
     def reserve(self, request: LLMRequest, selected: Endpoint) -> None: ...
 
     def release(self, request: LLMRequest, endpoint_name: str) -> None: ...
-
-    def update_learned_stats(self, rollout_request_id: str, isl: int, osl: int) -> None: ...
-
-    def _get_rollout_request_id(self, body: Any) -> tuple[str, int]: ...  # noqa: ANN401
 
 
 class ProfileHandler(Protocol):
