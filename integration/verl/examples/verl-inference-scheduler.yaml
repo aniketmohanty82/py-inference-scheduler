@@ -2,6 +2,7 @@ apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
   name: verl-inference-scheduler
+  namespace: default
 spec:
   rayVersion: 2.52.0
   headGroupSpec:
@@ -48,12 +49,12 @@ spec:
         - name: data
           emptyDir: {}
   workerGroupSpecs:
-  - replicas: 1
-    minReplicas: 1
-    maxReplicas: 1
-    groupName: gpu-group-1
+  - replicas: 2
+    minReplicas: 2
+    maxReplicas: 2
+    groupName: gpu-group
     rayStartParams:
-      num-gpus: '4'
+      num-gpus: '8'
     template:
       spec:
         imagePullSecrets:
@@ -74,11 +75,11 @@ spec:
             limits:
               cpu: '64'
               memory: 1024Gi
-              nvidia.com/gpu: '4'
+              nvidia.com/gpu: '8'
             requests:
               cpu: '64'
               memory: 1024Gi
-              nvidia.com/gpu: '4'
+              nvidia.com/gpu: '8'
           volumeMounts:
           - mountPath: /tmp/ray
             name: ray-tmp
@@ -103,60 +104,4 @@ spec:
       metadata:
         annotations:
           networking.gke.io/default-interface: eth0
-          networking.gke.io/interfaces: "[\n  {\"interfaceName\":\"eth0\",\"network\"\n            :\"default\"},\n  {\"interfaceName\":\"eth1\",\"network\":\"gvnic-1\"\n            },\n  {\"interfaceName\":\"eth2\",\"network\":\"rdma-0\"},\n  {\"interfaceName\"\n            :\"eth3\",\"network\":\"rdma-1\"},\n  {\"interfaceName\":\"eth4\",\"network\"\n            :\"rdma-2\"},\n  {\"interfaceName\":\"eth5\",\"network\":\"rdma-3\"}\n            ]\n"
-  - replicas: 1
-    minReplicas: 1
-    maxReplicas: 1
-    groupName: gpu-group-2
-    rayStartParams:
-      num-gpus: '4'
-    template:
-      spec:
-        imagePullSecrets:
-        - name: artifact-registry-secret
-        containers:
-        - name: ray-worker
-          image: us-central1-docker.pkg.dev/gke-shared-ai-dev/verl-grpo/verl-vllm:stable
-          imagePullPolicy: Always
-          env:
-          - name: HUGGING_FACE_HUB_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: hf-secret
-                key: hf_api_token
-          - name: LD_LIBRARY_PATH
-            value: /usr/local/nvidia/lib64
-          resources:
-            limits:
-              cpu: '64'
-              memory: 1024Gi
-              nvidia.com/gpu: '4'
-            requests:
-              cpu: '64'
-              memory: 1024Gi
-              nvidia.com/gpu: '4'
-          volumeMounts:
-          - mountPath: /tmp/ray
-            name: ray-tmp
-          - mountPath: /dev/shm
-            name: dshm
-          - mountPath: /usr/local/nvidia
-            name: nvidia
-          - mountPath: /usr/local/gib
-            name: gib
-        volumes:
-        - name: ray-tmp
-          emptyDir: {}
-        - name: dshm
-          emptyDir:
-            medium: Memory
-        - name: nvidia
-          hostPath:
-            path: /home/kubernetes/bin/nvidia
-        - name: gib
-          hostPath:
-            path: /home/kubernetes/bin/gib
-      metadata:
-        annotations:
-          networking.gke.io/default-interface: eth0
-          networking.gke.io/interfaces: "[\n  {\"interfaceName\":\"eth0\",\"network\"\n            :\"default\"},\n  {\"interfaceName\":\"eth1\",\"network\":\"gvnic-1\"\n            },\n  {\"interfaceName\":\"eth6\",\"network\":\"rdma-4\"},\n  {\"interfaceName\"\n            :\"eth7\",\"network\":\"rdma-5\"},\n  {\"interfaceName\":\"eth8\",\"network\"\n            :\"rdma-6\"},\n  {\"interfaceName\":\"eth9\",\"network\":\"rdma-7\"}\n            ]\n"
+          networking.gke.io/interfaces: "[\n  {\"interfaceName\":\"eth0\",\"network\"\n            :\"default\"},\n  {\"interfaceName\":\"eth1\",\"network\":\"gvnic-1\"\n            },\n  {\"interfaceName\":\"eth2\",\"network\":\"rdma-0\"},\n  {\"interfaceName\"\n            :\"eth3\",\"network\":\"rdma-1\"},\n  {\"interfaceName\":\"eth4\",\"network\"\n            :\"rdma-2\"},\n  {\"interfaceName\":\"eth5\",\"network\":\"rdma-3\"},\n  {\"interfaceName\":\"eth6\",\"network\":\"rdma-4\"},\n  {\"interfaceName\"\n            :\"eth7\",\"network\":\"rdma-5\"},\n  {\"interfaceName\":\"eth8\",\"network\"\n            :\"rdma-6\"},\n  {\"interfaceName\":\"eth9\",\"network\":\"rdma-7\"}\n            ]\n"
