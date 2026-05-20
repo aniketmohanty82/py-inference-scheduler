@@ -13,59 +13,35 @@ It utilizes internal API signatures (such as `load_balancer_handle` and specific
 Key components:
 - `verl_hook.py`: Contains `InferenceSchedulerServerManager` and `PyInferenceAgentLoopManager` which are injected into the `verl` training loop.
 - `InflightStore`: Tracks active requests per worker in real-time to augment slow Prometheus metrics.
-- Prometheus Metric polling: The manager polls worker metrics at 50ms to maintain a view of cluster load.
+- `backends/verl/`: Contains monkey-patches for `vllm` and `sglang` to enable metrics extraction and correct environment propagation.
+- `datalayer/metrics/verl/`: Contains backend-specific logic (HTTP scraping) to fetch and parse metrics from the workers.
 
 ## Setup Guide
 
 If you have a `verl` instance and want to enable scheduling:
 
-### 1. Requirements
+### Requirements
 
 Ensure you have both `verl` and `py-inference-scheduler` repositories available. 
 
-You will also need a Docker image with `verl` and the scheduler dependencies installed. You can build your own image or use ours. If you'd like help building a compatible image, we provide an example [Dockerfile](./examples/Dockerfile.verl.ray) to do so. **Note:** if you build your own image, you must update the `image:` fields in [verl-inference-scheduler.yaml](./examples/verl-inference-scheduler.yaml) to point to your new image.
+You will also need a Docker image with `verl` and the scheduler dependencies installed. You can build your own image using the official `verl` stable Dockerfiles for [vLLM](https://github.com/verl-project/verl/blob/v0.7.1/docker/Dockerfile.stable.vllm) and [SGLang](https://github.com/verl-project/verl/blob/v0.7.1/docker/Dockerfile.stable.sglang).
 
-#### Image Pull Secrets (Optional)
+### verl Workspace
 
-If your registry is private, you need to [create a Kubernetes docker-registry secret](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/#create-a-secret-by-providing-credentials-on-the-command-line) to allow nodes to pull the image. Ensure the `imagePullSecrets` configuration in the `verl-inference-scheduler.yaml` file points to the name of your new secret.
+A local clone of `verl v0.7.1` is needed as a workspace to run training commands and to hold configuration files (like `runtime-env.yaml` and the run scripts).
 
-Run the following command as an example to create a secret if you are using GCP Artifact Registry:
+You will need to copy over `runtime-env.yaml` and the appropriate run scripts from our `examples` folder to the correct folders in the `verl` workspace (e.g., `examples/grpo_trainer/`).
 
-```bash
-kubectl create secret docker-registry artifact-registry-secret \
-    --docker-server=us-central1-docker.pkg.dev \
-    --docker-username=oauth2accesstoken \
-    --docker-password=$(gcloud auth print-access-token) \
-    --dry-run=client -o yaml | kubectl apply -f -
-```
+### Configure the Ray Cluster
 
-### 2. Configure Docker Registry
+Open `examples/verl-inference-scheduler.yaml` and update the `image:` fields to point to the Docker image you built in Step 1.
 
-The `RayCluster` example configuration (`examples/verl-inference-scheduler.yaml`) points to a placeholder image. You must build your own Docker image and host it in your own container registry to ensure reproducibility.
-
-1. **Build and push your image**: Build the `verl-ray` image using the provided Dockerfiles in the repository and push it to your own container registry (e.g., Docker Hub, AWS ECR, or your own GCP Artifact Registry).
-1. **Update the YAML configuration**: Open `examples/verl-inference-scheduler.yaml` and replace all occurrences of `us-central1-docker.pkg.dev/gke-shared-ai-dev/verl-grpo/verl-ray:latest` with your newly pushed image URL.
-1. **Configure Image Pull Secrets (Optional)**: If your registry is private, you need to [create a Kubernetes docker-registry secret](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/#create-a-secret-by-providing-credentials-on-the-command-line) to allow nodes to pull the image. Ensure the `imagePullSecrets` configuration in the `verl-inference-scheduler.yaml` file points to the name of your new secret instead of the default `artifact-registry-secret`.
-
-Run the following command as an example to create a secret if you are using GCP Artifact Registry:
-
-```bash
-kubectl create secret docker-registry artifact-registry-secret \
-    --docker-server=us-central1-docker.pkg.dev \
-    --docker-username=oauth2accesstoken \
-    --docker-password=$(gcloud auth print-access-token) \
-    --dry-run=client -o yaml | kubectl apply -f -
-```
-
-### 3. Configure the Ray Cluster
-
-Use the provided example `RayCluster` configuration in `examples/` as a starting point. It specifically targets GKE A3 Ultra instances with H200 GPUs.
-
+Apply the configuration to your Kubernetes cluster:
 ```bash
 kubectl apply -f examples/verl-inference-scheduler.yaml
 ```
 
-### 4. Establish Head Node Connection
+### Establish Head Node Connection
 
 Before you can submit a job, you must open a local tunnel to the Ray Head Node dashboard.
 
@@ -73,95 +49,50 @@ Before you can submit a job, you must open a local tunnel to the Ray Head Node d
     ```bash
     kubectl port-forward svc/verl-inference-scheduler-head-svc 8265:8265 -n default &
     ```
-1.  **Export the Ray address** so the CLI knows where to target:
+2.  **Export the Ray address**:
     ```bash
     export RAY_ADDRESS="http://127.0.0.1:8265"
     ```
-1.  **View the Dashboard**: Visit `http://localhost:8265` in your browser to monitor job progress and cluster health.
 
-### 4. Data Preparation
+### Data Preparation
 
-Before submitting the training job, you must generate the GSM8K dataset using `verl`'s data preparation scripts. Run the following command from the root of your `verl` directory:
+The scripts use both the **GSM8K** and **MATH** datasets. You must generate both using `verl`'s data preparation scripts from the root of your `verl` workspace:
 
 ```bash
 python3 examples/data_preprocess/gsm8k.py --local_save_dir ./data/gsm8k
+python3 examples/data_preprocess/math_dataset.py --local_dir ./data/math
 ```
-This script will download and process the GSM8K dataset, creating the necessary `.parquet` files in `data/gsm8k/` (e.g., `data/gsm8k/train.parquet` and `data/gsm8k/test.parquet`).
 
-> **Note: Ray Upload Issue with `.parquet` files**
->
-> By default, the official `verl` repository includes `*.parquet` in its `.gitignore` file. When you submit a Ray job with `--working-dir .`, Ray respects the `.gitignore` rules and will silently strip out your training data, causing a `FileNotFoundError` during training.
-> 
-> **To fix this:** Open `.gitignore` in the root of your `verl` repository and comment out the `*.parquet` line under the `# data` section before submitting the job:
-> ```text
-> # data
-> # *.parquet
-> ```
+*Note: Ensure `*.parquet` is not ignored in your `.gitignore` if you want Ray to upload it.*
 
-### 5. Submission Configuration
+### Runtime Environment (`runtime-env.yaml`)
 
-To use the scheduler, you need to provide a `runtime-env.yaml` and a `scheduler.yaml` (`scheduler.yaml` and `configs/scheduler-configmap.yaml` are the same file - you modify these with your ideal scorer config) in your `verl` working directory.
-
-1.  **Copy the examples** to your `verl` root:
-    ```bash
-    cp ../py-inference-scheduler/integration/verl/examples/runtime-env.yaml .
-    cp ../py-inference-scheduler/integration/verl/examples/scheduler.yaml .
-    ```
-1.  **Adjust `py_modules` paths** in `runtime-env.yaml` to point to your local `py-inference-scheduler` installation.
+To run the job with the scheduler, you need a `runtime-env.yaml` file in your `verl` workspace. This file configures the environment for the Ray job.
 
 Example `runtime-env.yaml`:
 ```yaml
 env_vars:
   ROUTER_CONFIG_PATH: "./scheduler.yaml"
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
 py_modules:
   - "../py-inference-scheduler/integration"
   - "../py-inference-scheduler/scheduling"
   - "../py-inference-scheduler/datalayer"
+  - "../py-inference-scheduler/backends"
 ```
+*   `PROMETHEUS_MULTIPROC_DIR`: Must be set to `/tmp/metrics` for multiprocess metrics aggregation.
+*   `py_modules`: Used to dynamically inject our local code folders into the Ray cluster without rebuilding the Docker image!
 
-### 6. Running a Training Job
+### Running a Training Job
 
-There are two primary ways to submit a training job using the scheduler hook.
+We provide pre-configured shell scripts in the `examples` folder for both vLLM and SGLang.
 
-#### Option A: Using Hydra overrides in CLI:
-
-To activate the scheduler on a standard run, use the `+actor_rollout_ref.rollout.agent.agent_loop_manager_class` Hydra override. Below is an example of doing this with Qwen2-7B using a script provided to us by verl. 
-
-```bash
-ray job submit \
-    --working-dir . \
-    --runtime-env runtime-env.yaml \
-    -- bash examples/grpo_trainer/run_qwen2-7b_math.sh \
-    algorithm.adv_estimator=grpo \
-    data.train_files="['data/gsm8k/train.parquet']" \
-    data.val_files="['data/gsm8k/test.parquet']" \
-    trainer.n_gpus_per_node=8 \
-    trainer.nnodes=2 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=64 \
-    actor_rollout_ref.actor.strategy=fsdp2 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
-    actor_rollout_ref.rollout.n=8 \
-    actor_rollout_ref.actor.fsdp_config.model_dtype=bfloat16 \
-    trainer.logger="['console']" \
-    actor_rollout_ref.rollout.disable_log_stats=False \
-    actor_rollout_ref.rollout.prometheus.enable=True \
-    trainer.total_training_steps=10 \
-    +actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager
-```
-
-- **`agent_loop_manager_class`**: Points to the integration hook.
-- **`disable_log_stats=False`**: Required for vLLM to emit local metrics.
-- **`prometheus.enable=True`**: Required to expose the `/metrics` endpoint that the scheduler polls.
-
-#### Option B: Pre-configured Shell Script
-
-For models like Qwen 2.5 32B, we provide a pre-tuned shell script that handles the memory and parallelism settings automatically. This is an augmentation of verl's example script ```run_qwen2-7b_math.sh```.
-
-1.  **Copy the script** to your `verl` examples folder:
+1.  **Copy the scripts** to your `verl` workspace:
     ```bash
     cp ../py-inference-scheduler/integration/verl/examples/run_qwen2_5-32b_math.sh examples/grpo_trainer/
+    cp ../py-inference-scheduler/integration/verl/examples/run_qwen2_5-32b_math_sglang.sh examples/grpo_trainer/
     ```
-2.  **Submit the job**:
+2.  **Submit the job** (example for vLLM):
     ```bash
     ray job submit \
         --working-dir . \
@@ -170,11 +101,11 @@ For models like Qwen 2.5 32B, we provide a pre-tuned shell script that handles t
         -- bash examples/grpo_trainer/run_qwen2_5-32b_math.sh
     ```
 
-### 7. View the results
+### View the results
 
-This is a very small training loop for tetsing with 10 steps configured in the `trainer.total_training_steps=10` flag. Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs in my opinion. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard. (localhost:8265). vERL gives us output by step, don't be concerned if you se `ppo` tags on the labels for the logs - vERL uses the same tetsing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer.
+This is a very small training loop for testing with 10 steps configured in the `trainer.total_training_steps=10` flag. Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs in my opinion. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard. (localhost:8265). vERL gives us output by step, don't be concerned if you se `ppo` tags on the labels for the logs - vERL uses the same testing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer.
 
-Logs look as follows:
+Logs look as follows (from verl-vllm using gsm8k):
 
 ```bash
 (TaskRunner pid=15930, ip=10.4.1.33) step:1
