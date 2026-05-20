@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import logging
-from typing import Sequence
 
-from datalayer.verl.datastore import InflightStore
+from datalayer.metrics.verl.datastore import InflightStore
 from scheduling.framework import Endpoint
 
 logger = logging.getLogger(__name__)
@@ -37,20 +35,7 @@ async def fetch_worker_metrics(ep: Endpoint, inflight_store: InflightStore) -> N
             "num_waiting_reqs": stats.get("num_waiting_reqs", 0),
             "num_running_reqs": stats.get("num_running_reqs", 0),
             "kv": stats.get("kv", 0.0),
+            "error": stats.get("error", None),
         }
     except Exception:
         logger.exception("Failed to scrape RPC metrics for %s", ep.name)
-
-
-async def verl_metrics_polling_loop(
-    endpoints: Sequence[Endpoint], inflight_store: InflightStore
-) -> None:
-    """Asynchronously pulls metrics directly from the engine via the injected RPC hook."""
-    while True:
-        try:
-            tasks = [fetch_worker_metrics(ep, inflight_store) for ep in endpoints]
-            await asyncio.gather(*tasks)
-        except Exception:
-            logger.exception("Metrics poll error")
-
-        await asyncio.sleep(0.05)
