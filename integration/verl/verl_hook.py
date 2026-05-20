@@ -25,119 +25,20 @@ from verl.experimental.agent_loop.agent_loop import (  # type: ignore[import-not
     AgentLoopWorker,
     AsyncLLMServerManager,
 )
-from verl.workers.rollout.vllm_rollout.vllm_async_server import (  # type: ignore[import-not-found]
-    vLLMHttpServer,  # type: ignore[import-not-found]
-)
 
-from datalayer.verl.datastore import InflightStore
-from datalayer.verl.metrics import verl_metrics_polling_loop
+from backends.verl.sglang import SglangEnginePatch
+from backends.verl.vllm import VllmEnginePatch
+from datalayer.metrics.verl.datastore import InflightStore
+from datalayer.metrics.verl.fetch_metrics import fetch_worker_metrics
 from scheduling import Scheduler
 from scheduling.framework import Endpoint, LLMRequest
 
 logger = logging.getLogger(__name__)
 
-
-class VllmEnginePatch:
-    """
-    Monkey-patching vLLM V1 (0.11.0+) to allow metrics extraction.
-
-    This bypasses verl's default behavior of disabling engine stats logging and
-    captures SchedulerStats directly from the engine's internal record loop.
-
-    Done here since verl_hook is on the GPU worker nodes.
-    """
-
-    @staticmethod
-    async def _get_routing_stats(server: object) -> dict[str, object]:
-        """
-        RPC entry point injected into vLLMHttpServer.
-
-        Retrieves real-time engine stats (KV cache, running requests) for the scheduler.
-        """
-        stats: dict[str, object] = {
-            "num_waiting_reqs": 0,
-            "num_running_reqs": 0,
-            "kv": 0.0,
-            "error": None,
-        }
-        try:
-            engine = getattr(server, "engine", None)
-            if engine is None:
-                stats["error"] = "No engine attribute on vLLMHttpServer"
-                return stats
-
-            # vLLM V1
-            logger_manager = getattr(engine, "logger_manager", None)
-            if logger_manager:
-                scheduler_stats = getattr(logger_manager, "_latest_captured_stats", None)
-
-                if scheduler_stats is None and hasattr(logger_manager, "last_scheduler_stats"):
-                    scheduler_stats = logger_manager.last_scheduler_stats
-
-                if scheduler_stats:
-                    stats["num_waiting_reqs"] = getattr(scheduler_stats, "num_waiting_reqs", 0)
-                    stats["num_running_reqs"] = getattr(scheduler_stats, "num_running_reqs", 0)
-                    stats["kv"] = getattr(scheduler_stats, "kv_cache_usage", 0.0) * 100.0
-                else:
-                    stats["error"] = "No stats recorded yet"
-                return stats
-
-            # vLLM V0
-            legacy_engine = getattr(engine, "engine", None)
-            if legacy_engine and hasattr(legacy_engine, "scheduler"):
-                legacy_scheduler = legacy_engine.scheduler[0]
-                stats["num_waiting_reqs"] = len(getattr(legacy_scheduler, "waiting", []))
-                stats["num_running_reqs"] = len(getattr(legacy_scheduler, "running", []))
-                return stats
-
-            stats["error"] = "Could not identify vLLM engine type (V0 or V1)"
-        except Exception as e:  # noqa: BLE001
-            stats["error"] = f"Exception in get_routing_stats: {e}"
-        return stats
-
-    @classmethod
-    def apply(cls) -> None:
-        try:
-            from vllm.v1.engine.async_llm import AsyncLLM  # type: ignore[import-not-found]
-            from vllm.v1.metrics.loggers import StatLoggerManager  # type: ignore[import-not-found]
-
-            # Ensure stats logging is always ON.
-            original_from_config = AsyncLLM.from_vllm_config
-
-            @classmethod  # type: ignore[misc]
-            def patched_from_config(
-                cls_vllm: object, *args: object, **kwargs: object
-            ) -> object:
-                kwargs["disable_log_stats"] = False
-                return original_from_config(*args, **kwargs)
-
-            AsyncLLM.from_vllm_config = patched_from_config
-
-            # Capture stats directly on the logger manager instance during record().
-            original_record = StatLoggerManager.record
-
-            def patched_record(
-                self: object,
-                scheduler_stats: object,
-                *args: object,
-                **kwargs: object,
-            ) -> object:
-                if scheduler_stats is not None:
-                    self._latest_captured_stats = scheduler_stats  # type: ignore[attr-defined]
-                return original_record(self, scheduler_stats, *args, **kwargs)
-
-            StatLoggerManager.record = patched_record
-
-        except (ImportError, AttributeError):
-            # vLLM V0 fallback (symbols don't exist, which is expected)
-            pass
-
-        # Attach the RPC endpoint to the server actor class
-        vLLMHttpServer.get_routing_stats = cls._get_routing_stats
-
-
-# Initialize entire patch
+# Must apply at module level to patch classes before use across distributed
+# Ray workers without modifying verl.
 VllmEnginePatch.apply()
+SglangEnginePatch.apply()
 
 
 class InferenceSchedulerServerManager(AsyncLLMServerManager):
@@ -165,6 +66,7 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
         self.inflight_store = InflightStore()
         self.endpoints = []
         self._lb_acquired_requests = set()  # type: ignore[var-annotated]
+        self._scheduling_lock = asyncio.Lock()
 
         # Reconstruct endpoints from the new (id, handle) tuple structure
         for server_id, handle in servers:
@@ -185,31 +87,38 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
         prompt_ids: list[int] | None = None,
     ) -> tuple[str, ray.actor.ActorHandle]:
         """Overrides Verl's Native Global Load Balancer with py-inference-scheduler logic."""
-        if self._metrics_task is None:
-            self._metrics_task = asyncio.create_task(  # type: ignore[assignment]
-                verl_metrics_polling_loop(self.endpoints, self.inflight_store)
+        # We use the lock because of python:
+        # -- vERL composes the batch of requests before we get to schedule any tasks.
+        # -- we cannot interleave metric tasks in between of scheduled tasks
+        # -- due to python being FIFO.
+        # -- so we just make it part of the scheduling task instead of
+        # -- having an independant metric poller task.
+        async with self._scheduling_lock:
+            tasks = [fetch_worker_metrics(ep, self.inflight_store) for ep in self.endpoints]
+            await asyncio.gather(*tasks)
+
+            for ep in self.endpoints:
+                ep.attributes["queue_len"] = self.inflight_store.get(ep.name)
+
+            req = LLMRequest(request_id=request_id, body=prompt_ids)
+            selected_endpoints = self.ray_request_scheduler.run(
+                req, candidates=self.endpoints
             )
 
-        for ep in self.endpoints:
-            ep.attributes["queue_len"] = self.inflight_store.get(ep.name)
+            # fall back to verl LB
+            if not selected_endpoints:
+                logger.warning(
+                    "py-inference-scheduler returned no endpoints, falling back to verl global LB."
+                )
+                self._lb_acquired_requests.add(request_id)
+                server_id, handle = await super()._acquire_server(request_id)  # type: ignore[no-any-return]
+                self.inflight_store.increment(server_id)
+                return server_id, handle
 
-        req = LLMRequest(request_id=request_id, body=prompt_ids)
-        selected_endpoints = self.ray_request_scheduler.run(
-            req, candidates=self.endpoints
-        )
+            winning_endpoint: Endpoint = selected_endpoints[0].endpoint
+            self.inflight_store.increment(winning_endpoint.name)
 
-        # fall back to verl LB
-        if not selected_endpoints:
-            logger.warning(
-                "py-inference-scheduler returned no endpoints, falling back to verl global LB."
-            )
-            self._lb_acquired_requests.add(request_id)
-            return await super()._acquire_server(request_id)  # type: ignore[no-any-return]
-
-        winning_endpoint: Endpoint = selected_endpoints[0].endpoint
-        logger.info("[%s] Routed to %s", request_id[:6], winning_endpoint.name)
-
-        return winning_endpoint.name, winning_endpoint.attributes["replica_obj"]
+            return winning_endpoint.name, winning_endpoint.attributes["replica_obj"]
 
     def _release_server(self, server_id: str, request_id: str | None = None) -> None:
         """Decrements local inflight tracking and notifies global LB if it originated there."""
@@ -232,7 +141,6 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
         await asyncio.sleep(0)
 
         server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
-        self.inflight_store.increment(server_id)
 
         # vLLM needs a fresh request_id per generation to avoid KV cache collisions.
         # verl has sticky request_ids for multi-turn rollouts.
