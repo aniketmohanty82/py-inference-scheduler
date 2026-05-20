@@ -1,6 +1,7 @@
 env_vars:
   PYTHONPATH: "."
   ROUTER_CONFIG_PATH: "./scheduler.yaml"
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   NCCL_DEBUG: "INFO"
   NCCL_NET_PLUGIN: "/usr/local/gib/lib64/libnccl-net_internal.so"
   NCCL_CROSS_NIC: "0"
@@ -13,11 +14,8 @@ env_vars:
   NCCL_IB_FIFO_TC: "84"
   NCCL_TUNER_CONFIG_PATH: "/usr/local/gib/configs/tuner_config_a3u.txtpb"
   GLOO_SOCKET_IFNAME: "eth0"
-pip:
-  packages:
-    - torch
-    - torchvision
 py_modules:
   - "../py-inference-scheduler-llmd/integration"
   - "../py-inference-scheduler-llmd/scheduling"
   - "../py-inference-scheduler-llmd/datalayer"
+  - "../py-inference-scheduler-llmd/backends"
