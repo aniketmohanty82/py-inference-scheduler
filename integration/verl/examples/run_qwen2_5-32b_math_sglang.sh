@@ -14,10 +14,10 @@
 
 set -x
 
-gsm8k_train_path=data/gsm8k/train.parquet
-gsm8k_test_path=data/gsm8k/test.parquet
-math_train_path=data/math/train.parquet
-math_test_path=data/math/test.parquet
+gsm8k_train_path=/home/ray/data/gsm8k/train.parquet
+gsm8k_test_path=/home/ray/data/gsm8k/test.parquet
+math_train_path=/home/ray/data/math/train.parquet
+math_test_path=/home/ray/data/math/test.parquet
 
 train_files="['$gsm8k_train_path', '$math_train_path']"
 test_files="['$gsm8k_test_path', '$math_test_path']"
@@ -56,8 +56,8 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger='["console"]' \
     trainer.project_name='verl_grpo_32b_math' \
     trainer.experiment_name='qwen32b_math' \
-    trainer.n_gpus_per_node=8 \
-    trainer.nnodes=1 \
+    trainer.n_gpus_per_node=4 \
+    trainer.nnodes=2 \
     trainer.save_freq=20 \
     trainer.test_freq=5 \
     trainer.total_training_steps=10 \
