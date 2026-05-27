@@ -51,8 +51,9 @@ When configuring your Ray cluster (e.g., via KubeRay), you must ensure that your
 - Uses one of the **supported official images** listed in the [Requirements](#requirements) section.
 - Has a **shared volume** (or equivalent access) for the data to be trained on, accessible by all pods. An example of how a GCS bucket can be used to store locally preprocessed data is available in [verl-inference-scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/verl-inference-scheduler.yaml).
 - Mounts the ConfigMap for custom scheduler profiles if you choose to use one (see [Customizing Scheduler Configuration](#customizing-scheduler-configuration)). If you want to see an example of how to do these ConfigMap mounts, you can check [verl-inference-scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/verl-inference-scheduler.yaml).
+- **RDMA & Networking Annotations**: Depending on your cloud provider and cluster setup, you may need to add specific networking annotations to your pod templates to enable high-speed RDMA interfaces (e.g., `networking.gke.io/interfaces`). To see an example of how to configure multi-NIC and RDMA interfaces for GKE, refer to the [verl-inference-scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/verl-inference-scheduler.yaml) file.
 
-If you would like to see an example of a cluster configuration file, you can check [verl-inference-scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/verl-inference-scheduler.yaml).
+If you would like to see an example of a full cluster configuration file, you can check [verl-inference-scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/verl-inference-scheduler.yaml).
 
 To apply your configuration to the Kubernetes cluster:
 ```bash
