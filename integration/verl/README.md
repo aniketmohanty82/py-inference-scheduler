@@ -198,5 +198,5 @@ Logs look as follows (from verl-vllm using gsm8k):
 
 The integration with `py-inference-scheduler` has been verified to work with the following official `verlai/verl` images on Docker Hub:
 
-- **vLLM Backend**: `verlai/verl:vllm011.latest`
-- **SGLang Backend**: `verlai/verl:sglang059.dev3`
+- **vLLM Backend**: `verlai/verl:vllm011.latest` (Digest: `sha256:3ce56ff018516b28ab9c4f4fc09d3aa67589074495ace75e2674b720aa4d0e5d`)
+- **SGLang Backend**: `verlai/verl:sgl059.latest` (Digest: `sha256:7d6502f9a46353792d1c9c855b61c1a9ea29ad74c5cb246e8aa9ac29b30372eb`)
