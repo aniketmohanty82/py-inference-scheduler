@@ -90,6 +90,7 @@ env_vars:
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml"
 ```
+*   **NCCL & Networking Variables**: Depending on your replica topology and cloud environment, you may also need to specify NCCL and other networking environment variables (e.g., `NCCL_DEBUG`, `GLOO_SOCKET_IFNAME`). To see a full example of these variables, check the [runtime-env.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/runtime-env.yaml) in the examples folder.
 
 *   **`working_dir`**: Set this to point to the root of the `py-inference-scheduler` repository (or a remote zip URL like above). This will be replaced by the package in the pip/uv section later.
 *   **`pip`**: Used to install `verl==0.7.1` at runtime.
