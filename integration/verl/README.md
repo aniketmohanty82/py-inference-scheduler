@@ -193,3 +193,10 @@ Logs look as follows (from verl-vllm using gsm8k):
  ```
 
  Key metrics to look out for are ```perf/throughput``` for sampling throughput and ```timing_s/agent_loop/slowest/generate_sequences``` for your tail latency. Additionally, if you enable preemptions, ```timing_s/agent_loop/slowest/num_preempted``` can be useful too. 
+
+## Supported Official Images
+
+The integration with `py-inference-scheduler` has been verified to work with the following official `verlai/verl` images on Docker Hub:
+
+- **vLLM Backend**: `verlai/verl:vllm011.latest`
+- **SGLang Backend**: `verlai/verl:sglang059.dev3`
