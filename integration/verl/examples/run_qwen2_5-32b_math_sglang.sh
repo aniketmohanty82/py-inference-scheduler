@@ -24,6 +24,7 @@ test_files="['$gsm8k_test_path', '$math_test_path']"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
+    actor_rollout_ref.rollout.prometheus.enable=True \
     data.train_files="$train_files" \
     data.val_files="$test_files" \
     data.train_batch_size=1024 \
