@@ -45,6 +45,9 @@ Wherever you choose to store the data, it must be accessible by the cluster pods
 > [!IMPORTANT]
 > Once you have stored your data and made it accessible to the pods, you **must** update the data path variables at the top of the example scripts ([run_qwen2_5-32b_math.sh](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/run_qwen2_5-32b_math.sh) or [run_qwen2_5-32b_math_sglang.sh](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/run_qwen2_5-32b_math_sglang.sh)) to point to the internal location within the pod where the data is accessible (e.g., `/home/ray/data/...`).
 
+> [!IMPORTANT]
+> Before applying the cluster configuration, you **must** create a default ConfigMap named `scheduler-config` in your namespace. Because the cluster configuration mounts this ConfigMap to the pods, failing to create it will cause the pods to be stuck in a `CreateContainerConfigError` state. You can use the default configuration provided in [scheduler_config.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/configs/scheduler_config.yaml) to create it.
+
 ### Configure the Ray Cluster
 
 When configuring your Ray cluster (e.g., via KubeRay), you must ensure that your configuration:
@@ -106,9 +109,9 @@ By default, the system uses the `scheduler.yaml` provided in the repository. If 
 - **Edit the config**: Make your desired changes to the file.
 - **Apply as ConfigMap**: Upload it to your Kubernetes cluster:
     ```bash
-    kubectl create configmap my-custom-scheduler --from-file=scheduler.yaml=scheduler.yaml
+    kubectl create configmap scheduler-config --from-file=scheduler.yaml=scheduler.yaml
     ```
-- **Update cluster config**: Ensure your `verl-inference-scheduler.yaml` mounts this ConfigMap (the example file is pre-configured to look for `my-custom-scheduler`).
+- **Update cluster config**: Ensure your `verl-inference-scheduler.yaml` mounts this ConfigMap (the example file is pre-configured to look for `scheduler-config`).
 - **Update `runtime-env.yaml`**: Set the `ROUTER_CONFIG_PATH` to point to the mounted file:
     ```yaml
     env_vars:
