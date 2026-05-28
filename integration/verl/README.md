@@ -124,7 +124,7 @@ We provide pre-configured shell scripts for both vLLM and SGLang. You can downlo
 - [run_qwen2_5-32b_math.sh](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/run_qwen2_5-32b_math.sh) (vLLM)
 - [run_qwen2_5-32b_math_sglang.sh](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/run_qwen2_5-32b_math_sglang.sh) (SGLang)
 
-After downloading and editing the scripts (e.g., to set the correct data paths as mentioned in the [Data Preparation](#data-preparation) section), you can submit the job by pointing to your edited script:
+After downloading and editing the scripts (e.g., to set the correct data paths as mentioned in the [Data Preparation](#data-preparation) section), you can submit the job by pointing to your edited script. **Ensure you are in the directory containing your `runtime-env.yaml` file when running this command:**
 
 ```bash
 ray job submit \
@@ -134,7 +134,13 @@ ray job submit \
 ```
 
 > [!NOTE]
-> Ensure you are in the directory containing your `runtime-env.yaml` file when running this command.
+> If you choose not to use the pre-configured shell scripts and write your own training command, you **must** pass the following flags to `python3 -m verl.trainer.main_ppo` for the integration to work properly:
+> - `actor_rollout_ref.rollout.actor_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager`: Registers our custom hook with `veRL`.
+> - `actor_rollout_ref.rollout.log_stats=True`: Enables logging of statistics necessary for metrics parsing.
+> - `actor_rollout_ref.rollout.name={vllm|sglang}`: Specifies the backend.
+> 
+> **Additional Flags for SGLang:**
+> - `actor_rollout_ref.rollout.prometheus.enable=True`: Required for SGLang to enable the Prometheus metrics endpoint.
 
 ### View the results
 
