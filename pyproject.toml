@@ -35,7 +35,7 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.20.0",
-    "ruff>=0.15.10",
+    "ruff==0.15.15",
     "mypy>=1.10",
     "types-PyYAML>=6.0",
 ]
@@ -102,6 +102,7 @@ ignore = [
     "ISC001", # Single-line implicit string concat
     "ISC002", # Multi-line implicit string concat
     "PLC0415", # Import outside top-level
+    "PLW0717", # Try clause contains too many statements
     "PLR6301", # Method could be function
     "Q000", # Inline string quote style
     "Q001", # Multiline string quote style
