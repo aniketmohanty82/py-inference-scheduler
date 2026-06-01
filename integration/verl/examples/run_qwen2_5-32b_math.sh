@@ -56,7 +56,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger='["console"]' \
     trainer.project_name='verl_grpo_32b_math' \
     trainer.experiment_name='qwen32b_math' \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=8 \
     trainer.nnodes=2 \
     trainer.save_freq=20 \
     trainer.test_freq=5 \
