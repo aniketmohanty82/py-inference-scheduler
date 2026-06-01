@@ -141,6 +141,8 @@ ray job submit \
 > 
 > **Additional Flags for SGLang:**
 > - `actor_rollout_ref.rollout.prometheus.enable=True`: Required for SGLang to enable the Prometheus metrics endpoint.
+> 
+> Additionally, make sure that the GPU and node configurations (`trainer.n_gpus_per_node` and `trainer.nnodes`) correspond to your cluster configuration (`verl-inference-scheduler.yaml`).
 
 ### View the results
 
