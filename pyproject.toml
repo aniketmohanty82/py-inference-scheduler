@@ -102,7 +102,6 @@ ignore = [
     "ISC001", # Single-line implicit string concat
     "ISC002", # Multi-line implicit string concat
     "PLC0415", # Import outside top-level
-    "PLW0717", # Try clause contains too many statements
     "PLR6301", # Method could be function
     "Q000", # Inline string quote style
     "Q001", # Multiline string quote style
