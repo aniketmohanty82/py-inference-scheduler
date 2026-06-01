@@ -1,4 +1,4 @@
-working_dir: "https://github.com/aniketmohanty82/py-inference-scheduler/archive/e48fad0.zip"
+working_dir: "https://github.com/llm-d-incubation/py-inference-scheduler/archive/refs/heads/main.zip"
 
 pip:
   - "verl==0.7.1"
