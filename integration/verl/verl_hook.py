@@ -105,20 +105,20 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
                 req, candidates=self.endpoints
             )
 
-            # fall back to verl LB
-            if not selected_endpoints:
-                logger.warning(
-                    "py-inference-scheduler returned no endpoints, falling back to verl global LB."
-                )
-                self._lb_acquired_requests.add(request_id)
-                server_id, handle = await super()._acquire_server(request_id)  # type: ignore[no-any-return]
-                self.inflight_store.increment(server_id)
-                return server_id, handle
+            if selected_endpoints:
+                winning_endpoint: Endpoint = selected_endpoints[0].endpoint
+                self.inflight_store.increment(winning_endpoint.name)
 
-            winning_endpoint: Endpoint = selected_endpoints[0].endpoint
-            self.inflight_store.increment(winning_endpoint.name)
+        if not selected_endpoints:
+            logger.warning(
+                "py-inference-scheduler returned no endpoints, falling back to verl global LB."
+            )
+            self._lb_acquired_requests.add(request_id)
+            server_id, handle = await super()._acquire_server(request_id)  # type: ignore[no-any-return]
+            self.inflight_store.increment(server_id)
+            return server_id, handle
 
-            return winning_endpoint.name, winning_endpoint.attributes["replica_obj"]
+        return winning_endpoint.name, winning_endpoint.attributes["replica_obj"]
 
     def _release_server(self, server_id: str, request_id: str | None = None) -> None:
         """Decrements local inflight tracking and notifies global LB if it originated there."""
