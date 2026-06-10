@@ -30,8 +30,8 @@ Before integrating the scheduler, you must set up a Ray cluster and ensure speci
 *   **Supported Images**: We strongly recommend using the official pre-built veRL images, as they come pre-configured with all necessary dependencies:
     *   **vLLM Backend**: `verlai/verl:vllm011.latest`
     *   **SGLang Backend**: `verlai/verl:sgl059.latest`
-    > [!NOTE]
-    > If you must use a custom image, you must ensure that the vLLM or SGLang versions match those in the official images, and that **`verl==0.7.1`** is installed in the environment.
+> [!NOTE]
+> If you must use a custom image, you must ensure that the vLLM or SGLang versions match those in the official images, and that **`verl==0.7.1`** is installed in the environment.
 
 > [!IMPORTANT]
 > **You must configure the following resources when creating your Ray cluster:**
@@ -40,13 +40,13 @@ Before integrating the scheduler, you must set up a Ray cluster and ensure speci
 >     *   **Non-Kubernetes (VMs)**: A directory (defaulting to `/tmp/metrics`) must exist and be writable by the Ray process on **every** node in the cluster.
 > *   **Scheduler Config Visibility (K8s Only)**: If running on K8s, a ConfigMap named `scheduler-config` (containing your `scheduler.yaml`) must be mounted to `/etc/scheduler` on all pods.
 >     *   *Reference*: See [verl-inference-scheduler.yaml](./examples/verl-inference-scheduler.yaml#L55-L56) to see how these mounts are configured.
->     *   The ConfigMap must be applied **before** deploying the cluster. Failing to do so will cause the pods to get stuck in a `CreateContainerConfigError` state. Refer to [Path B: Custom Configuration on Kubernetes (K8s)](#path-b-custom-configuration-on-kubernetes-k8s) for instructions on how to apply it.
+>     *   The ConfigMap must be applied **before** deploying the cluster. Failing to do so will cause the pods to get stuck in a `CreateContainerConfigError` state. Refer to [Custom Configuration on Kubernetes (K8s)](#custom-configuration-on-kubernetes-k8s) for instructions on how to apply it.
 
 ### Dataset Preprocessing
 *   **Your own Training Script**: Ensure your own training dataset is preprocessed and stored in a location accessible by all Ray worker nodes (e.g., via a PVC, GCS bucket, or shared NFS).
 *   **Walkthrough Example (Optional)**: If you don't have a dataset and would like to follow along this integration with an example, you can use veRL's preprocessed GSM8K/MATH datasets. Refer to the [veRL Quickstart Data Preparation](https://verl.readthedocs.io/en/latest/start/quickstart.html) for instructions.
-*   > [!WARNING]
-    > **Data Path Alignment for walkthrough script**: Our example training scripts contain hardcoded paths (e.g., `/home/ray/data/...`). You must ensure your preprocessed data is mounted/copied to this exact path on the workers, or edit the path variables at the top of the scripts before running them.
+> [!WARNING]
+> **Data Path Alignment for walkthrough script**: Our example training scripts contain hardcoded paths (e.g., `/home/ray/data/...`). You must ensure your preprocessed data is mounted/copied to this exact path on the workers, or edit the path variables at the top of the scripts before running them.
 
 ---
 
@@ -133,16 +133,15 @@ Ensure you are in the directory containing your configured [runtime-env.yaml](./
             +actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager \
             actor_rollout_ref.rollout.disable_log_stats=False
     ```
-    > [!IMPORTANT]
-    > **Required Flags for your own scripts**:
-    > If you are writing your own training script, you **must** pass the following flags to `python3 -m verl.trainer.main_ppo` for the integration to function:
-    > 
-    > *   `+actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager`
-    >     *   *Purpose*: Registers our custom scheduler hook with veRL.
-    > *   `actor_rollout_ref.rollout.disable_log_stats=False`
-    >     *   *Purpose*: Enables logging of statistics necessary for metrics parsing.
-    > *   `actor_rollout_ref.rollout.prometheus.enable=True` (**SGLang Only**)
-    >     *   *Purpose*: Required for SGLang to enable the Prometheus metrics endpoint. Without this, the scheduler     cannot retrieve backend stats.
+> [!IMPORTANT]
+> **Required Flags for your own scripts**:
+> If you are writing your own training script, you **must** pass the following flags to `python3 -m verl.trainer.main_ppo` for the integration to function:
+> *   `+actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager`
+>     *   *Purpose*: Registers our custom scheduler hook with veRL.
+> *   `actor_rollout_ref.rollout.disable_log_stats=False`
+>     *   *Purpose*: Enables logging of statistics necessary for metrics parsing.
+> *   `actor_rollout_ref.rollout.prometheus.enable=True` (**SGLang Only**)
+>     *   *Purpose*: Required for SGLang to enable the Prometheus metrics endpoint. Without this, the scheduler     cannot retrieve backend stats.
 
 *   **Walkthrough Example (Optional)**:
     Submit the job by pointing to one of our pre-configured shell scripts (which already include the required flags):
@@ -153,8 +152,8 @@ Ensure you are in the directory containing your configured [runtime-env.yaml](./
         -- bash integration/verl/examples/run_qwen2_5-32b_math.sh
     ```
     *(Replace `run_qwen2_5-32b_math.sh` with `run_qwen2_5-32b_math_sglang.sh` if using the SGLang backend).*
-    > [!WARNING]
-    > **Resource Alignment**: If you're following walkthrough example, ensure the resource allocation flags in your training script (e.g., `trainer.n_gpus_per_node`, `trainer.nnodes`, and `tensor_model_parallel_size`) exactly match your Ray cluster's physical resources. Mismatches will cause the job to hang indefinitely in Ray or fail with OOMs.
+> [!WARNING]
+> **Resource Alignment**: If you're following walkthrough example, ensure the resource allocation flags in your training script (e.g., `trainer.n_gpus_per_node`, `trainer.nnodes`, and `tensor_model_parallel_size`) exactly match your Ray cluster's physical resources. Mismatches will cause the job to hang indefinitely in Ray or fail with OOMs.
 
 ---
 
