@@ -91,6 +91,8 @@ If you want to customize the scheduler settings in a VM-based cluster:
 *   **Update [runtime-env.yaml](./examples/runtime-env.yaml)** to use your local directory as the `working_dir` (using `.`):
     ```yaml
     working_dir: "." # Packages the local repo root when submitted from there
+    pip:
+      - "verl==0.7.1"
     env_vars:
       PYTHONPATH: "."
       PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
@@ -99,7 +101,7 @@ If you want to customize the scheduler settings in a VM-based cluster:
 *   **Submit the job from the repository root** (see Section 3). Running from the root with `working_dir: "."` ensures Ray packages the entire repository (including the `scheduling` source code and your modified config), preventing import errors on the workers.
 
 > [!TIP]
-> **Designing Custom Profiles**: To learn more about the available scorers , filters, pickers, and flow-control plugins you can use to customize your scheduling policies, refer to the comprehensive [Scheduler Customization Guide](../../docs/scheduler_customization.md).
+> **Designing Custom Profiles**: To learn more about the available scorers, filters, pickers, and flow-control plugins you can use to customize your scheduling policies, refer to the comprehensive [Scheduler Customization Guide](../../docs/scheduler_customization.md).
 
 ---
 
