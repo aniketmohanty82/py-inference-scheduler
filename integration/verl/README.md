@@ -141,7 +141,7 @@ Ensure you are in the directory containing your configured [runtime-env.yaml](./
 > *   `actor_rollout_ref.rollout.disable_log_stats=False`
 >     *   *Purpose*: Enables logging of statistics necessary for metrics parsing.
 > *   `actor_rollout_ref.rollout.prometheus.enable=True` (**SGLang Only**)
->     *   *Purpose*: Required for SGLang to enable the Prometheus metrics endpoint. Without this, the scheduler     cannot retrieve backend stats.
+>     *   *Purpose*: Required for SGLang to enable the Prometheus metrics endpoint. Without this, the scheduler cannot retrieve backend stats.
 
 *   **Walkthrough Example (Optional)**:
     Submit the job by pointing to one of our pre-configured shell scripts (which already include the required flags):
