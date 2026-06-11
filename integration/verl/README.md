@@ -120,7 +120,7 @@ Ensure your Ray cluster is running, then establish connection:
     ```
 
 ### Submission Commands
-Ensure you are in the directory containing your configured [runtime-env.yaml](./examples/runtime-env.yaml) (or the repo root if using Path C).
+Ensure you are in the directory containing your configured [runtime-env.yaml](./examples/runtime-env.yaml) (or the repository root if using `working_dir: "."`).
 
 *   **Your own Training Script**:
     Submit your job by pointing to your custom Python script and passing the required integration flags:
