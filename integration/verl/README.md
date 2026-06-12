@@ -77,7 +77,7 @@ If you want to customize the scheduler settings on K8s:
 *   **Update [runtime-env.yaml](./examples/runtime-env.yaml)**: You **must** change `ROUTER_CONFIG_PATH` to the absolute mount path:
     ```yaml
     env_vars:
-      ROUTER_CONFIG_PATH: "/etc/scheduler/scheduler.yaml" # Absolute path to K8s mount
+      ROUTER_CONFIG_PATH: "/etc/scheduler/scheduler.yaml" # Absolute path to K8s mount, or wherever your scheduler config resides
     ```
 
 ### Custom Configuration on VMs (Non-K8s)
