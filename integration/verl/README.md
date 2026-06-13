@@ -1,10 +1,10 @@
-# veRL Integration with py-inference-scheduler
+# verl Integration with py-inference-scheduler
 
 ## Compatibility Notice
 
-**This integration is designed specifically for [vERL v0.7.1](https://github.com/volcengine/verl/releases/tag/v0.7.1).** 
+**This integration is designed specifically for [verl v0.7.1](https://github.com/volcengine/verl/releases/tag/v0.7.1).** 
 
-It utilizes internal API signatures (such as `load_balancer_handle` and specific `_acquire_server` patterns) that were introduced or modified in this release. It is **not backwards compatible** with earlier versions of vERL and may require updates for future releases.
+It utilizes internal API signatures (such as `load_balancer_handle` and specific `_acquire_server` patterns) that were introduced or modified in this release. It is **not backwards compatible** with earlier versions of verl and may require updates for future releases.
 
 ## Architecture
 
@@ -24,10 +24,10 @@ Before integrating the scheduler, you must set up a Ray cluster and ensure speci
 
 ### Environment & Images
 *   **Ray Cluster**: You must have a running Ray cluster. For setup instructions, refer to:
-    *   [veRL Installation Guide](https://verl.readthedocs.io/en/latest/start/install.html)
-    *   [veRL Multinode VM Setup](https://verl.readthedocs.io/en/latest/start/multinode.html)
-    *   [KubeRay veRL Post-Training Guide (K8s)](https://docs.ray.io/en/latest/cluster/kubernetes/examples/verl-post-training.html)
-*   **Supported Images**: We strongly recommend using the official pre-built veRL images, as they come pre-configured with all necessary dependencies:
+    *   [verl Installation Guide](https://verl.readthedocs.io/en/latest/start/install.html)
+    *   [verl Multinode VM Setup](https://verl.readthedocs.io/en/latest/start/multinode.html)
+    *   [KubeRay verl Post-Training Guide (K8s)](https://docs.ray.io/en/latest/cluster/kubernetes/examples/verl-post-training.html)
+*   **Supported Images**: We strongly recommend using the official pre-built verl images, as they come pre-configured with all necessary dependencies:
     *   **vLLM Backend**: `verlai/verl:vllm011.latest`
     *   **SGLang Backend**: `verlai/verl:sgl059.latest`
 > [!NOTE]
@@ -44,7 +44,7 @@ Before integrating the scheduler, you must set up a Ray cluster and ensure speci
 
 ### Dataset Preprocessing
 *   **Your own Training Script**: Ensure your own training dataset is preprocessed and stored in a location accessible by all Ray worker nodes (e.g., via a PVC, GCS bucket, or shared NFS).
-*   **Walkthrough Example (Optional)**: If you don't have a dataset and would like to follow along this integration with an example, you can use veRL's preprocessed GSM8K/MATH datasets. Refer to the [veRL Quickstart Data Preparation](https://verl.readthedocs.io/en/latest/start/quickstart.html) for instructions.
+*   **Walkthrough Example (Optional)**: If you don't have a dataset and would like to follow along this integration with an example, you can use verl's preprocessed GSM8K/MATH datasets. Refer to the [verl Quickstart Data Preparation](https://verl.readthedocs.io/en/latest/start/quickstart.html) for instructions.
 > [!WARNING]
 > **Data Path Alignment for walkthrough script**: Our example training scripts contain hardcoded paths (e.g., `/home/ray/data/...`). You must ensure your preprocessed data is mounted/copied to this exact path on the workers, or edit the path variables at the top of the scripts before running them.
 
@@ -139,7 +139,7 @@ Ensure you are in the directory containing your configured [runtime-env.yaml](./
 > **Required Flags for your own scripts**:
 > If you are writing your own training script, you **must** pass the following flags to `python3 -m verl.trainer.main_ppo` for the integration to function:
 > *   `+actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager`
->     *   *Purpose*: Registers our custom scheduler hook with veRL.
+>     *   *Purpose*: Registers our custom scheduler hook with verl.
 > *   `actor_rollout_ref.rollout.disable_log_stats=False`
 >     *   *Purpose*: Enables logging of statistics necessary for metrics parsing.
 > *   `actor_rollout_ref.rollout.prometheus.enable=True` (**SGLang Only**)
@@ -167,7 +167,7 @@ Once the job is submitted, you can monitor its progress:
 *   Check the **Jobs** tab and view the logs for your submission.
 *   If the scheduler is active and making decisions, you will see logs indicating config reloads (if modified) and routing decisions in the worker/driver logs.
 
-Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard (localhost:8265). veRL gives us output by step. Don't be concerned if you see `ppo` tags on the labels for the logs—veRL uses the same testing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer.
+Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard (localhost:8265). verl gives us output by step. Don't be concerned if you see `ppo` tags on the labels for the logs—veRL uses the same testing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer.
 
 Logs look as follows (from verl-vllm using gsm8k):
 
