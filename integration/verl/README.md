@@ -20,7 +20,7 @@ Key components:
 
 ## Prerequisites & Cluster Requirements (Step 1)
 
-Before integrating the scheduler, you must set up a Ray cluster and ensure specific infrastructure conditions are met.
+Before integrating the scheduler, you must set up a Ray cluster and ensure specific infrastructure conditions are met. If your cluster already satisfies the prerequisites and works with verl, skip to [Integration Configuration](#integration-configuration-step-2).
 
 ### Environment & Images
 *   **Ray Cluster**: You must have a running Ray cluster. For setup instructions, refer to:
@@ -132,8 +132,8 @@ Ensure you are in the directory containing your configured [runtime-env.yaml](./
         --runtime-env integration/verl/examples/runtime-env.yaml \
         -- python3 path/to/your/custom_training_script.py \
             --your-training-flags... \
-            +actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager \
-            actor_rollout_ref.rollout.disable_log_stats=False
+            actor_rollout_ref.rollout.disable_log_stats=False \
+            +actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager  # This override registers our custom scheduler hook with verl
     ```
 > [!IMPORTANT]
 > **Required Flags for your own scripts**:
@@ -167,7 +167,7 @@ Once the job is submitted, you can monitor its progress:
 *   Check the **Jobs** tab and view the logs for your submission.
 *   If the scheduler is active and making decisions, you will see logs indicating config reloads (if modified) and routing decisions in the worker/driver logs.
 
-Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard (localhost:8265). verl gives us output by step. Don't be concerned if you see `ppo` tags on the labels for the logs—veRL uses the same testing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer.
+Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard (localhost:8265). verl gives us output by step. Don't be concerned if you see `ppo` tags on the labels for the logs—veRL uses the same testing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer. Enabling the scheduler does not change verl's standard telemetry behavior - if you have your `WANDB_API_KEY` set, metrics will still populate in Weights & Biases as normal.
 
 Logs look as follows (from verl-vllm using gsm8k):
 
