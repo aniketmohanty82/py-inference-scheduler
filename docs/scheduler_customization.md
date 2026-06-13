@@ -10,17 +10,16 @@ The scheduler uses a modular pipeline to make routing decisions for each incomin
 
 ```mermaid
 graph TD
-    Request([Incoming Request]) --> Filter[1. Filters]
-    Filter --> Scorer[2. Scorers]
-    Scorer --> Picker[3. Picker]
-    Picker --> FlowControl[4. Flow Control]
-    FlowControl --> Route([Selected Replica])
+    Request([Incoming Request]) --> FlowControl[1. Flow Control]
+    FlowControl --> Filter[2. Filters]
+    Filter --> Scorer[3. Scorers]
+    Scorer --> Picker[4. Picker]
+    Picker --> Route([Selected Replica])
 ```
-
+*   **Flow Control**: Blocks or throttles routing to a replica that doesn't meet flow control policy.
 *   **Filters**: Eliminate replicas that do not meet hard constraints (e.g., matching model names, healthy status).
 *   **Scorers**: Assign a numerical score to each remaining replica. Multiple scorers can be combined with weights. The scheduler normalizes scores to `[0, 1]` before applying weights.
 *   **Picker**: Selects a single replica from the scored candidates. By default, it picks the highest-scoring replica.
-*   **Flow Control**: Acts as a final gatekeeper. It can temporarily block routing to a selected replica if doing so would cause saturation or preemption (mid-decoding drops).
 
 ---
 
@@ -69,7 +68,7 @@ profiles:
 
 ## 3. Built-in Plugin Reference
 
-### Profile Handlers
+### Profile Handlers (for P/D Disaggregation)
 Profile Handlers determine which profile(s) to run for a given request.
 *   **`single_profile`**: The default handler. It simply runs all defined profiles and returns the first one that successfully selects an endpoint.
 
@@ -96,7 +95,7 @@ Scorers assign scores to replicas. Multiple scorers are normalized and weighted.
     *   `max_prefix_blocks` (int, default: `256`): Max blocks to index.
     *   `lru_capacity_per_server` (int, default: `31250`): Cache capacity per replica.
 
-#### C. Generic Scorers
+#### C. Generic Scorers (for benchmarking against current RL sampling routing)
 *   **`round_robin`**: Cycles through replicas sequentially.
 *   **`constant`**: Assigns a static score to all replicas.
     *   `value` (float, required): The score to assign.
@@ -108,7 +107,7 @@ Pickers choose the final replica from the scored list.
     *   `max_num` (int, default: `1`): The size of the top-candidate pool to pick from.
 
 ### Flow Control (Gatekeeping)
-Flow control plugins prevent replica overload and mid-decoding preemptions.
+Flow control plugins prevent replica overload and mid-decoding preemptions by controlling the flow to affected replicas.
 *   **`kv_saturation`**: Estimates the KV cache impact of incoming requests. If routing a request to a replica would exceed its physical KV cache capacity (causing vLLM to preempt/drop other active requests), it blocks admission.
     *   `enable_drip` (bool, default: `false`): Enables slow "drip" admission when all replicas are saturated, rather than blocking completely.
     *   `drip_threshold_kv` (float, default: `0.1`): Max physical KV utilization for drip eligibility.
