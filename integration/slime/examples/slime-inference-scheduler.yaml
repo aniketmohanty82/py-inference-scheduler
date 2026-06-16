@@ -40,8 +40,10 @@ spec:
           - { containerPort: 8265, name: dashboard, protocol: TCP }
           - { containerPort: 10001, name: client, protocol: TCP }
           resources:
-            limits: { cpu: "4", memory: 16Gi }
-            requests: { cpu: "4", memory: 16Gi }
+            # default-pool nodes are ~3.9 CPU / ~13.6Gi allocatable; keep requests
+            # under that so the head schedules on a CPU node.
+            requests: { cpu: "2", memory: 8Gi }
+            limits: { cpu: "3", memory: 12Gi }
           volumeMounts:
           - { mountPath: /tmp/ray, name: ray-tmp }
         volumes:
