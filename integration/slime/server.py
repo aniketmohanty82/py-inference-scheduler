@@ -113,7 +113,11 @@ def create_app(scheduler: Scheduler) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        async with aiohttp.ClientSession() as session:
+        # aiohttp's default connector caps the (shared) session at 100 total connections
+        # and queues the rest, which throttles a rollout burst to ~100/num_engines in-flight.
+        # limit=0 removes the cap so requests fan out across all engines.
+        connector = aiohttp.TCPConnector(limit=0)
+        async with aiohttp.ClientSession(connector=connector) as session:
             app.state.http = session
             yield
 
