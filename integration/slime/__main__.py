@@ -39,7 +39,24 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000, help="bind port")
     parser.add_argument("--config", required=True, help="path to scheduler.yaml")
     parser.add_argument("--log-level", default="info", help="uvicorn/log level")
+    parser.add_argument(
+        "--proc-title",
+        default="router",
+        help="process title; keeps the router out of slime's `pkill -9 python` cleanup",
+    )
     args = parser.parse_args()
+
+    # slime's run scripts begin with `pkill -9 python` ("for rerun the task"), which would
+    # kill this router (a python process). Rename the process so that cleanup misses it —
+    # the same trick slime's own MilesRouter uses.
+    try:
+        import setproctitle
+
+        setproctitle.setproctitle(args.proc_title)
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "setproctitle not installed; router may be killed by slime's `pkill -9 python`"
+        )
 
     logging.basicConfig(level=args.log_level.upper())
 

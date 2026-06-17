@@ -34,6 +34,8 @@ dependencies = [
     "uvicorn>=0.20",
     "aiohttp>=3.9",
     "prometheus-client>=0.20",
+    # Renames the router process so slime's `pkill -9 python` cleanup doesn't kill it.
+    "setproctitle>=1.3",
 ]
 
 [dependency-groups]

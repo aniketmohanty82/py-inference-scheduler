@@ -21,40 +21,13 @@ metadata:
   namespace: default
 spec:
   rayVersion: "2.52.0"
+  # Single-node: the head IS the 8xH100 node. slime training + the SGLang rollout
+  # engines colocate here and model/data live in local /root, so there is no
+  # cross-pod shared-filesystem requirement. No worker group.
   headGroupSpec:
     rayStartParams:
-      num-cpus: "0"
-      num-gpus: "0"
-      dashboard-host: 0.0.0.0
-    template:
-      metadata:
-        annotations:
-          networking.gke.io/default-interface: eth0
-      spec:
-        containers:
-        - name: ray-head
-          image: slimerl/slime:v0.3.0
-          imagePullPolicy: IfNotPresent
-          ports:
-          - { containerPort: 6379, name: gcs, protocol: TCP }
-          - { containerPort: 8265, name: dashboard, protocol: TCP }
-          - { containerPort: 10001, name: client, protocol: TCP }
-          resources:
-            # default-pool nodes are ~3.9 CPU / ~13.6Gi allocatable; keep requests
-            # under that so the head schedules on a CPU node.
-            requests: { cpu: "2", memory: 8Gi }
-            limits: { cpu: "3", memory: 12Gi }
-          volumeMounts:
-          - { mountPath: /tmp/ray, name: ray-tmp }
-        volumes:
-        - { name: ray-tmp, emptyDir: {} }
-  workerGroupSpecs:
-  - replicas: 1
-    minReplicas: 1
-    maxReplicas: 1
-    groupName: gpu-group
-    rayStartParams:
       num-gpus: "8"
+      dashboard-host: 0.0.0.0
     template:
       metadata:
         annotations:
@@ -76,9 +49,13 @@ spec:
         nodeSelector:
           cloud.google.com/gke-nodepool: a3-gpu-pool
         containers:
-        - name: ray-worker
+        - name: ray-head
           image: slimerl/slime:v0.3.0
           imagePullPolicy: IfNotPresent
+          ports:
+          - { containerPort: 6379, name: gcs, protocol: TCP }
+          - { containerPort: 8265, name: dashboard, protocol: TCP }
+          - { containerPort: 10001, name: client, protocol: TCP }
           env:
           - name: HUGGING_FACE_HUB_TOKEN
             valueFrom:
@@ -98,6 +75,7 @@ spec:
         - { name: dshm, emptyDir: { medium: Memory } }
         - { name: nvidia, hostPath: { path: /home/kubernetes/bin/nvidia } }
         - { name: gib, hostPath: { path: /home/kubernetes/bin/gib } }
+  workerGroupSpecs: []
 ---
 # Router: standalone CPU process. initContainer clones the fork's slime-integration
 # branch; the main container pip-installs deps and runs `python -m integration.slime`.
