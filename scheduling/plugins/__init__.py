@@ -27,4 +27,5 @@ from .scorers import PrefixCacheScorer as PrefixCacheScorer
 from .scorers import QueueLengthScorer as QueueLengthScorer
 from .scorers import RoundRobinScorer as RoundRobinScorer
 from .scorers import RunningQueueScorer as RunningQueueScorer
+from .scorers import StickySessionScorer as StickySessionScorer
 from .scorers import WaitingQueueScorer as WaitingQueueScorer

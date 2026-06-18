@@ -40,6 +40,7 @@ from .plugins import (
 )
 from .plugins.scorers.generic import RoundRobinScorer
 from .plugins.scorers.prefix_plugin import PrefixCacheScorer
+from .plugins.scorers.sticky_session import StickySessionScorer
 
 __all__ = [
     "CycleState",
@@ -57,5 +58,6 @@ __all__ = [
     "SchedulerProfile",
     "SchedulingResult",
     "ScoredEndpoint",
+    "StickySessionScorer",
     "WaitingQueueScorer",
 ]
