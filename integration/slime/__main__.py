@@ -34,7 +34,7 @@ from scheduling.core.config import SchedulerConfig
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="py-inference-scheduler router for slime")
+    parser = argparse.ArgumentParser(description="sampling router for slime")
     parser.add_argument("--host", default="0.0.0.0", help="bind address")  # noqa: S104
     parser.add_argument("--port", type=int, default=8000, help="bind port")
     parser.add_argument("--config", required=True, help="path to scheduler.yaml")
@@ -47,11 +47,9 @@ def main() -> None:
     args = parser.parse_args()
 
     # slime's run scripts begin with `pkill -9 python` ("for rerun the task"), which would
-    # kill this router (a python process). Rename the process so that cleanup misses it —
-    # the same trick slime's own MilesRouter uses.
+    # kill this router (a python process). Renaming the process so that cleanup misses it
     try:
         import setproctitle
-
         setproctitle.setproctitle(args.proc_title)
     except ImportError:
         logging.getLogger(__name__).warning(
