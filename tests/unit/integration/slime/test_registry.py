@@ -18,7 +18,7 @@ from integration.slime.server import WorkerRegistry
 def test_add_assigns_id_and_lists_url_and_id():
     reg = WorkerRegistry()
     wid = reg.add("http://127.0.0.1:1000")
-    listed = reg.list()
+    listed = reg.list_workers_as_dicts()
     assert listed == [{"url": "http://127.0.0.1:1000", "id": wid}]
 
 
@@ -27,14 +27,14 @@ def test_add_is_idempotent_per_url():
     first = reg.add("http://127.0.0.1:1000")
     second = reg.add("http://127.0.0.1:1000")
     assert first == second
-    assert len(reg.list()) == 1
+    assert len(reg.list_workers_as_dicts()) == 1
 
 
 def test_remove_by_id():
     reg = WorkerRegistry()
     wid = reg.add("http://127.0.0.1:1000")
     assert reg.remove(wid) is True
-    assert reg.list() == []
+    assert reg.list_workers_as_dicts() == []
     # removing again is a no-op
     assert reg.remove(wid) is False
 

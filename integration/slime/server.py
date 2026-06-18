@@ -37,9 +37,7 @@ _HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
 
 
 class WorkerRegistry:
-    """
-    In-memory directory of registered SGLang workers.
-    """
+    """In-memory directory of registered SGLang workers."""
 
     def __init__(self) -> None:
         self._by_id: dict[str, Endpoint] = {}
@@ -64,7 +62,7 @@ class WorkerRegistry:
         self._url_to_id.pop(str(ep.attributes.get("url")), None)
         return True
 
-    def list(self) -> list[dict[str, str]]:
+    def list_workers_as_dicts(self) -> list[dict[str, str]]:
         return [{"url": str(ep.attributes["url"]), "id": ep.name} for ep in self._by_id.values()]
 
     def endpoints(self) -> list[Endpoint]:
@@ -72,7 +70,7 @@ class WorkerRegistry:
 
 
 def _safe_json(raw: bytes) -> dict:
-    """Parse request bytes into a dict, returning {} on empty/invalid/non-dict input (never raises)."""
+    """Parse request bytes to a dict; {} if empty/invalid/non-dict (never raises)."""
     if not raw:
         return {}
     try:
@@ -98,7 +96,7 @@ def create_app(scheduler: Scheduler) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # limit=0 removes aiohttp's default 100-connection cap so requests fan out across all engines.
+        # limit=0 removes aiohttp's default 100-connection cap so requests fan out across engines.
         connector = aiohttp.TCPConnector(limit=0)
         async with aiohttp.ClientSession(connector=connector) as session:
             app.state.http = session
@@ -119,7 +117,7 @@ def create_app(scheduler: Scheduler) -> FastAPI:
 
     @app.get("/workers")
     async def list_workers() -> JSONResponse:
-        return JSONResponse(content={"workers": registry.list()})
+        return JSONResponse(content={"workers": registry.list_workers_as_dicts()})
 
     @app.delete("/workers/{worker_id}")
     async def delete_worker(worker_id: str) -> JSONResponse:
@@ -150,7 +148,7 @@ def create_app(scheduler: Scheduler) -> FastAPI:
             inflight.increment(winner.name)
 
         worker_url = str(winner.attributes["url"])
-        # Forward the client's headers to the worker, minus per-connection (hop-by-hop) ones aiohttp resets itself.
+        # Forward client headers to the worker, minus hop-by-hop ones aiohttp resets itself.
         fwd_headers = {
             k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP
         }
