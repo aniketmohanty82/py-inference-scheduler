@@ -37,7 +37,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="sampling router for slime")
     parser.add_argument("--host", default="0.0.0.0", help="bind address")  # noqa: S104
     parser.add_argument("--port", type=int, default=8000, help="bind port")
-    parser.add_argument("--config", required=True, help="path to scheduler.yaml")
+    parser.add_argument(
+        "--config",
+        default="integration/slime/examples/scheduler.yaml",
+        help="path to scheduler.yaml (defaults to the bundled config; run from the repo root)",
+    )
     parser.add_argument("--log-level", default="info", help="uvicorn/log level")
     parser.add_argument(
         "--proc-title",
