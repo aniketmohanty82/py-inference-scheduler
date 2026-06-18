@@ -12,16 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""External HTTP router for slime (v0.3.0), backed by ``scheduling.Scheduler``.
-
-slime skips launching its own sgl-router when ``--sglang-router-ip/port`` point
-here. Its engines then self-register and POST generations to us over the
-sgl-router ``/workers`` + ``/generate`` HTTP surface. This module exposes
-that surface and delegates the routing decision to the py-inference-scheduler
-engine. slime owns the rollout lifecycle (batching, partial rollout, aborts);
-the router only owns which worker serves this request.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -47,11 +37,8 @@ _HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
 
 
 class WorkerRegistry:
-    """In-memory directory of registered SGLang workers (the routing pool).
-
-    The engines (owned by slime) announce themselves via ``POST /workers``; the
-    router never creates or manages them, it only keeps their addresses so the
-    scheduler has candidates to choose from.
+    """
+    In-memory directory of registered SGLang workers.
     """
 
     def __init__(self) -> None:
@@ -85,6 +72,7 @@ class WorkerRegistry:
 
 
 def _safe_json(raw: bytes) -> dict:
+    """Parse request bytes into a dict, returning {} on empty/invalid/non-dict input (never raises)."""
     if not raw:
         return {}
     try:
@@ -103,27 +91,22 @@ def _routing_body(body: dict) -> object:
 
 
 def create_app(scheduler: Scheduler) -> FastAPI:
-    """Build the slime router FastAPI app around a configured ``Scheduler``."""
+    """Build the slime router FastAPI app around a configured Scheduler."""
     registry = WorkerRegistry()
     inflight = InflightStore()
-    # Serialises scheduling decisions so each request in slime's synchronous
-    # burst sees the prior request's inflight increment (and a fresh metrics
-    # scrape) instead of all piling onto one worker.
     scheduling_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # aiohttp's default connector caps the (shared) session at 100 total connections
-        # and queues the rest, which throttles a rollout burst to ~100/num_engines in-flight.
-        # limit=0 removes the cap so requests fan out across all engines.
+        # limit=0 removes aiohttp's default 100-connection cap so requests fan out across all engines.
         connector = aiohttp.TCPConnector(limit=0)
         async with aiohttp.ClientSession(connector=connector) as session:
             app.state.http = session
             yield
 
-    app = FastAPI(title="py-inference-scheduler (slime router)", lifespan=lifespan)
+    app = FastAPI(title="slime sampling router", lifespan=lifespan)
 
-    # ---- worker registry (sgl-router /workers API used by slime v0.3.0) ----
+    # worker registry
     @app.post("/workers")
     async def add_worker(request: Request) -> JSONResponse:
         body = _safe_json(await request.body())
@@ -145,7 +128,6 @@ def create_app(scheduler: Scheduler) -> FastAPI:
             return JSONResponse(content={"status": "success"})
         return JSONResponse(status_code=404, content={"status": "not_found"})
 
-    # ---- generation: the only scheduled endpoint ----
     @app.post("/generate")
     async def generate(request: Request) -> Response:
         raw = await request.body()
@@ -157,8 +139,8 @@ def create_app(scheduler: Scheduler) -> FastAPI:
 
         session: aiohttp.ClientSession = request.app.state.http
 
-        # Metrics scrape + scheduling happen ON the request path under a lock:
-        # slime fires the whole step as one synchronous burst
+        # Metrics scrape + scheduling happen ON the request path under a lock
+        # [check verl_hook.py:L90-95 for why they happen in the same task]
         async with scheduling_lock:
             await asyncio.gather(*[fetch_worker_metrics(ep, inflight, session) for ep in endpoints])
             selected = scheduler.run(llm_req, candidates=endpoints)
@@ -168,6 +150,7 @@ def create_app(scheduler: Scheduler) -> FastAPI:
             inflight.increment(winner.name)
 
         worker_url = str(winner.attributes["url"])
+        # Forward the client's headers to the worker, minus per-connection (hop-by-hop) ones aiohttp resets itself.
         fwd_headers = {
             k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP
         }
