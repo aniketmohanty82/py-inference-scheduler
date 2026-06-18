@@ -65,9 +65,11 @@ pip install fastapi uvicorn aiohttp prometheus-client pyyaml setproctitle
 Then start it:
 
 ```bash
-python -m integration.slime --host 0.0.0.0 --port 8000 \
-    --config integration/slime/examples/scheduler.yaml
+python -m integration.slime --host 0.0.0.0 --port 8000
 ```
+
+It uses the bundled `examples/scheduler.yaml` by default; pass `--config /path/to/your.yaml` to
+override with a custom policy.
 
 Then point slime at it — the **only** change to slime's launch is two flags:
 
