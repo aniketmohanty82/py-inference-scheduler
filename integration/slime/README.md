@@ -2,102 +2,111 @@
 
 ## Compatibility Notice
 
-**This integration targets [slime v0.3.0](https://github.com/THUDM/slime/releases/tag/v0.3.0)**
-(which ships `sgl-router 0.3.2`). It implements the modern sgl-router `/workers` HTTP
-surface that slime v0.3.0 actually emits; older sgl-router endpoints (`/add_worker`,
-`/list_workers`, `/remove_worker`) are intentionally not implemented.
+**This integration is designed specifically for [slime v0.3.0](https://github.com/THUDM/slime/releases/tag/v0.3.0).**
+
+slime v0.3.0 ships sgl-router 0.3.2, whose `/workers` HTTP API this integration implements; the
+older sgl-router endpoints (`/add_worker`, `/list_workers`, `/remove_worker`) are intentionally not
+implemented. It may require updates for other slime / sgl-router versions.
 
 ## Architecture
 
-slime normally launches its own `sgl-router` inside the training job and routes rollout
-traffic through it. When you set `--sglang-router-ip/--sglang-router-port`, slime **skips
-launching its own router** (`slime/ray/rollout.py`) and instead:
-
-- each SGLang engine self-registers with our router (`POST /workers`), and
-- the rollout fires generations at our router (`POST /generate`).
-
-We run as a **standalone HTTP process** that delegates the routing decision to the
-`py-inference-scheduler` engine (`scheduling/`). Unlike the verl integration, **no slime
-code is touched and nothing is injected into the slime image** — it's purely two CLI flags.
-
-slime owns the rollout lifecycle (batching, partial rollout, aborts — aborts go *directly*
-to the engines, not through us). The router only owns "which worker serves this request".
+slime manages its own SGLang rollout engines and, by default, launches its own sgl-router to load
+balance across them. When you set `--sglang-router-ip/--sglang-router-port`, slime skips that router
+and instead each engine self-registers with ours (`POST /workers`) and the rollout posts generations
+to it (`POST /generate`). On each request the router scrapes the engines' Prometheus `/metrics` and
+delegates the routing decision to the `py-inference-scheduler`. slime keeps
+full ownership of the rollout lifecycle; we only decide which engine serves each request.
 
 Key components:
-- [server.py](./server.py): the FastAPI app — worker registry + the scheduled `/generate` proxy.
-- [`__main__.py`](./__main__.py): `python -m integration.slime` launcher.
-- [`datalayer/metrics/slime/`](../../datalayer/metrics/slime): scrapes each worker's
-  Prometheus `/metrics` (parsed via `prometheus_client`) on the scheduling path.
-
-### Router HTTP surface (slime v0.3.0)
-| Endpoint | Caller | Purpose |
-|---|---|---|
-| `POST /workers` | engine → router | register `{ "url", "worker_type" }`; we assign an `id` |
-| `GET /workers` | engine / slime → router | list `{ "workers": [ { "url", "id" } ] }` |
-| `DELETE /workers/{id}` | engine → router | deregister by `id` |
-| `POST /generate` | slime rollout → router | scheduled, proxied to the chosen worker |
-
-The router also scrapes `GET {worker_url}/metrics` (router → engine) on the scheduling path.
+- [server.py](./server.py): the router — worker registry + the scheduled `/generate` proxy.
+- [`__main__.py`](./__main__.py): the `python -m integration.slime` launcher.
+- [`datalayer/metrics/slime/`](../../datalayer/metrics/slime): per-request Prometheus `/metrics` scrape.
 
 ---
 
-## Running a job
+## Prerequisites (Step 1)
 
-The only differences from a normal slime run are (1) starting this router first and
-(2) adding two flags. Everything else (Ray cluster, `train.py`, args) is unchanged.
+This integration follows and has been tested against slime's
+[Quick Start](https://github.com/THUDM/slime/blob/v0.3.0/docs/en/get_started/quick_start.md) guide. For all non scheduler integration steps, please follow the guide as directed below:
 
-### 1. Start the router (before submitting the slime job)
-On a host reachable from the Ray cluster (the head node is fine — CPU only), from the
-repository root (so `integration`/`datalayer`/`scheduling` are importable):
+| Task | slime Quick Start |
+|---|---|
+| Environment / image / install slime | [§ Basic Environment Setup — L6–L50](https://github.com/THUDM/slime/blob/v0.3.0/docs/en/get_started/quick_start.md#L6-L50) |
+| Download model + dataset | [§ Model and Dataset Download — L51–L67](https://github.com/THUDM/slime/blob/v0.3.0/docs/en/get_started/quick_start.md#L51-L67) |
+| Convert HF → Megatron checkpoint | [§ Model Weight Conversion — L68–L107](https://github.com/THUDM/slime/blob/v0.3.0/docs/en/get_started/quick_start.md#L68-L107) |
+
+> [!NOTE]
+> Rather than using the ```slimerl/slime:latest```image, we would prefer if you used ```slimerl/slime:v0.3.0``` image.
+
+
+## Integration Configuration (Step 2)
+
+The routing policy lives in [`examples/scheduler.yaml`](./examples/scheduler.yaml) (default
+`backpressure`: prefix-cache affinity + queue/KV-pressure load balancing). This project isn't
+packaged yet, so to customize it just **edit that file directly** inside your VM and restart the router. See the
+[Scheduler Customization Guide](../../docs/scheduler_customization.md) for the available scorers,
+pickers, and flow-control plugins.
+
+## Running a Training Job (Step 3)
+
+**Start the router** — CPU-only, from this repo's root (so that the required `integration` / `datalayer` /
+`scheduling` libraries import). It must be up **before** the slime job (engines register at boot), and it
+renames its process to `router` so slime's example scripts `pkill -9 python` cleanup won't kill it.
+The command is the same for single- and multi-node — run it on the single VM for single-node, or on
+**node 0 (the head)** for multi-node; `--host 0.0.0.0` makes it reachable both locally and from
+worker nodes.
+
+First install the router's dependencies into the pod (on top of the slime image):
+
+```bash
+pip install fastapi uvicorn aiohttp prometheus-client pyyaml setproctitle
+```
+
+Then start it:
+
 ```bash
 python -m integration.slime --host 0.0.0.0 --port 8000 \
     --config integration/slime/examples/scheduler.yaml
 ```
-Host, port, and config are all flags — change them inline as needed.
 
-### 2. Point slime at it
-Add to your slime `train.py` invocation (e.g. into `SGLANG_ARGS`):
+Then point slime at it — the **only** change to slime's launch is two flags:
+
+### Single node — [§ Training Script — L108–L115](https://github.com/THUDM/slime/blob/v0.3.0/docs/en/get_started/quick_start.md#L108-L115)
+
+Run `bash scripts/run-<model>.sh` as documented, adding two flags to its `SGLANG_ARGS`. The router
+and the engines run on the same VM, so the engines reach the router at `127.0.0.1`:
+
 ```bash
-    --sglang-router-ip   $ROUTER_HOST \
+    --sglang-router-ip   127.0.0.1
     --sglang-router-port 8000
 ```
-- **Single node / `--colocate`:** `--sglang-router-ip 127.0.0.1`.
-- **Multinode:** bind the router to `0.0.0.0` and pass the head node's IP.
 
-The router must be up before the job starts, because the engines register at boot.
+### Multi node — [§ Multi-Node Training — L551–L593](https://github.com/THUDM/slime/blob/v0.3.0/docs/en/get_started/quick_start.md#L551-L593)
 
-## Running on KubeRay (GKE)
-
-[examples/slime-inference-scheduler.yaml](./examples/slime-inference-scheduler.yaml) brings up
-a stock slime `RayCluster` (slime image, GPU workers) plus the router as a separate CPU-only
-`Deployment` + `ClusterIP Service`. The router pod clones this repo's `slime-integration`
-branch via an initContainer and `pip install`s its deps at startup (for releases, swap in a
-baked image and drop the initContainer).
+Follow the Ray cluster and `ray job submit` exactly as documented. Start the router on **node 0** (as
+above), and add the two flags to the `python3 train.py` args. Set `--sglang-router-ip` to the **head
+node's IP** (the same value you gave `ray start --head` as `${MASTER_ADDR}`), so engines on the
+worker nodes can reach it:
 
 ```bash
-# 1. publish the routing profile as a ConfigMap (separate from any verl one)
-kubectl create configmap slime-scheduler-config \
-    --from-file=scheduler.yaml=integration/slime/examples/scheduler.yaml
-
-# 2. bring up the cluster + router
-kubectl apply -f integration/slime/examples/slime-inference-scheduler.yaml
-
-# 3. submit the slime job (engines reach the router by Service DNS)
-kubectl port-forward svc/slime-inference-scheduler-head-svc 8265:8265 &
-export RAY_ADDRESS=http://127.0.0.1:8265
-ray job submit --address "$RAY_ADDRESS" -- \
-    python3 train.py ... \
-    --sglang-router-ip slime-router --sglang-router-port 8000
+   -- python3 train.py \
+   --... \                              # your normal Megatron/SGLang/slime args
+   --sglang-router-ip   ${MASTER_ADDR} \
+   --sglang-router-port 8000
 ```
 
-The router needs no GPU and scrapes engine `/metrics` + proxies `/generate` over the in-cluster
-pod network; the `RayCluster` carries **no** scheduler ConfigMap or metrics volume (unlike the
-verl manifest), since all of that is centralized in the router.
+## Verifying Results (Step 4)
 
-## Configuration
+The router prints its routing decisions to **stdout** — the terminal where you started it in Step 3.
+Watch that terminal for `Selected endpoint …` lines as the rollout flows through the scheduler. This shows the actual decisions made by the scheduler and metrics it uses to make them.
 
-The routing policy lives in [examples/scheduler.yaml](./examples/scheduler.yaml) — the same
-plugin profile format as the verl integration. The default `backpressure` profile combines
-prefix-cache affinity with queue/KV-pressure-aware load balancing. See the
-[Scheduler Customization Guide](../../docs/scheduler_customization.md) for the available
-scorers, pickers, and flow-control plugins.
+The scheduler's impact shows in slime's per-step `perf` line in the job log. This is what a step looks like:
+```
+perf 448: {'perf/step_time': 89.0, 'perf/train_wait_time': 74.8, 'perf/wait_time_ratio': 0.84, ...}
+```
+Use `perf/step_time` or `perf/train_wait_time` to see the scheduler's effect. `perf/step_time` is
+the entire step time; `perf/train_wait_time` is the entire non-training time within a step (rollout,
+weight sync, log-probs, etc.).
+
+For the actual sampling throughput, read the SGLang engine logs directly — each engine prints
+`gen throughput (token/s)`.
