@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Parse engine Prometheus ``/metrics`` payloads into routing stats.
-
-Uses the official ``prometheus_client`` text parser instead of regex so that
-labelled / multi-sample metrics are handled robustly. Currently used by the
-slime integration only; the verl path keeps its own regex parser for now.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -34,7 +27,6 @@ _SGLANG_METRICS = {
 
 
 def empty_sglang_stats() -> dict[str, Any]:
-    """Default routing stats when metrics are unavailable."""
     return {"num_waiting_reqs": 0, "num_running_reqs": 0, "kv": 0.0, "error": None}
 
 
@@ -53,7 +45,7 @@ def parse_sglang(text: str) -> dict[str, Any]:
         if not values:
             continue
         # A gauge may appear as several samples (multiprocess mode emits one per
-        # PID); for a single replica max() picks the real value over idle 0s.
+        # PID). For a single replica max() picks the real value over idle 0s.
         value = max(values)
         stats[key] = float(value) if key == "kv" else int(value)
     return stats

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Scrape SGLang worker ``/metrics`` for the slime external router."""
-
 from __future__ import annotations
 
 import logging
@@ -31,7 +29,6 @@ logger = logging.getLogger(__name__)
 async def scrape_sglang_metrics(
     worker_url: str, session: aiohttp.ClientSession, timeout: float = 5.0
 ) -> dict[str, Any]:
-    """GET ``{worker_url}/metrics`` and parse it into SGLang routing stats."""
     url = f"{worker_url}/metrics"
     try:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as response:
@@ -50,7 +47,6 @@ async def scrape_sglang_metrics(
 async def fetch_worker_metrics(
     ep: Endpoint, inflight_store: InflightStore, session: aiohttp.ClientSession
 ) -> None:
-    """Scrape one worker's metrics and update its endpoint attributes in place."""
     url = ep.attributes.get("url")
     if not url:
         return
