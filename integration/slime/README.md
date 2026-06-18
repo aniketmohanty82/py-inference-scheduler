@@ -19,8 +19,8 @@ full ownership of the rollout lifecycle; we only decide which engine serves each
 
 Key components:
 - [server.py](./server.py): the router — worker registry + the scheduled `/generate` proxy.
-- [`__main__.py`](./__main__.py): the `python -m integration.slime` launcher.
-- [`datalayer/metrics/slime/`](../../datalayer/metrics/slime): per-request Prometheus `/metrics` scrape.
+- [__main__.py](./__main__.py): the `python -m integration.slime` launcher.
+- [datalayer/metrics/slime/](../../datalayer/metrics/slime): per-request Prometheus `/metrics` scrape.
 
 ---
 
