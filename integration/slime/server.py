@@ -98,7 +98,9 @@ def create_app(scheduler: Scheduler) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # limit=0 removes aiohttp's default 100-connection cap so requests fan out across engines.
         connector = aiohttp.TCPConnector(limit=0)
-        async with aiohttp.ClientSession(connector=connector) as session:
+        # total=None lifts aiohttp's default 300s cap per generation
+        timeout = aiohttp.ClientTimeout(total=None)
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             app.state.http = session
             yield
 
