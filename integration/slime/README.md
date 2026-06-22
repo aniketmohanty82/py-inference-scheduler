@@ -49,20 +49,21 @@ pickers, and flow-control plugins.
 
 ## Running a Training Job (Step 3)
 
-**Start the router** — CPU-only, from this repo's root (so that the required `integration` / `datalayer` /
-`scheduling` libraries import). It must be up **before** the slime job (engines register at boot), and it
+First, clone this repo onto the VM (the head node for multi-node) and install the router's
+dependencies on top of the slime image:
+
+```bash
+git clone https://github.com/llm-d-incubation/py-inference-scheduler.git
+cd py-inference-scheduler
+pip install fastapi uvicorn aiohttp prometheus-client pyyaml setproctitle
+```
+
+**Start the router** — CPU-only, run from the repo root (so `integration` / `datalayer` /
+`scheduling` import). It must be up **before** the slime job (engines register at boot), and it
 renames its process to `router` so slime's example scripts `pkill -9 python` cleanup won't kill it.
 The command is the same for single- and multi-node — run it on the single VM for single-node, or on
 **node 0 (the head)** for multi-node; `--host 0.0.0.0` makes it reachable both locally and from
 worker nodes.
-
-First install the router's dependencies into the pod (on top of the slime image):
-
-```bash
-pip install fastapi uvicorn aiohttp prometheus-client pyyaml setproctitle
-```
-
-Then start it:
 
 ```bash
 python -m integration.slime --host 0.0.0.0 --port 8000
