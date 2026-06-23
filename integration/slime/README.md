@@ -103,13 +103,15 @@ worker nodes can reach it:
 The router prints its routing decisions to **stdout** — the terminal where you started it in Step 3.
 Watch that terminal for `Selected endpoint …` lines as the rollout flows through the scheduler. This shows the actual decisions made by the scheduler and metrics it uses to make them.
 
-The scheduler's impact shows in slime's per-step `perf` line in the job log. This is what a step looks like:
+The scheduler's impact shows in the per-step `perf` line in the slime job log. The router only affects the
+**rollout** (generation) phase, so the rollout perf metrics are the most direct signals:
 ```
-perf 448: {'perf/step_time': 89.0, 'perf/train_wait_time': 74.8, 'perf/wait_time_ratio': 0.84, ...}
+perf 9: {'perf/rollout_time': 91.3, 'perf/tokens_per_gpu_per_sec': 2381.1, 'perf/longest_sample_tokens_per_sec': 89.7, ...}
 ```
-Use `perf/step_time` or `perf/train_wait_time` to see the scheduler's effect. `perf/step_time` is
-the entire step time; `perf/train_wait_time` is the entire non-training time within a step (rollout,
-weight sync, log-probs, etc.).
-
-For the actual sampling throughput, read the SGLang engine logs directly — each engine prints
-`gen throughput (token/s)`.
+- `perf/rollout_time` — wall-clock time for the rollout to complete (**lower is better**). The
+  headline number: better routing finishes the rollout faster.
+- `perf/tokens_per_gpu_per_sec` — aggregate generation throughput per GPU over the rollout
+  (**higher is better**).
+- `perf/longest_sample_tokens_per_sec` - the effective throughput of the longest (tail) sample.
+  The rollout is gated by its slowest sample, so this rises when the router cuts contention/queuing 
+  on the bottleneck (**higher is better**).
