@@ -12,13 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+main router logic is implemented in slime's server.
+this is used by miles and called by vime
+"""
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import aiohttp
@@ -33,8 +38,12 @@ from scheduling.framework import Endpoint, LLMRequest
 logger = logging.getLogger(__name__)
 
 # Headers that must not be forwarded verbatim when proxying to a worker.
-_HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
+HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
 
+# A metrics-scrape coroutine: populate ep.attributes from the worker's /metrics.
+FetchMetrics = Callable[[Endpoint, InflightStore, aiohttp.ClientSession], Awaitable[None]]
+# Returns the prompt the scheduler routes on (token ids or text) from a parsed request body.
+RoutingBody = Callable[[dict], object]
 
 class WorkerRegistry:
     """In-memory directory of registered SGLang workers."""
@@ -68,8 +77,7 @@ class WorkerRegistry:
     def endpoints(self) -> list[Endpoint]:
         return list(self._by_id.values())
 
-
-def _safe_json(raw: bytes) -> dict:
+def safe_json(raw: bytes) -> dict:
     """Parse request bytes to a dict; {} if empty/invalid/non-dict (never raises)."""
     if not raw:
         return {}
@@ -78,6 +86,68 @@ def _safe_json(raw: bytes) -> dict:
     except ValueError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Shared aiohttp session: unbounded connections + no per-request timeout."""
+    # limit=0 removes aiohttp's default 100-connection cap so requests fan out across engines.
+    connector = aiohttp.TCPConnector(limit=0)
+    # total=None lifts aiohttp's default 300s cap per generation
+    timeout = aiohttp.ClientTimeout(total=None)
+    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        app.state.http = session
+        yield
+
+async def schedule_and_proxy(  # noqa: PLR0913
+    request: Request,
+    *,
+    registry: WorkerRegistry,
+    inflight: InflightStore,
+    scheduling_lock: asyncio.Lock,
+    scheduler: Scheduler,
+    fetch_metrics: FetchMetrics,
+    routing_body: RoutingBody,
+    generate_path: str,
+) -> Response:
+    """Scrape metrics under a lock, pick a worker, and proxy the request to it.
+
+    Engine-neutral: the caller supplies its own ``fetch_metrics`` scrape,
+    ``routing_body`` extractor, and ``generate_path`` (also the worker sub-path).
+    """
+    raw = await request.body()
+    llm_req = LLMRequest(request_id=uuid.uuid4().hex, body=routing_body(safe_json(raw)))
+
+    endpoints = registry.endpoints()
+    if not endpoints:
+        return JSONResponse(status_code=503, content={"error": "no workers registered"})
+
+    session: aiohttp.ClientSession = request.app.state.http
+
+    # Metrics scrape + scheduling happen ON the request path under a lock
+    # [check verl_hook.py:L90-95 for why they happen in the same task]
+    async with scheduling_lock:
+        await asyncio.gather(*[fetch_metrics(ep, inflight, session) for ep in endpoints])
+        selected = scheduler.run(llm_req, candidates=endpoints)
+        if not selected:
+            return JSONResponse(status_code=503, content={"error": "no worker selected"})
+        winner = selected[0].endpoint
+        inflight.increment(winner.name)
+
+    worker_url = str(winner.attributes["url"])
+    # Forward client headers to the worker, minus hop-by-hop ones aiohttp resets itself.
+    fwd_headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP}
+    try:
+        async with session.post(
+            f"{worker_url}{generate_path}", data=raw, headers=fwd_headers
+        ) as resp:
+            content = await resp.read()
+            media_type = resp.headers.get("content-type", "application/json")
+            return Response(content=content, status_code=resp.status, media_type=media_type)
+    except Exception:
+        logger.exception("Proxy to worker %s failed", worker_url)
+        return JSONResponse(status_code=502, content={"error": "worker request failed"})
+    finally:
+        inflight.decrement(winner.name)
 
 
 def _routing_body(body: dict) -> object:
@@ -94,22 +164,12 @@ def create_app(scheduler: Scheduler) -> FastAPI:
     inflight = InflightStore()
     scheduling_lock = asyncio.Lock()
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # limit=0 removes aiohttp's default 100-connection cap so requests fan out across engines.
-        connector = aiohttp.TCPConnector(limit=0)
-        # total=None lifts aiohttp's default 300s cap per generation
-        timeout = aiohttp.ClientTimeout(total=None)
-        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-            app.state.http = session
-            yield
-
     app = FastAPI(title="slime sampling router", lifespan=lifespan)
 
     # worker registry
     @app.post("/workers")
     async def add_worker(request: Request) -> JSONResponse:
-        body = _safe_json(await request.body())
+        body = safe_json(await request.body())
         url = body.get("url")
         if not url:
             return JSONResponse(status_code=400, content={"error": "missing 'url'"})
@@ -130,41 +190,15 @@ def create_app(scheduler: Scheduler) -> FastAPI:
 
     @app.post("/generate")
     async def generate(request: Request) -> Response:
-        raw = await request.body()
-        llm_req = LLMRequest(request_id=uuid.uuid4().hex, body=_routing_body(_safe_json(raw)))
-
-        endpoints = registry.endpoints()
-        if not endpoints:
-            return JSONResponse(status_code=503, content={"error": "no workers registered"})
-
-        session: aiohttp.ClientSession = request.app.state.http
-
-        # Metrics scrape + scheduling happen ON the request path under a lock
-        # [check verl_hook.py:L90-95 for why they happen in the same task]
-        async with scheduling_lock:
-            await asyncio.gather(*[fetch_worker_metrics(ep, inflight, session) for ep in endpoints])
-            selected = scheduler.run(llm_req, candidates=endpoints)
-            if not selected:
-                return JSONResponse(status_code=503, content={"error": "no worker selected"})
-            winner = selected[0].endpoint
-            inflight.increment(winner.name)
-
-        worker_url = str(winner.attributes["url"])
-        # Forward client headers to the worker, minus hop-by-hop ones aiohttp resets itself.
-        fwd_headers = {
-            k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP
-        }
-        try:
-            async with session.post(
-                f"{worker_url}/generate", data=raw, headers=fwd_headers
-            ) as resp:
-                content = await resp.read()
-                media_type = resp.headers.get("content-type", "application/json")
-                return Response(content=content, status_code=resp.status, media_type=media_type)
-        except Exception:
-            logger.exception("Proxy to worker %s failed", worker_url)
-            return JSONResponse(status_code=502, content={"error": "worker request failed"})
-        finally:
-            inflight.decrement(winner.name)
+        return await schedule_and_proxy(
+            request,
+            registry=registry,
+            inflight=inflight,
+            scheduling_lock=scheduling_lock,
+            scheduler=scheduler,
+            fetch_metrics=fetch_worker_metrics,
+            routing_body=_routing_body,
+            generate_path="/generate",
+        )
 
     return app
