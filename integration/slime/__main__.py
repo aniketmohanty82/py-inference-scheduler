@@ -17,6 +17,9 @@
     python -m integration.slime --host 0.0.0.0 --port 8000 --config scheduler.yaml
 
 Then point slime at it with ``--sglang-router-ip <host> --sglang-router-port 8000``.
+
+``run`` is the engine-neutral launcher (arg parsing, setproctitle, config load,
+uvicorn); forks (vime, miles) call it with their own ``create_app``.
 """
 
 from __future__ import annotations
@@ -24,40 +27,49 @@ from __future__ import annotations
 import argparse
 import logging
 import pathlib
+from collections.abc import Callable
 
 import uvicorn
 import yaml
+from fastapi import FastAPI
 
 from integration.slime.server import create_app
 from scheduling import Scheduler
 from scheduling.core.config import SchedulerConfig
 
+_DEFAULT_CONFIG = "integration/slime/examples/scheduler.yaml"
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="sampling router for slime")
+def run(
+    create_app: Callable[[Scheduler], FastAPI],
+    *,
+    description: str,
+    framework: str,
+    default_config: str = _DEFAULT_CONFIG,
+) -> None:
+    parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--host", default="0.0.0.0", help="bind address")  # noqa: S104
     parser.add_argument("--port", type=int, default=8000, help="bind port")
     parser.add_argument(
         "--config",
-        default="integration/slime/examples/scheduler.yaml",
+        default=default_config,
         help="path to scheduler.yaml (defaults to the bundled config; run from the repo root)",
     )
     parser.add_argument("--log-level", default="info", help="uvicorn/log level")
     parser.add_argument(
         "--proc-title",
         default="router",
-        help="process title; keeps the router out of slime's `pkill -9 python` cleanup",
+        help=f"process title; keeps the router out of {framework}'s `pkill -9 python` cleanup",
     )
     args = parser.parse_args()
 
-    # slime's run scripts begin with `pkill -9 python` ("for rerun the task"), which would
-    # kill this router (a python process). Renaming the process so that cleanup misses it
+    # These frameworks' run scripts begin with `pkill -9 python` ("for rerun the task"), which
+    # would kill this router (a python process). Renaming the process so that cleanup misses it.
     try:
         import setproctitle
         setproctitle.setproctitle(args.proc_title)
     except ImportError:
         logging.getLogger(__name__).warning(
-            "setproctitle not installed; router may be killed by slime's `pkill -9 python`"
+            "setproctitle not installed; router may be killed by %s's `pkill -9 python`", framework
         )
 
     logging.basicConfig(level=args.log_level.upper())
@@ -70,6 +82,8 @@ def main() -> None:
     app = create_app(Scheduler.new_with_config(config))
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
 
+def main() -> None:
+    run(create_app, description="sampling router for slime", framework="slime")
 
 if __name__ == "__main__":
     main()
