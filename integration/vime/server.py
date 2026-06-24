@@ -58,7 +58,7 @@ class VimeWorkerRegistry(WorkerRegistry):
 
 
 def _routing_body(body: dict) -> object:
-    """Obtain prompt token_ids from the generate payload for prefix cache routing"""
+    """Obtain prompt token_ids from the generate payload for prefix cache routing."""
     return body.get("token_ids", [])
 
 
