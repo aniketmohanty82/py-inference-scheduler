@@ -29,6 +29,7 @@ from scheduling.core.config import SchedulerConfig
 
 _DEFAULT_CONFIG = "integration/slime/examples/scheduler.yaml"
 
+
 def run(
     create_app: Callable[[Scheduler], FastAPI],
     *,
