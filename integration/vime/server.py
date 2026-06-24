@@ -12,16 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""vime router (vLLM dialect).
-
-vime is a fork of slime that swaps the rollout backend to vLLM + vllm-router.
-The engine-neutral router machinery is reused from ``integration.slime.server``
-(``safe_json``, ``lifespan``, ``schedule_and_proxy``, the base ``WorkerRegistry``);
-everything vLLM-specific lives here: deregistration by url + ``/list_workers``,
-the ``token_ids`` routing key, the ``/inference/v1/generate`` endpoint, and the
-vLLM Prometheus scrape.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -36,15 +26,12 @@ from datalayer.metrics.vime.vllm import fetch_worker_metrics
 from integration.slime.server import (
     WorkerRegistry,
     lifespan,
-    safe_json,
+    register_worker_routes,
     schedule_and_proxy,
 )
 from scheduling import Scheduler
 
 logger = logging.getLogger(__name__)
-
-# vime's rollout posts generation here; the engine serves the same path.
-_GENERATE_PATH = "/inference/v1/generate"
 
 
 class VimeWorkerRegistry(WorkerRegistry):
@@ -71,7 +58,7 @@ class VimeWorkerRegistry(WorkerRegistry):
 
 
 def _routing_body(body: dict) -> object:
-    """Return the token ids vime routes on (the /inference/v1/generate payload)."""
+    """Obtain prompt token_ids from the generate payload for prefix cache routing"""
     return body.get("token_ids", [])
 
 
@@ -83,19 +70,8 @@ def create_app(scheduler: Scheduler) -> FastAPI:
 
     app = FastAPI(title="vime sampling router", lifespan=lifespan)
 
-    @app.post("/workers")
-    async def add_worker(request: Request) -> JSONResponse:
-        body = safe_json(await request.body())
-        url = body.get("url")
-        if not url:
-            return JSONResponse(status_code=400, content={"error": "missing 'url'"})
-        worker_id = registry.add(str(url), str(body.get("worker_type", "regular")))
-        logger.info("Registered worker %s -> %s", worker_id, url)
-        return JSONResponse(content={"status": "success", "id": worker_id, "url": url})
-
-    @app.get("/workers")
-    async def list_workers() -> JSONResponse:
-        return JSONResponse(content={"workers": registry.list_workers_as_dicts()})
+    # adds /workers endpoints
+    register_worker_routes(app, registry)
 
     @app.get("/list_workers")
     async def list_worker_urls() -> JSONResponse:
@@ -104,14 +80,14 @@ def create_app(scheduler: Scheduler) -> FastAPI:
 
     @app.delete("/workers/{worker_ref:path}")
     async def delete_worker(worker_ref: str) -> JSONResponse:
-        # vime deregisters by url-encoded url (vllm_engine.py); fall back to id.
+        # vime deregisters by the worker's (percent-encoded) url, not our id.
         ref = unquote(worker_ref)
         if registry.remove_by_url(ref) or registry.remove(ref):
             logger.info("Deregistered worker %s", ref)
             return JSONResponse(content={"status": "success"})
         return JSONResponse(status_code=404, content={"status": "not_found"})
 
-    @app.post(_GENERATE_PATH)
+    @app.post("/inference/v1/generate")
     async def generate(request: Request) -> Response:
         return await schedule_and_proxy(
             request,
@@ -121,7 +97,7 @@ def create_app(scheduler: Scheduler) -> FastAPI:
             scheduler=scheduler,
             fetch_metrics=fetch_worker_metrics,
             routing_body=_routing_body,
-            generate_path=_GENERATE_PATH,
+            generate_path="/inference/v1/generate",
         )
 
     return app

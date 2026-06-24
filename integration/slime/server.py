@@ -13,8 +13,9 @@
 # limitations under the License.
 
 """
-main router logic is implemented in slime's server.
-this is used by miles and called by vime
+Main router logic, implemented in slime's server.
+
+Used by miles and called by vime.
 """
 
 from __future__ import annotations
@@ -40,10 +41,11 @@ logger = logging.getLogger(__name__)
 # Headers that must not be forwarded verbatim when proxying to a worker.
 HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
 
-# A metrics-scrape coroutine: populate ep.attributes from the worker's /metrics.
+# populates ep.attributes from the worker's /metrics.
 FetchMetrics = Callable[[Endpoint, InflightStore, aiohttp.ClientSession], Awaitable[None]]
-# Returns the prompt the scheduler routes on (token ids or text) from a parsed request body.
+# Returns the prompt the scheduler routes on
 RoutingBody = Callable[[dict], object]
+
 
 class WorkerRegistry:
     """In-memory directory of registered SGLang workers."""
@@ -77,6 +79,7 @@ class WorkerRegistry:
     def endpoints(self) -> list[Endpoint]:
         return list(self._by_id.values())
 
+
 def safe_json(raw: bytes) -> dict:
     """Parse request bytes to a dict; {} if empty/invalid/non-dict (never raises)."""
     if not raw:
@@ -86,6 +89,7 @@ def safe_json(raw: bytes) -> dict:
     except ValueError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -98,6 +102,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.http = session
         yield
 
+
 async def schedule_and_proxy(  # noqa: PLR0913
     request: Request,
     *,
@@ -109,11 +114,7 @@ async def schedule_and_proxy(  # noqa: PLR0913
     routing_body: RoutingBody,
     generate_path: str,
 ) -> Response:
-    """Scrape metrics under a lock, pick a worker, and proxy the request to it.
-
-    Engine-neutral: the caller supplies its own ``fetch_metrics`` scrape,
-    ``routing_body`` extractor, and ``generate_path`` (also the worker sub-path).
-    """
+    """Scrape metrics under a lock, pick a worker, and proxy the request to it."""
     raw = await request.body()
     llm_req = LLMRequest(request_id=uuid.uuid4().hex, body=routing_body(safe_json(raw)))
 
@@ -158,15 +159,7 @@ def _routing_body(body: dict) -> object:
     return body.get("text", "")
 
 
-def create_app(scheduler: Scheduler) -> FastAPI:
-    """Build the slime router FastAPI app around a configured Scheduler."""
-    registry = WorkerRegistry()
-    inflight = InflightStore()
-    scheduling_lock = asyncio.Lock()
-
-    app = FastAPI(title="slime sampling router", lifespan=lifespan)
-
-    # worker registry
+def register_worker_routes(app: FastAPI, registry: WorkerRegistry) -> None:
     @app.post("/workers")
     async def add_worker(request: Request) -> JSONResponse:
         body = safe_json(await request.body())
@@ -180,6 +173,17 @@ def create_app(scheduler: Scheduler) -> FastAPI:
     @app.get("/workers")
     async def list_workers() -> JSONResponse:
         return JSONResponse(content={"workers": registry.list_workers_as_dicts()})
+
+
+def create_app(scheduler: Scheduler) -> FastAPI:
+    """Build the slime router FastAPI app around a configured Scheduler."""
+    registry = WorkerRegistry()
+    inflight = InflightStore()
+    scheduling_lock = asyncio.Lock()
+
+    app = FastAPI(title="slime sampling router", lifespan=lifespan)
+
+    register_worker_routes(app, registry)
 
     @app.delete("/workers/{worker_id}")
     async def delete_worker(worker_id: str) -> JSONResponse:
