@@ -35,11 +35,9 @@ non-scheduler steps, follow the guide as directed:
 | Convert HF → Megatron checkpoint | [Model Weight Conversion](https://github.com/vllm-project/vime/blob/v0.3.0/docs/en/get_started/quick_start.md#model-weight-conversion) |
 
 > [!NOTE]
-> The guide's model repo `zai-org/Qwen3-4B` is stale — use `Qwen/Qwen3-4B`.
-
-> [!NOTE]
-> Validated against **vime v0.3.0** (image `inferactinc/public:vime-latest`), **vLLM 0.23.0**, and
-> **vllm-router 0.1.14**. If you hit issues on a newer image, pin to these versions.
+> - The guide's model repo `zai-org/Qwen3-4B` is stale — use `Qwen/Qwen3-4B`.
+> - Validated against **vime v0.3.0** (image `inferactinc/public:vime-latest`), **vLLM 0.23.0**, and
+>   **vllm-router 0.1.14**. If you hit issues on a newer image, pin to these versions.
 
 ## Integration Configuration (Step 2)
 
