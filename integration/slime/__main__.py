@@ -12,16 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Launch the slime external router.
-
-    python -m integration.slime --host 0.0.0.0 --port 8000 --config scheduler.yaml
-
-Then point slime at it with ``--sglang-router-ip <host> --sglang-router-port 8000``.
-
-``run`` is the engine-neutral launcher (arg parsing, setproctitle, config load,
-uvicorn); forks (vime, miles) call it with their own ``create_app``.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -82,8 +72,10 @@ def run(
     app = create_app(Scheduler.new_with_config(config))
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
 
+
 def main() -> None:
     run(create_app, description="sampling router for slime", framework="slime")
+
 
 if __name__ == "__main__":
     main()

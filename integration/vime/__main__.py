@@ -12,15 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Launch the vime external router.
-
-    python -m integration.vime --host 0.0.0.0 --port 8000 --config scheduler.yaml
-
-Then point vime at it with ``--vllm-router-ip <host> --vllm-router-port 8000``.
-
-Reuses slime's engine-neutral ``run`` launcher with vime's ``create_app``.
-"""
-
 from __future__ import annotations
 
 from integration.slime.__main__ import run
