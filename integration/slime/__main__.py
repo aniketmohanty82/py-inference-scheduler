@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Launch the slime external router.
-
-    python -m integration.slime --host 0.0.0.0 --port 8000 --config scheduler.yaml
-
-Then point slime at it with ``--sglang-router-ip <host> --sglang-router-port 8000``.
-"""
-
 from __future__ import annotations
 
 import argparse
