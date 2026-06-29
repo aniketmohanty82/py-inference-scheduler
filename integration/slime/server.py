@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from datalayer.metrics.slime.sglang import fetch_worker_metrics
-from datalayer.metrics.verl.datastore import InflightStore
+from datalayer.metrics.datastore import InflightStore
 from scheduling import Scheduler
 from scheduling.framework import Endpoint, LLMRequest
 
