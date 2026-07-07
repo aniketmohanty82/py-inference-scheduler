@@ -34,6 +34,7 @@ class DirectKVCacheLogger(StatLoggerBase):
         self,
         scheduler_stats: object,
         iteration_stats: object,
+        mm_cache_stats: object = None,
         engine_idx: int = 0,
     ) -> None:
         if self.target_dict is not None and scheduler_stats is not None:
