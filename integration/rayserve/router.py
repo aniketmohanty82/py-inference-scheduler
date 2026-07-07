@@ -366,8 +366,8 @@ llm_config = LLMConfig(
     engine_kwargs=engine_kwargs,
     deployment_config={
         "autoscaling_config": {
-            "min_replicas": 1,
-            "max_replicas": 1,
+            "min_replicas": 3,
+            "max_replicas": 3,
         },
         "request_router_config": {
             # Note our custom IGWRouter here
