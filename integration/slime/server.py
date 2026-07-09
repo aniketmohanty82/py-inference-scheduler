@@ -12,12 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Main router logic, implemented in slime's server.
-
-Used by miles and called by vime.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -31,15 +25,15 @@ import aiohttp
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
+from datalayer.metrics.datastore import InflightStore
 from datalayer.metrics.slime.sglang import fetch_worker_metrics
-from datalayer.metrics.verl.datastore import InflightStore
 from scheduling import Scheduler
 from scheduling.framework import Endpoint, LLMRequest
 
 logger = logging.getLogger(__name__)
 
 # Headers that must not be forwarded verbatim when proxying to a worker.
-HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
+_HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
 
 # populates ep.attributes from the worker's /metrics.
 FetchMetrics = Callable[[Endpoint, InflightStore, aiohttp.ClientSession], Awaitable[None]]
@@ -80,7 +74,7 @@ class WorkerRegistry:
         return list(self._by_id.values())
 
 
-def safe_json(raw: bytes) -> dict:
+def _safe_json(raw: bytes) -> dict:
     """Parse request bytes to a dict; {} if empty/invalid/non-dict (never raises)."""
     if not raw:
         return {}
@@ -116,7 +110,7 @@ async def schedule_and_proxy(  # noqa: PLR0913
 ) -> Response:
     """Scrape metrics under a lock, pick a worker, and proxy the request to it."""
     raw = await request.body()
-    llm_req = LLMRequest(request_id=uuid.uuid4().hex, body=routing_body(safe_json(raw)))
+    llm_req = LLMRequest(request_id=uuid.uuid4().hex, body=routing_body(_safe_json(raw)))
 
     endpoints = registry.endpoints()
     if not endpoints:
@@ -136,7 +130,7 @@ async def schedule_and_proxy(  # noqa: PLR0913
 
     worker_url = str(winner.attributes["url"])
     # Forward client headers to the worker, minus hop-by-hop ones aiohttp resets itself.
-    fwd_headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP}
+    fwd_headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
     try:
         async with session.post(
             f"{worker_url}{generate_path}", data=raw, headers=fwd_headers
@@ -162,7 +156,7 @@ def _routing_body(body: dict) -> object:
 def register_worker_routes(app: FastAPI, registry: WorkerRegistry) -> None:
     @app.post("/workers")
     async def add_worker(request: Request) -> JSONResponse:
-        body = safe_json(await request.body())
+        body = _safe_json(await request.body())
         url = body.get("url")
         if not url:
             return JSONResponse(status_code=400, content={"error": "missing 'url'"})

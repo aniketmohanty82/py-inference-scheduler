@@ -19,8 +19,8 @@ from typing import Any
 
 import aiohttp
 
+from datalayer.metrics.datastore import InflightStore
 from datalayer.metrics.prometheus import empty_vllm_stats, parse_vllm
-from datalayer.metrics.verl.datastore import InflightStore
 from scheduling.framework import Endpoint
 
 logger = logging.getLogger(__name__)

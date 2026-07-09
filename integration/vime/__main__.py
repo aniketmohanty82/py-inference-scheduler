@@ -19,7 +19,7 @@ from integration.vime.server import create_app
 
 
 def main() -> None:
-    run(create_app, description="sampling router for vime", framework="vime")
+    run(create_app, description="sampling scheduler for vime", framework="vime")
 
 
 if __name__ == "__main__":

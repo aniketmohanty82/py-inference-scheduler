@@ -57,7 +57,7 @@ pip install fastapi uvicorn aiohttp prometheus-client pyyaml setproctitle
 ```
 
 **Start the router** — CPU-only, run from the repo root, before the vime job (engines register at boot). It
-renames its process to `router` so vime's run scripts' `pkill -9 python` cleanup won't kill it. For multi-node,
+renames its process to `scheduler` so vime's run scripts' `pkill -9 python` cleanup won't kill it. For multi-node,
 run it on **node 0 (the head)**; `--host 0.0.0.0` makes it reachable from worker nodes.
 
 ```bash

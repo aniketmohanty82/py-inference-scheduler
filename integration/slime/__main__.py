@@ -48,19 +48,20 @@ def run(
     parser.add_argument("--log-level", default="info", help="uvicorn/log level")
     parser.add_argument(
         "--proc-title",
-        default="router",
-        help=f"process title; keeps the router out of {framework}'s `pkill -9 python` cleanup",
+        default="scheduler",
+        help=f"process title; keeps the scheduler out of {framework}'s `pkill -9 python` cleanup",
     )
     args = parser.parse_args()
 
     # These frameworks' run scripts begin with `pkill -9 python` ("for rerun the task"), which
-    # would kill this router (a python process). Renaming the process so that cleanup misses it.
+    # would kill this scheduler (a python process). Renaming the process so that cleanup misses it
     try:
         import setproctitle
         setproctitle.setproctitle(args.proc_title)
     except ImportError:
         logging.getLogger(__name__).warning(
-            "setproctitle not installed; router may be killed by %s's `pkill -9 python`", framework
+            "setproctitle not installed; scheduler may be killed by %s's `pkill -9 python`",
+            framework,
         )
 
     logging.basicConfig(level=args.log_level.upper())
@@ -75,7 +76,7 @@ def run(
 
 
 def main() -> None:
-    run(create_app, description="sampling router for slime", framework="slime")
+    run(create_app, description="sampling scheduler for slime", framework="slime")
 
 
 if __name__ == "__main__":

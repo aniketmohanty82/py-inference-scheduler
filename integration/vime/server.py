@@ -21,7 +21,7 @@ from urllib.parse import unquote
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
-from datalayer.metrics.verl.datastore import InflightStore
+from datalayer.metrics.datastore import InflightStore
 from datalayer.metrics.vime.vllm import fetch_worker_metrics
 from integration.slime.server import (
     WorkerRegistry,
