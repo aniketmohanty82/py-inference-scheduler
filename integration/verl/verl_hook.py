@@ -28,7 +28,7 @@ from verl.experimental.agent_loop.agent_loop import (  # type: ignore[import-not
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from datalayer.metrics.verl.datastore import InflightStore
+from datalayer.metrics.datastore import InflightStore
 from datalayer.metrics.verl.fetch_metrics import fetch_worker_metrics
 from scheduling import Scheduler
 from scheduling.framework import Endpoint, LLMRequest
