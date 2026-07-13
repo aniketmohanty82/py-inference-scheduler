@@ -49,3 +49,36 @@ def parse_sglang(text: str) -> dict[str, Any]:
         value = max(values)
         stats[key] = float(value) if key == "kv" else int(value)
     return stats
+
+
+# vLLM gauge name -> the routing-stats key our scorers expect.
+_VLLM_METRICS = {
+    "vllm:num_requests_waiting": "num_waiting_reqs",
+    "vllm:num_requests_running": "num_running_reqs",
+    "vllm:kv_cache_usage_perc": "kv",
+}
+
+
+def empty_vllm_stats() -> dict[str, Any]:
+    return {"num_waiting_reqs": 0, "num_running_reqs": 0, "kv": 0.0, "error": None}
+
+
+def parse_vllm(text: str) -> dict[str, Any]:
+    """Parse a vLLM Prometheus ``/metrics`` payload into routing stats.
+
+    Returns num_waiting_reqs, num_running_reqs (ints) and kv (float KV-cache
+    utilisation in [0, 1]).
+    """
+    stats = empty_vllm_stats()
+    for family in text_string_to_metric_families(text):
+        key = _VLLM_METRICS.get(family.name)
+        if key is None:
+            continue
+        values = [s.value for s in family.samples if s.name == family.name]
+        if not values:
+            continue
+        # A gauge may appear as several samples (multiprocess mode emits one per
+        # PID). For a single replica max() picks the real value over idle 0s.
+        value = max(values)
+        stats[key] = float(value) if key == "kv" else int(value)
+    return stats

@@ -60,7 +60,7 @@ pip install fastapi uvicorn aiohttp prometheus-client pyyaml setproctitle
 
 **Start the router** — CPU-only, run from the repo root (so `integration` / `datalayer` /
 `scheduling` import). It must be up **before** the slime job (engines register at boot), and it
-renames its process to `router` so slime's example scripts `pkill -9 python` cleanup won't kill it.
+renames its process to `scheduler` so slime's example scripts `pkill -9 python` cleanup won't kill it.
 The command is the same for single- and multi-node — run it on the single VM for single-node, or on
 **node 0 (the head)** for multi-node; `--host 0.0.0.0` makes it reachable both locally and from
 worker nodes.
