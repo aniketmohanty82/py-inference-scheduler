@@ -18,7 +18,7 @@ import os
 
 ENABLE_ENV = "ENABLE_MOONCAKE_KV"
 
-_CONNECTOR_MODULE = "datalayer.connectors.mooncake_decode_save"
+_CONNECTOR_MODULE = "datalayer.connectors.mooncake.mooncake_decode_save"
 
 # Must match the configMap mount in configs/mooncake/ray-service.yaml.
 _CONFIG_PATH = "/etc/mooncake/mooncake_config.json"

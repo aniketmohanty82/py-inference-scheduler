@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import random
 import uuid
+from collections import OrderedDict
 from typing import Callable, Sequence
 
 from ray import serve
@@ -43,12 +44,18 @@ from ray.serve.request_router import (
     RunningReplica,
 )
 
-from datalayer.connectors.mooncake_kv import (
+from datalayer.connectors.mooncake.mooncake_kv import (
     mooncake_enabled,
     mooncake_engine_kwargs,
     mooncake_env_vars,
 )
 from datalayer.rayserve.engine import MetricsAwareLLMServer
+from datalayer.rayserve.relocation import (
+    PULL_OF_HEADER,
+    TARGET_HEADER,
+    RelocatingIngress,
+    relocation_enabled,
+)
 from scheduling.core.scheduler import Scheduler
 from scheduling.framework import (
     Endpoint,
@@ -187,6 +194,9 @@ class IGWRouter(RequestRouter):
         self.deployment_name = deployment_id.name
         self.fc_manager = FlowControlManager(self)
         self._loop: asyncio.AbstractEventLoop | None = None
+        # x-request-id -> replica name, so a pull request can avoid the replica
+        # that served its pushed request.
+        self._request_replica: OrderedDict[str, str] = OrderedDict()
 
     async def _get_routing_stats(
         self, replicas: list[RunningReplica], pending_request: PendingRequest
@@ -251,7 +261,13 @@ class IGWRouter(RequestRouter):
 
         target_model = getattr(request_args, "model", self.deployment_name)
 
-        return LLMRequest(request_id=req_id, body=body, target_model=target_model)
+        headers: dict[str, str] = {}
+        if len(pending_request.args) > 1 and pending_request.args[1] is not None:
+            headers = dict(getattr(pending_request.args[1], "headers", {}) or {})
+
+        return LLMRequest(
+            request_id=req_id, body=body, target_model=target_model, headers=headers
+        )
 
     async def choose_replicas(
         self,
@@ -269,6 +285,18 @@ class IGWRouter(RequestRouter):
         # for health check empty requests
         if not pending_request or not pending_request.args or not llm_req.body:
             return self._fallback_random_choice(candidate_replicas)
+
+        headers = llm_req.headers or {}
+        target_name = headers.get(TARGET_HEADER)
+        if target_name:
+            for replica in candidate_replicas:
+                if str(replica.replica_id) == target_name:
+                    return [[replica]]
+        pushed_from = self._request_replica.get(headers.get(PULL_OF_HEADER, ""))
+        if pushed_from and len(candidate_replicas) > 1:
+            candidate_replicas = [
+                r for r in candidate_replicas if str(r.replica_id) != pushed_from
+            ]
 
         try:
             endpoints: Sequence[Endpoint] = await self.build_endpoints(
@@ -329,6 +357,14 @@ class IGWRouter(RequestRouter):
     ) -> None:
         llm_req = self._parse_to_llm_request(pending_request)
         is_streaming = pending_request.metadata.is_streaming
+
+        # Key by the ingress-set x-request-id: push and pull calls of one
+        # client request share the Serve request id, so it cannot be the key.
+        ingress_request_id = (llm_req.headers or {}).get("x-request-id")
+        if ingress_request_id:
+            self._request_replica[ingress_request_id] = str(replica_id)
+            while len(self._request_replica) > 4096:
+                self._request_replica.popitem(last=False)
 
         if self.scheduler.has_flow_control():
             result.add_done_callback(lambda _: self.fc_manager.release(llm_req, str(replica_id)))
@@ -399,8 +435,11 @@ def build_custom_openai_app(builder_config: dict[str, object]) -> object:
     }
 
     ingress_cls_config = builder_args.ingress_cls_config
-    ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(llm_configs)
-    ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
+    base_ingress_cls = (
+        RelocatingIngress if relocation_enabled() else ingress_cls_config.ingress_cls
+    )
+    ingress_options = base_ingress_cls.get_deployment_options(llm_configs)
+    ingress_cls = make_fastapi_ingress(base_ingress_cls)
 
     return serve.deployment(
         ingress_cls,

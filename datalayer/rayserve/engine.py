@@ -18,6 +18,12 @@ from ray.llm._internal.serve.core.server.llm_server import LLMServer  # noqa: PL
 from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine  # noqa: PLC2701
 from vllm.v1.metrics.loggers import StatLoggerBase  # type: ignore[import-not-found]
 
+from datalayer.rayserve.relocation import (
+    PushMonitor,
+    relocation_enabled,
+    relocation_threshold,
+)
+
 
 class DirectKVCacheLogger(StatLoggerBase):
     def __init__(self, vllm_config: object, engine_idx: int = 0) -> None:
@@ -81,12 +87,18 @@ class MetricsAwareVLLMEngine(VLLMEngine):
         executor_class = Executor.get_class(engine_config)
 
         # Return the engine client, passing the FACTORY instead of the instance
-        return AsyncLLM(
+        engine_client = AsyncLLM(
             vllm_config=engine_config,
             executor_class=executor_class,
             log_stats=not engine_args.disable_log_stats,  # type: ignore[attr-defined]
             stat_loggers=[logger_factory],
         )
+
+        if relocation_enabled():
+            self._push_monitor = PushMonitor(engine_client, relocation_threshold())
+            self._push_monitor.start()
+
+        return engine_client
 
     def record_routing_stats(self) -> dict[str, object]:
         # Ray natively expects this to return a dictionary
