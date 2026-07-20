@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 import uuid
 from collections import OrderedDict
@@ -396,6 +397,17 @@ env_vars: dict[str, str] = {
 if mooncake_enabled():
     engine_kwargs.update(mooncake_engine_kwargs())
     env_vars.update(mooncake_env_vars())
+
+# Serve REPLACES (not merges) env for deployments that carry their own
+# runtime_env, so app-level env_vars from serveConfigV2 never reach the
+# replica/engine processes. Pass through the ones the engine side reads.
+for _key in (
+    "ENABLE_MOONCAKE_RELOCATION",
+    "MOONCAKE_RELOCATION_THRESHOLD",
+    "HF_HUB_DISABLE_XET",
+):
+    if _key in os.environ:
+        env_vars[_key] = os.environ[_key]
 
 llm_config = LLMConfig(
     model_loading_config={
