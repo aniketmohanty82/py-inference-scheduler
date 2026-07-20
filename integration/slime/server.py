@@ -110,7 +110,11 @@ async def schedule_and_proxy(  # noqa: PLR0913
 ) -> Response:
     """Scrape metrics under a lock, pick a worker, and proxy the request to it."""
     raw = await request.body()
-    llm_req = LLMRequest(request_id=uuid.uuid4().hex, body=routing_body(_safe_json(raw)))
+    llm_req = LLMRequest(
+        request_id=uuid.uuid4().hex,
+        body=routing_body(_safe_json(raw)),
+        headers={k.lower(): v for k, v in request.headers.items()},
+    )
 
     endpoints = registry.endpoints()
     if not endpoints:
