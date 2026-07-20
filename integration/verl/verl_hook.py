@@ -28,7 +28,7 @@ from verl.experimental.agent_loop.agent_loop import (  # type: ignore[import-not
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from datalayer.metrics.verl.datastore import InflightStore
+from datalayer.metrics.datastore import InflightStore
 from datalayer.metrics.verl.fetch_metrics import fetch_worker_metrics
 from scheduling import Scheduler
 from scheduling.framework import Endpoint, LLMRequest
@@ -92,7 +92,7 @@ class InferenceSchedulerServerManager(AsyncLLMServerManager):
         # -- we cannot interleave metric tasks in between of scheduled tasks
         # -- due to python being FIFO.
         # -- so we just make it part of the scheduling task instead of
-        # -- having an independant metric poller task.
+        # -- having an independent metric poller task.
         async with self._scheduling_lock:
             tasks = [fetch_worker_metrics(ep, self.inflight_store) for ep in self.endpoints]
             await asyncio.gather(*tasks)

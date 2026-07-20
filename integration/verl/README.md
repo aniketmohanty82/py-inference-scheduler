@@ -2,151 +2,172 @@
 
 ## Compatibility Notice
 
-**This integration is designed specifically for [vERL v0.7.1](https://github.com/volcengine/verl/releases/tag/v0.7.1).** 
+**This integration is designed specifically for [verl v0.7.1](https://github.com/volcengine/verl/releases/tag/v0.7.1).** 
 
-It utilizes internal API signatures (such as `load_balancer_handle` and specific `_acquire_server` patterns) that were introduced or modified in this release. It is **not backwards compatible** with earlier versions of vERL and may require updates for future releases.
+It utilizes internal API signatures (such as `load_balancer_handle` and specific `_acquire_server` patterns) that were introduced or modified in this release. It is **not backwards compatible** with earlier versions of verl and may require updates for future releases.
 
 ## Architecture
 
 `verl` manages its own set of Ray Actors for rollouts. By default, it uses a simple LRU cache or least-requests routing. This integration overrides `verl`'s `AgentLoopManager` to delegate routing decisions to the `py-inference-scheduler` engine.
 
 Key components:
-- `verl_hook.py`: Contains `InferenceSchedulerServerManager` and `PyInferenceAgentLoopManager` which are injected into the `verl` training loop.
+- [verl_hook.py](./verl_hook.py): Contains `InferenceSchedulerServerManager` and `PyInferenceAgentLoopManager` which are injected into the `verl` training loop.
 - `InflightStore`: Tracks active requests per worker in real-time to augment slow Prometheus metrics.
 - `backends/verl/`: Contains monkey-patches for `vllm` and `sglang` to enable metrics extraction and correct environment propagation.
 - `datalayer/metrics/verl/`: Contains backend-specific logic (HTTP scraping) to fetch and parse metrics from the workers.
 
-## Setup Guide
+---
 
-If you have a `verl` instance and want to enable scheduling:
+## Prerequisites & Cluster Requirements (Step 1)
 
-### Requirements
+Before integrating the scheduler, you must set up a Ray cluster and ensure specific infrastructure conditions are met. If your cluster already satisfies the prerequisites and works with verl, skip to [Integration Configuration](#integration-configuration-step-2).
 
-To use this integration, you can use the official pre-built images from `verlai/verl` on Docker Hub. You do **not** need to build custom images!
-
-#### Supported Official Images
-- **vLLM Backend**: `verlai/verl:vllm011.latest` 
-  - (Digest: `sha256:3ce56ff018516b28ab9c4f4fc09d3aa67589074495ace75e2674b720aa4d0e5d`)
-- **SGLang Backend**: `verlai/verl:sgl059.latest` 
-  - (Digest: `sha256:7d6502f9a46353792d1c9c855b61c1a9ea29ad74c5cb246e8aa9ac29b30372eb`)
-
-Besides that, the main requirement is having a `runtime-env.yaml` file which has the `working_dir` as the main branch of the scheduler repository (shown below). This will in the future be a package that can be loaded in as a package using `uv` inside `runtime-env`. `runtime-env` is passed in during job submission and has to be in the root of whichever directory you are submitting the job from. 
-
-### Data Preparation
-
-If you want to follow along with the provided examples, you will need to preprocess the **GSM8K** and **MATH** datasets (both are used in the example scripts). You can use `verl`'s data preparation scripts to generate these datasets and store them in your preferred directory.
-
-If you don't have the `verl` repository cloned, you can download the specific scripts directly from GitHub:
-- [gsm8k.py](https://github.com/verl-project/verl/blob/v0.7.1/examples/data_preprocess/gsm8k.py)
-- [math_dataset.py](https://github.com/verl-project/verl/blob/v0.7.1/examples/data_preprocess/math_dataset.py)
-
-Wherever you choose to store the data, it must be accessible by the cluster pods. We recommend using a **PersistentVolumeClaim (PVC)** or a **Cloud Bucket (e.g., GCS)** for this purpose.
+### Environment & Images
+*   **Ray Cluster**: You must have a running Ray cluster. For setup instructions, refer to:
+    *   [verl Installation Guide](https://verl.readthedocs.io/en/latest/start/install.html)
+    *   [verl Multinode VM Setup](https://verl.readthedocs.io/en/latest/start/multinode.html)
+    *   [KubeRay verl Post-Training Guide (K8s)](https://docs.ray.io/en/latest/cluster/kubernetes/examples/verl-post-training.html)
+*   **Supported Images**: We strongly recommend using the official pre-built verl images, as they come pre-configured with all necessary dependencies:
+    *   **vLLM Backend**: `verlai/verl:vllm011.latest`
+    *   **SGLang Backend**: `verlai/verl:sgl059.latest`
+> [!NOTE]
+> If you must use a custom image, you must ensure that the vLLM or SGLang versions match those in the official images, and that **`verl==0.7.1`** is installed in the environment.
 
 > [!IMPORTANT]
-> Once you have stored your data and made it accessible to the pods, you **must** update the data path variables at the top of the example scripts ([run_qwen2_5-32b_math.sh](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/run_qwen2_5-32b_math.sh) or [run_qwen2_5-32b_math_sglang.sh](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/run_qwen2_5-32b_math_sglang.sh)) to point to the internal location within the pod where the data is accessible (e.g., `/home/ray/data/...`).
+> **You must configure the following resources when creating your Ray cluster:**
+> *   **Shared Metrics Directory**: The integration requires a shared, writable directory for Prometheus multiproc metrics.
+>     *   **Kubernetes (K8s)**: You must define a shared volume (e.g., an `emptyDir` named `metrics-dir`) and mount it at `/tmp/metrics` on **both** the head and all worker pods.
+>     *   **Non-Kubernetes (VMs)**: A directory (defaulting to `/tmp/metrics`) must exist and be writable by the Ray process on **every** node in the cluster.
+> *   **Scheduler Config Visibility (K8s Only)**: If running on K8s, a ConfigMap named `scheduler-config` (containing your `scheduler.yaml`) must be mounted to `/etc/scheduler` on all pods.
+>     *   *Reference*: See [verl-inference-scheduler.yaml](./examples/verl-inference-scheduler.yaml#L55-L56) to see how these mounts are configured.
+>     *   The ConfigMap must be applied **before** deploying the cluster. Failing to do so will cause the pods to get stuck in a `CreateContainerConfigError` state. Refer to [Custom Configuration on Kubernetes (K8s)](#custom-configuration-on-kubernetes-k8s) for instructions on how to apply it.
 
-> [!IMPORTANT]
-> Before applying the cluster configuration, you **must** create a default ConfigMap named `scheduler-config` in your namespace. Because the cluster configuration mounts this ConfigMap to the pods, failing to create it will cause the pods to be stuck in a `CreateContainerConfigError` state. You can use the default configuration provided in [scheduler_config.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/configs/scheduler_config.yaml) to create it.
+### Dataset Preprocessing
+*   **Your own Training Script**: Ensure your own training dataset is preprocessed and stored in a location accessible by all Ray worker nodes (e.g., via a PVC, GCS bucket, or shared NFS).
+*   **Walkthrough Example (Optional)**: If you don't have a dataset and would like to follow along this integration with an example, you can use verl's preprocessed GSM8K/MATH datasets. Refer to the [verl Quickstart Data Preparation](https://verl.readthedocs.io/en/latest/start/quickstart.html) for instructions.
+> [!WARNING]
+> **Data Path Alignment for walkthrough script**: Our example training scripts contain hardcoded paths (e.g., `/home/ray/data/...`). You must ensure your preprocessed data is mounted/copied to this exact path on the workers, or edit the path variables at the top of the scripts before running them.
 
-### Configure the Ray Cluster
+---
 
-When configuring your Ray cluster (e.g., via KubeRay), you must ensure that your configuration:
-- Uses one of the **supported official images** listed in the [Requirements](#requirements) section.
-- Has a **shared volume** (or equivalent access) for the data to be trained on, accessible by all pods. An example of how a GCS bucket can be used to store locally preprocessed data is available in [verl-inference-scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/verl-inference-scheduler.yaml).
-- Mounts the ConfigMap for custom scheduler profiles if you choose to use one (see [Customizing Scheduler Configuration](#customizing-scheduler-configuration)). If you want to see an example of how to do these ConfigMap mounts, you can check [verl-inference-scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/verl-inference-scheduler.yaml).
-- **RDMA & Networking Annotations**: Depending on your cloud provider and cluster setup, you may need to add specific networking annotations to your pod templates to enable high-speed RDMA interfaces (e.g., `networking.gke.io/interfaces`). To see an example of how to configure multi-NIC and RDMA interfaces for GKE, refer to the [verl-inference-scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/verl-inference-scheduler.yaml) file.
+## Integration Configuration (Step 2)
 
-If you would like to see an example of a full cluster configuration file, you can check [verl-inference-scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/verl-inference-scheduler.yaml).
+The scheduler configuration (`scheduler.yaml`) must be made visible to the Ray job. Choose one of the following paths depending on your customization needs:
 
-To apply your configuration to the Kubernetes cluster:
-```bash
-kubectl apply -f <your-cluster-config>.yaml
-```
+### Default Configuration
+By default, the integration uses the `scheduler.yaml` bundled with the repository, located at `integration/verl/examples/scheduler.yaml` relative to the repository root. This is resolved automatically by the default `runtime_env` configuration.
 
-### Establish Head Node Connection
-
-Wait for your pods to reach **Running** state. Now you must open a local tunnel to the Ray Head Node dashboard.
-
-- **Establish port forward**:
-    ```bash
-    kubectl port-forward svc/<ray-head-svc-name> 8265:8265 -n <namespace> &
-    ```
-- **Export the Ray address**:
-    ```bash
-    export RAY_ADDRESS="http://127.0.0.1:8265"
-    ```
-
-
-
-### Runtime Environment (`runtime-env.yaml`)
-
-To run the job with the scheduler, you need a `runtime-env.yaml` file. This file configures the environment for the Ray job.
-
-Example `runtime-env.yaml`:
+You can use our default [runtime-env.yaml](./examples/runtime-env.yaml) file:
 ```yaml
 working_dir: "https://github.com/llm-d-incubation/py-inference-scheduler/archive/refs/heads/main.zip"
-
-pip:
-  - "verl==0.7.1"
-
 env_vars:
   PYTHONPATH: "."
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
-  ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml"
+  ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml" # Relative to CWD (repo root)
 ```
-> [!NOTE]
-> Depending on your replica topology and cloud environment, you may also need to specify NCCL and other networking environment variables (e.g., `NCCL_DEBUG`, `GLOO_SOCKET_IFNAME`). To see a full example of these variables, check the [runtime-env.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/runtime-env.yaml) in the examples folder.
+Ray unpacks the zip, sets the CWD to the repo root, and resolves the relative path to the default config.
 
-*   **`working_dir`**: Set this to point to the root of the `py-inference-scheduler` repository (or a remote zip URL like above). This will be replaced by the package in the pip/uv section later.
-*   **`pip`**: Used to install `verl==0.7.1` at runtime.
-*   **`PROMETHEUS_MULTIPROC_DIR`**: Must be set to `/tmp/metrics` for multiprocess metrics aggregation.
-*   **`ROUTER_CONFIG_PATH`**: Points to the scheduler configuration file.
-### Customizing Scheduler Configuration
-
-By default, the system uses the `scheduler.yaml` provided in the repository. If you want to use a custom configuration (e.g., to change scoring plugins or thresholds), you can do so using a Kubernetes ConfigMap:
-
-- **Get the default config**: Download [scheduler.yaml](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/scheduler.yaml) locally.
-- **Edit the config**: Make your desired changes to the file.
-- **Apply as ConfigMap**: Upload it to your Kubernetes cluster:
+### Custom Configuration on Kubernetes (K8s)
+If you want to customize the scheduler settings on K8s:
+*   Modify the [scheduler_config.yaml](../../configs/scheduler_config.yaml) ConfigMap manifest locally.
+*   Apply the updated ConfigMap to your cluster:
     ```bash
-    kubectl create configmap scheduler-config --from-file=scheduler.yaml=scheduler.yaml
+    kubectl apply -f configs/scheduler_config.yaml
     ```
-- **Update cluster config**: Ensure your `verl-inference-scheduler.yaml` mounts this ConfigMap (the example file is pre-configured to look for `scheduler-config`).
-- **Update `runtime-env.yaml`**: Set the `ROUTER_CONFIG_PATH` to point to the mounted file:
+*   **Update [runtime-env.yaml](./examples/runtime-env.yaml)**: You **must** change `ROUTER_CONFIG_PATH` to the absolute mount path:
     ```yaml
     env_vars:
-      ROUTER_CONFIG_PATH: "/etc/scheduler/scheduler.yaml"
+      ROUTER_CONFIG_PATH: "/etc/scheduler/scheduler.yaml" # Absolute path to K8s mount, or wherever your scheduler config resides
     ```
 
-### Running a Training Job
+### Custom Configuration on VMs (Non-K8s)
+If you want to customize the scheduler settings in a VM-based cluster:
+*   **Clone the repository** locally:
+    ```bash
+    git clone https://github.com/llm-d-incubation/py-inference-scheduler.git
+    cd py-inference-scheduler
+    ```
+*   **Modify the configuration** locally at `integration/verl/examples/scheduler.yaml`.
+*   **Update [runtime-env.yaml](./examples/runtime-env.yaml)** to use your local directory as the `working_dir` (using `.`):
+    ```yaml
+    working_dir: "." # Packages the local repo root when submitted from there
+    pip:
+      - "verl==0.7.1"
+    env_vars:
+      PYTHONPATH: "."
+      PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+      ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml" # Relative to CWD (repo root)
+    ```
+*   **Submit the job from the repository root** (see Section 3). Running from the root with `working_dir: "."` ensures Ray packages the entire repository (including the `scheduling` source code and your modified config), preventing import errors on the workers.
 
-We provide pre-configured shell scripts for both vLLM and SGLang. You can download them directly from GitHub:
-- [run_qwen2_5-32b_math.sh](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/run_qwen2_5-32b_math.sh) (vLLM)
-- [run_qwen2_5-32b_math_sglang.sh](https://github.com/llm-d-incubation/py-inference-scheduler/blob/main/integration/verl/examples/run_qwen2_5-32b_math_sglang.sh) (SGLang)
+> [!TIP]
+> **Designing Custom Profiles**: To learn more about the available scorers, filters, pickers, and flow-control plugins you can use to customize your scheduling policies, refer to the comprehensive [Scheduler Customization Guide](../../docs/scheduler_customization.md).
 
-After downloading and editing the scripts (e.g., to set the correct data paths as mentioned in the [Data Preparation](#data-preparation) section), you can submit the job by pointing to your edited script. **Ensure you are in the directory containing your `runtime-env.yaml` file when running this command:**
+---
 
-```bash
-ray job submit \
-    --address http://localhost:8265 \
-    --runtime-env ./runtime-env.yaml \
-    -- bash path_to_your_scripts/run_qwen2_5-32b_math.sh
-```
+## Running a Training Job (Step 3)
 
-> [!NOTE]
-> If you choose not to use the pre-configured shell scripts and write your own training command, you **must** pass the following flags to `python3 -m verl.trainer.main_ppo` for the integration to work properly:
-> - `actor_rollout_ref.rollout.actor_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager`: Registers our custom hook with `veRL`.
-> - `actor_rollout_ref.rollout.log_stats=True`: Enables logging of statistics necessary for metrics parsing.
-> - `actor_rollout_ref.rollout.name={vllm|sglang}`: Specifies the backend.
-> 
-> **Additional Flags for SGLang:**
-> - `actor_rollout_ref.rollout.prometheus.enable=True`: Required for SGLang to enable the Prometheus metrics endpoint.
-> 
-> Additionally, make sure that the GPU and node configurations (`trainer.n_gpus_per_node` and `trainer.nnodes`) correspond to your cluster configuration (`verl-inference-scheduler.yaml`).
+You submit training jobs to the Ray cluster using `ray job submit`.
 
-### View the results
+### Connecting to the Cluster
+Ensure your Ray cluster is running, then establish connection:
+*   **Kubernetes (K8s)**: Once your pods are in the `Running` state, open a local tunnel to the Ray Head Node dashboard:
+    ```bash
+    kubectl port-forward svc/<ray-head-svc-name> 8265:8265 -n <namespace> &
+    export RAY_ADDRESS="http://127.0.0.1:8265"
+    ```
+*   **Non-Kubernetes (VMs)**: Ensure you have network access to the Ray Head node, and export its address:
+    ```bash
+    export RAY_ADDRESS="http://<head-node-ip>:8265"
+    ```
 
-This is a very small training loop for testing with 10 steps configured in the `trainer.total_training_steps=10` flag. Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs in my opinion. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard. (localhost:8265). vERL gives us output by step, don't be concerned if you se `ppo` tags on the labels for the logs - vERL uses the same testing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer.
+### Submission Commands
+Ensure you are in the directory containing your configured [runtime-env.yaml](./examples/runtime-env.yaml) (or the repository root if using `working_dir: "."`).
+
+*   **Your own Training Script**:
+    Submit your job by pointing to your custom Python script and passing the required integration flags:
+    ```bash
+    ray job submit \
+        --address http://localhost:8265 \
+        --runtime-env integration/verl/examples/runtime-env.yaml \
+        -- python3 path/to/your/custom_training_script.py \
+            --your-training-flags... \
+            actor_rollout_ref.rollout.disable_log_stats=False \
+            +actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager  # This override registers our custom scheduler hook with verl
+    ```
+> [!IMPORTANT]
+> **Required Flags for your own scripts**:
+> If you are writing your own training script, you **must** pass the following flags to `python3 -m verl.trainer.main_ppo` for the integration to function:
+> *   `+actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager`
+>     *   *Purpose*: Registers our custom scheduler hook with verl.
+> *   `actor_rollout_ref.rollout.disable_log_stats=False`
+>     *   *Purpose*: Enables logging of statistics necessary for metrics parsing.
+> *   `actor_rollout_ref.rollout.prometheus.enable=True` (**SGLang Only**)
+>     *   *Purpose*: Required for SGLang to enable the Prometheus metrics endpoint. Without this, the scheduler cannot retrieve backend stats.
+
+*   **Walkthrough Example (Optional)**:
+    Submit the job by pointing to one of our pre-configured shell scripts (which already include the required flags):
+    ```bash
+    ray job submit \
+        --address http://localhost:8265 \
+        --runtime-env integration/verl/examples/runtime-env.yaml \
+        -- bash integration/verl/examples/run_qwen2_5-32b_math.sh
+    ```
+    *(Replace `run_qwen2_5-32b_math.sh` with `run_qwen2_5-32b_math_sglang.sh` if using the SGLang backend).*
+> [!WARNING]
+> **Resource Alignment**: If you're following walkthrough example, ensure the resource allocation flags in your training script (e.g., `trainer.n_gpus_per_node`, `trainer.nnodes`, and `tensor_model_parallel_size`) exactly match your Ray cluster's physical resources. Mismatches will cause the job to hang indefinitely in Ray or fail with OOMs.
+
+---
+
+## 4. Verifying Results (Step 4)
+
+Once the job is submitted, you can monitor its progress:
+
+*   Open the Ray Dashboard (typically at `http://localhost:8265`).
+*   Check the **Jobs** tab and view the logs for your submission.
+*   If the scheduler is active and making decisions, you will see logs indicating config reloads (if modified) and routing decisions in the worker/driver logs.
+
+Viewing the logs on the actual ray submit job where you've ran the training job is the best place for logs. This can be found either in the *Overview* or *Jobs* tab of the Ray Dashboard (localhost:8265). verl gives us output by step. Don't be concerned if you see `ppo` tags on the labels for the logs—veRL uses the same testing infrastructure for its GRPO and PPO runs. Our script is a GRPO trainer. Enabling the scheduler does not change verl's standard telemetry behavior - if you have your `WANDB_API_KEY` set, metrics will still populate in Weights & Biases as normal.
 
 Logs look as follows (from verl-vllm using gsm8k):
 
@@ -233,6 +254,6 @@ Logs look as follows (from verl-vllm using gsm8k):
  - perf/total_num_tokens:4388173
  - perf/time_per_step:93.52434759191237
  - perf/throughput:2932.5070910595373
- ```
+```
 
- Key metrics to look out for are ```perf/throughput``` for sampling throughput and ```timing_s/agent_loop/slowest/generate_sequences``` for your tail latency. Additionally, if you enable preemptions, ```timing_s/agent_loop/slowest/num_preempted``` can be useful too. 
+Key metrics to look out for are `perf/throughput` for sampling throughput and `timing_s/agent_loop/slowest/generate_sequences` for your tail latency. Additionally, if you enable preemptions, `timing_s/agent_loop/slowest/num_preempted` can be useful too.
