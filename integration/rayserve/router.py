@@ -40,9 +40,9 @@ from ray.serve.request_router import (
     RunningReplica,
 )
 
-from datalayer.rayserve.engine import MetricsAwareLLMServer
-from scheduling.core.scheduler import Scheduler
-from scheduling.framework import (
+from py_inference_scheduler.core.scheduler import Scheduler
+from py_inference_scheduler.datalayer.rayserve.engine import MetricsAwareLLMServer
+from py_inference_scheduler.framework import (
     Endpoint,
     FlowControlPlugin,
     LLMRequest,
