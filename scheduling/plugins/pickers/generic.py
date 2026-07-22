@@ -56,4 +56,7 @@ class MaxScorePicker(PickerPlugin):
     ) -> ScoredEndpoint | None:
         if not scored_endpoints:
             return None
-        return scored_endpoints[0]
+        # Break exact ties randomly; stable sort would always pick the same endpoint.
+        top_score = scored_endpoints[0].score
+        tied = [se for se in scored_endpoints if se.score == top_score]
+        return random.choice(tied)  # noqa: S311
