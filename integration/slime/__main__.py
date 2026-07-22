@@ -51,6 +51,11 @@ def run(
         default="scheduler",
         help=f"process title; keeps the scheduler out of {framework}'s `pkill -9 python` cleanup",
     )
+    parser.add_argument(
+        "--hot-reload",
+        action="store_true",
+        help="re-read --config on mtime change; used for per-step profile experiments",
+    )
     args = parser.parse_args()
 
     # These frameworks' run scripts begin with `pkill -9 python` ("for rerun the task"), which
@@ -71,7 +76,12 @@ def run(
     config = SchedulerConfig.from_dict(config_dict)
     logging.getLogger(__name__).info("Loaded scheduler config: %s", config)
 
-    app = create_app(Scheduler.new_with_config(config))
+    if args.hot_reload:
+        # config_path mode re-reads the file on mtime change per scheduling decision.
+        scheduler = Scheduler(config_path=args.config)
+    else:
+        scheduler = Scheduler.new_with_config(config)
+    app = create_app(scheduler)
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
 
 
