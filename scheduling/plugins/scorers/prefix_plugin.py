@@ -36,11 +36,16 @@ class PrefixIndexer:
     def add(self, hashes: Sequence[int], server: str) -> None:
         if server not in self._server_to_hashes:
             self._server_to_hashes[server] = OrderedDict()
+        bucket = self._server_to_hashes[server]
         for h in hashes:
             if h not in self._hash_to_servers:
                 self._hash_to_servers[h] = set()
             self._hash_to_servers[h].add(server)
-            self._server_to_hashes[server][h] = None
+            # Refresh recency so hot shared blocks survive pool-sized eviction.
+            if h in bucket:
+                bucket.move_to_end(h)
+            else:
+                bucket[h] = None
 
         # Evict oldest entries
         while len(self._server_to_hashes[server]) > self._lru_capacity_per_server:
@@ -168,29 +173,34 @@ class PrefixCacheScorer:
             return dict.fromkeys(pods.keys(), 0.0)
 
         scores: dict[str, float] = {}
+        # Blocks held by every candidate (the shared system-prompt pedestal)
+        # carry no routing signal; custody is judged on the rest.
+        discriminative = 0
         for h in hashes:
-            servs = self.indexer.get(h)
-            for name in servs:
-                if name not in pods:
-                    continue
+            holders = [name for name in self.indexer.get(h) if name in pods]
+            if len(holders) == len(pods):
+                continue
+            discriminative += 1
+            for name in holders:
                 if name not in scores:
                     scores[name] = 1.0
                 else:
                     scores[name] += 1
 
-        # If a novel prompt has no matching prefixes, route to the least-loaded servers.
-        if len(scores) == 0:
+        # If a novel prompt has no discriminative matches, route to the least-loaded servers.
+        if discriminative == 0 or len(scores) == 0:
+            for name in pods:
+                scores[name] = 0.0
             min_count = min(
                 len(self.indexer._server_to_hashes.get(name, {})) for name in pods
             )
             for name in pods:
                 if len(self.indexer._server_to_hashes.get(name, {})) == min_count:
                     scores[name] = 1.0
+            # Legacy magnitude: the fallback vote stays a 1/total-scale nudge.
+            return {name: s / total for name, s in scores.items()}
 
-        for name, score in scores.items():
-            scores[name] = float(score) / float(total)
-
-        return scores
+        return {name: s / discriminative for name, s in scores.items()}
 
     def pre_request(
         self, cycle_state: CycleState, request: LLMRequest, selected_endpoint: Endpoint
