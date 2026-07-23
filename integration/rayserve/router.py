@@ -45,7 +45,7 @@ from ray.serve.request_router import (
     RunningReplica,
 )
 
-from datalayer.connectors.mooncake.mooncake_kv import (
+from datalayer.connectors.mooncake.kv import (
     mooncake_enabled,
     mooncake_engine_kwargs,
     mooncake_env_vars,
