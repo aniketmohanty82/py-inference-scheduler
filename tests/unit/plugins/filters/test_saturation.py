@@ -71,3 +71,11 @@ def test_invalid_config_rejected():
         SaturationFilter(kv_threshold=1.5)
     with pytest.raises(ValueError, match="waiting_threshold"):
         SaturationFilter(waiting_threshold=0)
+
+
+def test_drop_log_includes_reason():
+    flt = SaturationFilter(kv_threshold=0.9, waiting_threshold=16)
+    assert flt._saturation_reason(kv=0.95, waiting=2) == "kv=0.95"
+    assert flt._saturation_reason(kv=0.1, waiting=40) == "waiting=40"
+    assert flt._saturation_reason(kv=0.95, waiting=40) == "kv=0.95,waiting=40"
+    assert flt._saturation_reason(kv=0.5, waiting=3) is None

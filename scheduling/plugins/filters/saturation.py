@@ -52,11 +52,12 @@ class SaturationFilter(FilterPlugin):
             stats = ep.attributes.get("routing_stats", {})
             if not isinstance(stats, dict):
                 stats = {}
-            if self._is_saturated(
+            reason = self._saturation_reason(
                 kv=float(stats.get("kv", 0.0)),
                 waiting=int(stats.get("num_waiting_reqs", 0)),
-            ):
-                dropped.append(name)
+            )
+            if reason:
+                dropped.append(f"{name}({reason})")
             else:
                 eligible[name] = ep
 
@@ -70,5 +71,11 @@ class SaturationFilter(FilterPlugin):
             logger.info("saturation filter dropped %s", dropped)
         return eligible
 
-    def _is_saturated(self, *, kv: float, waiting: int) -> bool:
-        return kv >= self.kv_threshold or waiting >= self.waiting_threshold
+    def _saturation_reason(self, *, kv: float, waiting: int) -> str | None:
+        """Which threshold(s) fired, or None if the endpoint is healthy."""
+        reasons = []
+        if kv >= self.kv_threshold:
+            reasons.append(f"kv={kv:.2f}")
+        if waiting >= self.waiting_threshold:
+            reasons.append(f"waiting={waiting}")
+        return ",".join(reasons) if reasons else None
