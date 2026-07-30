@@ -33,14 +33,11 @@ _REPORT_EVERY_S = 30.0
 
 
 class MetricsRefresher:
-    """Polls worker /metrics from a dedicated thread with a private event loop.
+    """Keeps routing_stats fresh by polling worker metrics off the request path.
 
-    The serving loop cannot starve it (the thread waits on the GIL, not the
-    serving loop's ready queue), and its aiohttp session is loop-affine to the
-    private loop so no I/O marshals back to the serving loop. `staleness()`
-    exposes snapshot age so starvation is measured rather than assumed.
-    Endpoint updates are single reference assignments: readers see old or new
-    state, never torn.
+    Runs in its own thread with a private event loop, so a busy serving loop
+    can neither starve the polling nor receive any of its I/O. Updates are
+    atomic reference swaps; `staleness()` reports the snapshot's age.
     """
 
     def __init__(
@@ -65,6 +62,7 @@ class MetricsRefresher:
         self._stop.set()
 
     def staleness(self) -> float:
+        """ How old the last metrics poll was """
         return time.monotonic() - self._last_refresh if self._last_refresh else float("inf")
 
     def _run(self) -> None:
@@ -84,7 +82,6 @@ class MetricsRefresher:
                         )
                     )
                     failures = [r for r in results if isinstance(r, BaseException)]
-                    # staleness() must stay honest: only a successful fetch counts as fresh.
                     if len(failures) < len(endpoints):
                         self._last_refresh = time.monotonic()
                     now = time.monotonic()
