@@ -17,8 +17,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 import aiohttp
@@ -27,6 +28,7 @@ from fastapi.responses import JSONResponse
 
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
+from py_inference_scheduler.datalayer.metrics.refresher import FetchMetrics, MetricsRefresher
 from py_inference_scheduler.datalayer.metrics.slime.sglang import fetch_worker_metrics
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
@@ -35,8 +37,6 @@ logger = logging.getLogger(__name__)
 # Headers that must not be forwarded verbatim when proxying to a worker.
 _HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
 
-# populates ep.attributes from the worker's /metrics.
-FetchMetrics = Callable[[Endpoint, InflightStore, aiohttp.ClientSession], Awaitable[None]]
 # Returns the prompt the scheduler routes on
 RoutingBody = Callable[[dict], object]
 
@@ -104,7 +104,7 @@ async def schedule_and_proxy(  # noqa: PLR0913
     inflight: InflightStore,
     scheduling_lock: asyncio.Lock,
     scheduler: Scheduler,
-    fetch_metrics: FetchMetrics,
+    fetch_metrics: FetchMetrics | None,
     routing_body: RoutingBody,
     generate_path: str,
 ) -> Response:
@@ -118,10 +118,13 @@ async def schedule_and_proxy(  # noqa: PLR0913
 
     session: aiohttp.ClientSession = request.app.state.http
 
-    # Metrics scrape + scheduling happen ON the request path under a lock
-    # [check verl_hook.py:L90-95 for why they happen in the same task]
+    # fetch_metrics=None means a MetricsRefresher keeps routing_stats fresh off
+    # the request path and the lock only serializes the scheduling decision.
+    # On-path scraping under the lock throttles admission below engine intake
+    # (measured: +24% rollout wall-clock at identical policy).
     async with scheduling_lock:
-        await asyncio.gather(*[fetch_metrics(ep, inflight, session) for ep in endpoints])
+        if fetch_metrics is not None:
+            await asyncio.gather(*[fetch_metrics(ep, inflight, session) for ep in endpoints])
         selected = scheduler.run(llm_req, candidates=endpoints)
         if not selected:
             return JSONResponse(status_code=503, content={"error": "no worker selected"})
@@ -169,13 +172,28 @@ def register_worker_routes(app: FastAPI, registry: WorkerRegistry) -> None:
         return JSONResponse(content={"workers": registry.list_workers_as_dicts()})
 
 
-def create_app(scheduler: Scheduler) -> FastAPI:
+def create_app(scheduler: Scheduler, metrics_refresh_ms: int = 100) -> FastAPI:
     """Build the slime router FastAPI app around a configured Scheduler."""
     registry = WorkerRegistry()
     inflight = InflightStore()
     scheduling_lock = asyncio.Lock()
+    refresher = MetricsRefresher(
+        registry.endpoints, inflight, fetch_worker_metrics, interval_ms=metrics_refresh_ms
+    )
 
-    app = FastAPI(title="slime sampling router", lifespan=lifespan)
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+        refresher.start()
+        try:
+            async with lifespan(app):
+                yield
+        finally:
+            refresher.stop()
+
+    app = FastAPI(title="slime sampling router", lifespan=_lifespan)
+    app.state.refresher = refresher
+    app.state.last_stale_warn = 0.0
+    stale_after = max(0.5, 5 * metrics_refresh_ms / 1000.0)
 
     register_worker_routes(app, registry)
 
@@ -188,13 +206,19 @@ def create_app(scheduler: Scheduler) -> FastAPI:
 
     @app.post("/generate")
     async def generate(request: Request) -> Response:
+        staleness = refresher.staleness()
+        if staleness > stale_after:
+            now = time.monotonic()
+            if now - app.state.last_stale_warn > 10:  # noqa: PLR2004
+                logger.warning("routing on stale metrics: snapshot %.2fs old", staleness)
+                app.state.last_stale_warn = now
         return await schedule_and_proxy(
             request,
             registry=registry,
             inflight=inflight,
             scheduling_lock=scheduling_lock,
             scheduler=scheduler,
-            fetch_metrics=fetch_worker_metrics,
+            fetch_metrics=None,
             routing_body=_routing_body,
             generate_path="/generate",
         )
