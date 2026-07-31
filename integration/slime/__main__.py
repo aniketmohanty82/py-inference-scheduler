@@ -30,13 +30,12 @@ from py_inference_scheduler.core.config import SchedulerConfig
 _DEFAULT_CONFIG = "integration/slime/examples/scheduler.yaml"
 
 
-def run(
-    create_app: Callable[[Scheduler], FastAPI],
-    *,
+def build_parser(
     description: str,
     framework: str,
     default_config: str = _DEFAULT_CONFIG,
-) -> None:
+    add_args: Callable[[argparse.ArgumentParser], None] | None = None,
+) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--host", default="0.0.0.0", help="bind address")  # noqa: S104
     parser.add_argument("--port", type=int, default=8000, help="bind port")
@@ -51,7 +50,20 @@ def run(
         default="scheduler",
         help=f"process title; keeps the scheduler out of {framework}'s `pkill -9 python` cleanup",
     )
-    args = parser.parse_args()
+    if add_args is not None:
+        add_args(parser)
+    return parser
+
+
+def run(
+    create_app: Callable[[Scheduler, argparse.Namespace], FastAPI],
+    *,
+    description: str,
+    framework: str,
+    default_config: str = _DEFAULT_CONFIG,
+    add_args: Callable[[argparse.ArgumentParser], None] | None = None,
+) -> None:
+    args = build_parser(description, framework, default_config, add_args).parse_args()
 
     # These frameworks' run scripts begin with `pkill -9 python` ("for rerun the task"), which
     # would kill this scheduler (a python process). Renaming the process so that cleanup misses it
@@ -71,12 +83,30 @@ def run(
     config = SchedulerConfig.from_dict(config_dict)
     logging.getLogger(__name__).info("Loaded scheduler config: %s", config)
 
-    app = create_app(Scheduler.new_with_config(config))
+    app = create_app(Scheduler.new_with_config(config), args)
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
 
 
+def _add_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--metrics-refresh-ms",
+        type=int,
+        default=100,
+        help="worker /metrics polling interval for the MetricsRefresher",
+    )
+
+
+def _app(scheduler: Scheduler, args: argparse.Namespace) -> FastAPI:
+    return create_app(scheduler, metrics_refresh_ms=args.metrics_refresh_ms)
+
+
 def main() -> None:
-    run(create_app, description="sampling scheduler for slime", framework="slime")
+    run(
+        _app,
+        description="sampling scheduler for slime",
+        framework="slime",
+        add_args=_add_args,
+    )
 
 
 if __name__ == "__main__":

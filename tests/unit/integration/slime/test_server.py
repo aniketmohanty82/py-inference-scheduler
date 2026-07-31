@@ -139,3 +139,11 @@ def test_generate_proxies_and_keeps_prefix_affinity():
         assert second.status_code == 200
         assert first.json()["worker"] in {"a", "b"}
         assert first.json()["worker"] == second.json()["worker"]
+
+
+def test_metrics_refresh_ms_flag_defaults_and_overrides():
+    from integration.slime.__main__ import _add_args, build_parser
+
+    parser = build_parser("d", "slime", add_args=_add_args)
+    assert parser.parse_args([]).metrics_refresh_ms == 100
+    assert parser.parse_args(["--metrics-refresh-ms", "250"]).metrics_refresh_ms == 250
