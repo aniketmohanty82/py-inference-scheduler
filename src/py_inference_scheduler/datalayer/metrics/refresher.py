@@ -62,7 +62,7 @@ class MetricsRefresher:
         self._stop.set()
 
     def staleness(self) -> float:
-        """ How old the last metrics poll was """
+        """How old the last metrics poll was."""
         return time.monotonic() - self._last_refresh if self._last_refresh else float("inf")
 
     def _run(self) -> None:
