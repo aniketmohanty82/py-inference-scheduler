@@ -32,7 +32,7 @@ FetchMetrics = Callable[[Endpoint, InflightStore, aiohttp.ClientSession], Awaita
 _REPORT_EVERY_S = 30.0
 
 
-class MetricsRefresher:
+class MetricsPoller:
     """Keeps routing_stats fresh by polling worker metrics off the request path.
 
     Runs in its own thread with a private event loop, so a busy serving loop
@@ -53,7 +53,7 @@ class MetricsRefresher:
         self._interval = interval_ms / 1000.0
         self._last_refresh = 0.0
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, name="metrics-refresher", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="metrics-poller", daemon=True)
 
     def start(self) -> None:
         self._thread.start()
@@ -87,13 +87,13 @@ class MetricsRefresher:
                     now = time.monotonic()
                     if failures and now - last_report > _REPORT_EVERY_S:
                         logger.warning(
-                            "metrics-refresher: %d/%d fetches failed (first: %r)",
+                            "metrics-poller: %d/%d fetches failed (first: %r)",
                             len(failures), len(endpoints), failures[0],
                         )
                         last_report = now
                     elif now - last_report > _REPORT_EVERY_S:
                         logger.info(
-                            "metrics-refresher: %d endpoints, scrape %.0fms, interval %.0fms",
+                            "metrics-poller: %d endpoints, scrape %.0fms, interval %.0fms",
                             len(endpoints), (now - started) * 1000, self._interval * 1000,
                         )
                         last_report = now

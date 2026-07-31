@@ -92,7 +92,7 @@ def _add_args(parser: argparse.ArgumentParser) -> None:
         "--metrics-refresh-ms",
         type=int,
         default=100,
-        help="worker /metrics polling interval for the MetricsRefresher",
+        help="worker /metrics polling interval for the MetricsPoller",
     )
 
 

@@ -28,7 +28,7 @@ from fastapi.responses import JSONResponse
 
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
-from py_inference_scheduler.datalayer.metrics.refresher import FetchMetrics, MetricsRefresher
+from py_inference_scheduler.datalayer.metrics.poller import FetchMetrics, MetricsPoller
 from py_inference_scheduler.datalayer.metrics.slime.sglang import fetch_worker_metrics
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Shared aiohttp session: unbounded connections + no per-request timeout.
 
     vime uses this directly as its app lifespan; slime wraps it (create_app's
-    _lifespan) to add the MetricsRefresher start/stop around it.
+    _lifespan) to add the MetricsPoller start/stop around it.
     The latter will be vime's default mode in the future.
     """
     # limit=0 removes aiohttp's default 100-connection cap so requests fan out across engines.
@@ -117,7 +117,7 @@ async def schedule_and_proxy(  # noqa: PLR0913
 
     If fetch_metrics is given, every endpoint's metrics are scraped inside this
     request before scheduling (vime's mode). If it is None, scheduling reads
-    the routing_stats a background MetricsRefresher keeps fresh (slime's mode).
+    the routing_stats a background MetricsPoller keeps fresh (slime's mode).
     Vime will be changed to follow slime's request path soon.
     """
     raw = await request.body()
@@ -184,22 +184,22 @@ def create_app(scheduler: Scheduler, metrics_refresh_ms: int = 100) -> FastAPI:
     registry = WorkerRegistry()
     inflight = InflightStore()
     scheduling_lock = asyncio.Lock()
-    refresher = MetricsRefresher(
+    poller = MetricsPoller(
         registry.endpoints, inflight, fetch_worker_metrics, interval_ms=metrics_refresh_ms
     )
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-        """Run the refresher for the app's lifetime, around the shared-session lifespan."""
-        refresher.start()
+        """Run the poller for the app's lifetime, around the shared-session lifespan."""
+        poller.start()
         try:
             async with lifespan(app):
                 yield
         finally:
-            refresher.stop()
+            poller.stop()
 
     app = FastAPI(title="slime sampling router", lifespan=_lifespan)
-    app.state.refresher = refresher
+    app.state.poller = poller
     app.state.last_stale_warn = 0.0
     stale_after = max(0.5, 5 * metrics_refresh_ms / 1000.0)
 
@@ -214,7 +214,7 @@ def create_app(scheduler: Scheduler, metrics_refresh_ms: int = 100) -> FastAPI:
 
     @app.post("/generate")
     async def generate(request: Request) -> Response:
-        staleness = refresher.staleness()
+        staleness = poller.staleness()
         if staleness > stale_after:
             now = time.monotonic()
             if now - app.state.last_stale_warn > 10:  # noqa: PLR2004

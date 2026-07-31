@@ -18,7 +18,7 @@ import itertools
 import time
 
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
-from py_inference_scheduler.datalayer.metrics.refresher import MetricsRefresher
+from py_inference_scheduler.datalayer.metrics.poller import MetricsPoller
 from py_inference_scheduler.framework import Endpoint
 
 
@@ -46,32 +46,32 @@ def _failing_fetch():
 
 
 def test_staleness_is_infinite_before_first_fetch():
-    r = MetricsRefresher(list, InflightStore(), _counting_fetch(itertools.count()))
-    assert r.staleness() == float("inf")
+    p = MetricsPoller(list, InflightStore(), _counting_fetch(itertools.count()))
+    assert p.staleness() == float("inf")
 
 
 def test_refreshes_stats_and_becomes_fresh():
     ep = Endpoint(name="a", attributes={})
-    r = MetricsRefresher(
+    p = MetricsPoller(
         lambda: [ep], InflightStore(), _counting_fetch(itertools.count()), interval_ms=10
     )
-    r.start()
+    p.start()
     try:
         assert _wait_for(lambda: "routing_stats" in ep.attributes)
-        assert _wait_for(lambda: r.staleness() < 1.0)
+        assert _wait_for(lambda: p.staleness() < 1.0)
     finally:
-        r.stop()
+        p.stop()
 
 
 def test_all_failures_never_mark_fresh():
     ep = Endpoint(name="a", attributes={})
-    r = MetricsRefresher(lambda: [ep], InflightStore(), _failing_fetch(), interval_ms=10)
-    r.start()
+    p = MetricsPoller(lambda: [ep], InflightStore(), _failing_fetch(), interval_ms=10)
+    p.start()
     try:
         time.sleep(0.1)
-        assert r.staleness() == float("inf")
+        assert p.staleness() == float("inf")
     finally:
-        r.stop()
+        p.stop()
 
 
 def test_partial_failure_still_counts_as_fresh():
@@ -85,24 +85,24 @@ def test_partial_failure_still_counts_as_fresh():
         else:
             await counting(ep, inflight, session)
 
-    r = MetricsRefresher(lambda: [ok, bad], InflightStore(), fetch, interval_ms=10)
-    r.start()
+    p = MetricsPoller(lambda: [ok, bad], InflightStore(), fetch, interval_ms=10)
+    p.start()
     try:
-        assert _wait_for(lambda: r.staleness() < 1.0)
+        assert _wait_for(lambda: p.staleness() < 1.0)
         assert "routing_stats" not in bad.attributes
     finally:
-        r.stop()
+        p.stop()
 
 
 def test_stop_halts_polling():
     ep = Endpoint(name="a", attributes={})
-    r = MetricsRefresher(
+    p = MetricsPoller(
         lambda: [ep], InflightStore(), _counting_fetch(itertools.count()), interval_ms=10
     )
-    r.start()
+    p.start()
     assert _wait_for(lambda: ep.attributes.get("routing_stats"))
-    r.stop()
-    assert _wait_for(lambda: not r._thread.is_alive())
+    p.stop()
+    assert _wait_for(lambda: not p._thread.is_alive())
     tick = ep.attributes["routing_stats"]["tick"]
     time.sleep(0.05)
     assert ep.attributes["routing_stats"]["tick"] == tick
@@ -110,14 +110,14 @@ def test_stop_halts_polling():
 
 def test_new_endpoints_are_picked_up_between_cycles():
     eps: list[Endpoint] = [Endpoint(name="a", attributes={})]
-    r = MetricsRefresher(
+    p = MetricsPoller(
         lambda: list(eps), InflightStore(), _counting_fetch(itertools.count()), interval_ms=10
     )
-    r.start()
+    p.start()
     try:
         assert _wait_for(lambda: "routing_stats" in eps[0].attributes)
         late = Endpoint(name="late", attributes={})
         eps.append(late)
         assert _wait_for(lambda: "routing_stats" in late.attributes)
     finally:
-        r.stop()
+        p.stop()

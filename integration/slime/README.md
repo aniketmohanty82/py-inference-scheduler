@@ -20,7 +20,7 @@ full ownership of the rollout lifecycle; we only decide which engine serves each
 Key components:
 - [server.py](./server.py): the router — worker registry + the scheduled `/generate` proxy.
 - [`__main__.py`](./__main__.py): the `python -m integration.slime` launcher.
-- [datalayer/metrics/refresher.py](../../src/py_inference_scheduler/datalayer/metrics/refresher.py): background poller updating `routing_stats` periodically.
+- [datalayer/metrics/poller.py](../../src/py_inference_scheduler/datalayer/metrics/poller.py): background poller updating `routing_stats` periodically.
 - [datalayer/metrics/slime/](../../src/py_inference_scheduler/datalayer/metrics/slime): parses Prometheus `/metrics`.
 
 ---
