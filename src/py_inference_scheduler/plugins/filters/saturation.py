@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 @register_filter("saturation")
 class SaturationFilter(FilterPlugin):
-    """Drops saturated endpoints from candidacy so affinity cannot elect them."""
+    """Drops saturated endpoints that are >= saturation threshold."""
 
     def __init__(self, kv_threshold: float = 0.95, waiting_threshold: int = 16) -> None:
         if not 0.0 < kv_threshold <= 1.0:
