@@ -87,7 +87,12 @@ def _safe_json(raw: bytes) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Shared aiohttp session: unbounded connections + no per-request timeout."""
+    """Shared aiohttp session: unbounded connections + no per-request timeout.
+
+    vime uses this directly as its app lifespan; slime wraps it (create_app's
+    _lifespan) to add the MetricsRefresher start/stop around it.
+    The latter will be vime's default mode in the future.
+    """
     # limit=0 removes aiohttp's default 100-connection cap so requests fan out across engines.
     connector = aiohttp.TCPConnector(limit=0)
     # total=None lifts aiohttp's default 300s cap per generation
@@ -108,7 +113,13 @@ async def schedule_and_proxy(  # noqa: PLR0913
     routing_body: RoutingBody,
     generate_path: str,
 ) -> Response:
-    """Scrape metrics under a lock, pick a worker, and proxy the request to it."""
+    """Pick a worker under the scheduling lock and proxy the request to it.
+
+    If fetch_metrics is given, every endpoint's metrics are scraped inside this
+    request before scheduling (vime's mode). If it is None, scheduling reads
+    the routing_stats a background MetricsRefresher keeps fresh (slime's mode).
+    Vime will be changed to follow slime's request path soon.
+    """
     raw = await request.body()
     llm_req = LLMRequest(request_id=uuid.uuid4().hex, body=routing_body(_safe_json(raw)))
 
@@ -118,10 +129,6 @@ async def schedule_and_proxy(  # noqa: PLR0913
 
     session: aiohttp.ClientSession = request.app.state.http
 
-    # fetch_metrics=None means a MetricsRefresher keeps routing_stats fresh off
-    # the request path and the lock only serializes the scheduling decision.
-    # On-path scraping under the lock throttles admission below engine intake
-    # (measured: +24% rollout wall-clock at identical policy).
     async with scheduling_lock:
         if fetch_metrics is not None:
             await asyncio.gather(*[fetch_metrics(ep, inflight, session) for ep in endpoints])
@@ -183,6 +190,7 @@ def create_app(scheduler: Scheduler, metrics_refresh_ms: int = 100) -> FastAPI:
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+        """Run the refresher for the app's lifetime, around the shared-session lifespan."""
         refresher.start()
         try:
             async with lifespan(app):
