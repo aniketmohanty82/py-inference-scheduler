@@ -21,6 +21,9 @@ from typing import Callable, Sequence
 
 from ray import serve
 from ray.actor import ActorHandle
+from ray.llm._internal.serve.core.configs.openai_api_models import (  # noqa: PLC2701
+    to_model_metadata,
+)
 from ray.llm._internal.serve.core.ingress.builder import (  # noqa: PLC2701
     LLMServingArgs,
     make_fastapi_ingress,
@@ -388,9 +391,16 @@ def build_custom_openai_app(builder_config: dict[str, object]) -> object:
     builder_args = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_args.llm_configs
 
-    llm_deployments = [
-        build_llm_deployment(c, deployment_cls=MetricsAwareLLMServer) for c in llm_configs
-    ]
+    llm_deployments = {
+        c.model_id: build_llm_deployment(c, deployment_cls=MetricsAwareLLMServer)
+        for c in llm_configs
+    }
+    model_cards = {c.model_id: to_model_metadata(c.model_id, c) for c in llm_configs}
+    lora_paths = {
+        c.model_id: c.lora_config.dynamic_lora_loading_path
+        for c in llm_configs
+        if c.lora_config is not None
+    }
 
     ingress_cls_config = builder_args.ingress_cls_config
     ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(llm_configs)
@@ -399,7 +409,12 @@ def build_custom_openai_app(builder_config: dict[str, object]) -> object:
     return serve.deployment(
         ingress_cls,
         **ingress_options,
-    ).bind(llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs)
+    ).bind(
+        llm_deployments=llm_deployments,
+        model_cards=model_cards,
+        lora_paths=lora_paths,
+        **ingress_cls_config.ingress_extra_kwargs,
+    )
 
 
 app = build_custom_openai_app({
