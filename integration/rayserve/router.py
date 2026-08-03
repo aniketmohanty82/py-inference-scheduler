@@ -41,6 +41,11 @@ from ray.serve.request_router import (
 )
 
 from py_inference_scheduler.core.scheduler import Scheduler
+from py_inference_scheduler.datalayer.connectors.mooncake.kv import (
+    mooncake_enabled,
+    mooncake_engine_kwargs,
+    mooncake_env_vars,
+)
 from py_inference_scheduler.datalayer.rayserve.engine import MetricsAwareLLMServer
 from py_inference_scheduler.framework import (
     Endpoint,
@@ -329,15 +334,40 @@ class IGWRouter(RequestRouter):
 
 # Hooking into Ray Serve's Request Router
 
+engine_kwargs: dict[str, object] = {
+    "enable_prefix_caching": True,
+    "tensor_parallel_size": 2,
+    # Parse <tool_call> blocks server-side for OpenAI tools clients.
+    "tool_call_parser": "hermes",
+    "enable_auto_tool_choice": True,
+    # Thinking models re-render past turns without their think blocks, which
+    # changes the token prefix and forfeits cache reuse for multi-turn clients.
+    "default_chat_template_kwargs": {"enable_thinking": False},
+}
+
+env_vars: dict[str, str] = {
+    "NCCL_NET_PLUGIN": "/usr/local/gib/lib64/libnccl-net_internal.so",
+    "NCCL_CROSS_NIC": "0",
+    "NCCL_NET_GDR_LEVEL": "PIX",
+    "NCCL_P2P_NET_CHUNKSIZE": "131072",
+    "NCCL_NVLS_CHUNKSIZE": "524288",
+    "NCCL_IB_ADAPTIVE_ROUTING": "1",
+    "NCCL_IB_QPS_PER_CONNECTION": "4",
+    "NCCL_IB_TC": "52",
+    "NCCL_IB_FIFO_TC": "84",
+    "NCCL_TUNER_CONFIG_PATH": "/usr/local/gib/configs/tuner_config_a3u.txtpb",
+}
+
+if mooncake_enabled():
+    engine_kwargs.update(mooncake_engine_kwargs())
+    env_vars.update(mooncake_env_vars())
+
 llm_config = LLMConfig(
     model_loading_config={
         "model_id": "qwen-32b",
         "model_source": "Qwen/Qwen2.5-32B-Instruct",
     },
-    engine_kwargs={
-        "enable_prefix_caching": True,
-        "tensor_parallel_size": 2,
-    },
+    engine_kwargs=engine_kwargs,
     deployment_config={
         "autoscaling_config": {
             "min_replicas": 1,
@@ -349,20 +379,7 @@ llm_config = LLMConfig(
         },
         "ray_actor_options": {"num_cpus": 1},
     },
-    runtime_env={
-        "env_vars": {
-            "NCCL_NET_PLUGIN": "/usr/local/gib/lib64/libnccl-net_internal.so",
-            "NCCL_CROSS_NIC": "0",
-            "NCCL_NET_GDR_LEVEL": "PIX",
-            "NCCL_P2P_NET_CHUNKSIZE": "131072",
-            "NCCL_NVLS_CHUNKSIZE": "524288",
-            "NCCL_IB_ADAPTIVE_ROUTING": "1",
-            "NCCL_IB_QPS_PER_CONNECTION": "4",
-            "NCCL_IB_TC": "52",
-            "NCCL_IB_FIFO_TC": "84",
-            "NCCL_TUNER_CONFIG_PATH": "/usr/local/gib/configs/tuner_config_a3u.txtpb",
-        }
-    },
+    runtime_env={"env_vars": env_vars},
 )
 
 
