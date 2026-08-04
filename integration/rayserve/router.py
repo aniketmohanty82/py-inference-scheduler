@@ -19,6 +19,7 @@ import random
 import uuid
 from typing import Callable, Sequence
 
+import ray
 from ray import serve
 from ray.actor import ActorHandle
 from ray.llm._internal.serve.core.configs.openai_api_models import (  # noqa: PLC2701
@@ -348,7 +349,19 @@ engine_kwargs: dict[str, object] = {
     "default_chat_template_kwargs": {"enable_thinking": False},
 }
 
+# Ray's deployment builder inherits the app-level runtime env but merges it
+# shallowly (llm_server.py get_deployment_options), so an env_vars dict here
+# would otherwise clobber every yaml-provided var (PYTHONPATH included).
+# Start from the app env so yaml vars flow through; code adds engine constants.
+try:
+    _app_env_vars: dict[str, str] = dict(
+        ray.get_runtime_context().runtime_env.get("env_vars", {})
+    )
+except Exception:  # noqa: BLE001 - imported outside a Ray worker (tests, tooling)
+    _app_env_vars = {}
+
 env_vars: dict[str, str] = {
+    **_app_env_vars,
     "NCCL_NET_PLUGIN": "/usr/local/gib/lib64/libnccl-net_internal.so",
     "NCCL_CROSS_NIC": "0",
     "NCCL_NET_GDR_LEVEL": "PIX",
