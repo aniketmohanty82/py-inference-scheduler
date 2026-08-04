@@ -344,9 +344,10 @@ engine_kwargs: dict[str, object] = {
     # Parse <tool_call> blocks server-side for OpenAI tools clients.
     "tool_call_parser": "hermes",
     "enable_auto_tool_choice": True,
-    # Thinking models re-render past turns without their think blocks, which
-    # changes the token prefix and forfeits cache reuse for multi-turn clients.
-    "default_chat_template_kwargs": {"enable_thinking": False},
+    # NOTE: default_chat_template_kwargs is unusable here - Ray's frontend-args
+    # merge hands it to vLLM as a Namespace and every chat request 500s. For
+    # thinking models, disable thinking per request via chat_template_kwargs
+    # in the client's extra_body instead.
 }
 
 # Ray's deployment builder inherits the app-level runtime env but merges it
