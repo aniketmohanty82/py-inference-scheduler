@@ -14,12 +14,21 @@
 
 from __future__ import annotations
 
+import argparse
+
+from fastapi import FastAPI
+
 from integration.slime.__main__ import run
 from integration.vime.server import create_app
+from py_inference_scheduler import Scheduler
+
+
+def _app(scheduler: Scheduler, args: argparse.Namespace) -> FastAPI:
+    return create_app(scheduler)
 
 
 def main() -> None:
-    run(create_app, description="sampling scheduler for vime", framework="vime")
+    run(_app, description="sampling scheduler for vime", framework="vime")
 
 
 if __name__ == "__main__":

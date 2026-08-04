@@ -13,14 +13,15 @@ implemented. It may require updates for other slime / sgl-router versions.
 slime manages its own SGLang rollout engines and, by default, launches its own sgl-router to load
 balance across them. When you set `--sglang-router-ip/--sglang-router-port`, slime skips that router
 and instead each engine self-registers with ours (`POST /workers`) and the rollout posts generations
-to it (`POST /generate`). On each request the router scrapes the engines' Prometheus `/metrics` and
-delegates the routing decision to the `py-inference-scheduler`. slime keeps
+to it (`POST /generate`). The router polls the engines' Prometheus `/metrics` and delegates each routing decision to the
+`py-inference-scheduler`. slime keeps
 full ownership of the rollout lifecycle; we only decide which engine serves each request.
 
 Key components:
 - [server.py](./server.py): the router — worker registry + the scheduled `/generate` proxy.
 - [`__main__.py`](./__main__.py): the `python -m integration.slime` launcher.
-- [datalayer/metrics/slime/](../../datalayer/metrics/slime): per-request Prometheus `/metrics` scrape.
+- [datalayer/metrics/poller.py](../../src/py_inference_scheduler/datalayer/metrics/poller.py): background poller updating `routing_stats` periodically.
+- [datalayer/metrics/slime/](../../src/py_inference_scheduler/datalayer/metrics/slime): parses Prometheus `/metrics`.
 
 ---
 
@@ -66,11 +67,11 @@ The command is the same for single- and multi-node — run it on the single VM f
 worker nodes.
 
 ```bash
-python -m integration.slime --host 0.0.0.0 --port 8000
+python -m integration.slime --host 0.0.0.0 --port 8000 --metrics-refresh-ms 100
 ```
 
 It uses the bundled `examples/scheduler.yaml` by default; pass `--config /path/to/your.yaml` to
-override with a custom policy.
+override with a custom policy. The poll intervals for metrics is set by `--metrics-refresh-ms`(default is 100ms).
 
 Then point slime at it — the **only** change to slime's launch is two flags:
 
