@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Headers that must not be forwarded verbatim when proxying to a worker.
 _HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
+_METRIC_STALENESS_CADENCE = 10
 
 # Returns the prompt the scheduler routes on
 RoutingBody = Callable[[dict], object]
@@ -217,7 +218,7 @@ def create_app(scheduler: Scheduler, metrics_refresh_ms: int = 100) -> FastAPI:
         staleness = poller.staleness()
         if staleness > stale_after:
             now = time.monotonic()
-            if now - app.state.last_stale_warn > 10:  # noqa: PLR2004
+            if now - app.state.last_stale_warn > _METRIC_STALENESS_CADENCE * stale_after:
                 logger.warning("routing on stale metrics: snapshot %.2fs old", staleness)
                 app.state.last_stale_warn = now
         return await schedule_and_proxy(
