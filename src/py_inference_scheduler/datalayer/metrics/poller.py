@@ -29,15 +29,18 @@ logger = logging.getLogger(__name__)
 
 FetchMetrics = Callable[[Endpoint, InflightStore, aiohttp.ClientSession], Awaitable[None]]
 
-_REPORT_EVERY_S = 30.0
+_LOG_CADENCE = 300
 
 
 class MetricsPoller:
-    """Keeps routing_stats fresh by polling worker metrics off the request path.
+    """Polls worker metrics in the background at a set interval.
 
-    Runs in its own thread with a private event loop, so a busy serving loop
-    can neither starve the polling nor receive any of its I/O. Updates are
-    atomic reference swaps; `staleness()` reports the snapshot's age.
+    Runs in its own thread with a private event loop, so the serving loop can
+    neither starve the polling nor receive any of its I/O.
+
+    WARNING: the thread shares the GIL, so the poll must stay I/O-bound.
+    CPU-bound work here can delay routing decisions.
+    staleness() returns the snapshot's age.
     """
 
     def __init__(
@@ -69,7 +72,8 @@ class MetricsPoller:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         session = loop.run_until_complete(self._make_session())
-        last_report = 0.0
+        last_log = 0.0
+        log_interval = _LOG_CADENCE * self._interval
         try:
             while not self._stop.is_set():
                 started = time.monotonic()
@@ -85,18 +89,18 @@ class MetricsPoller:
                     if len(failures) < len(endpoints):
                         self._last_refresh = time.monotonic()
                     now = time.monotonic()
-                    if failures and now - last_report > _REPORT_EVERY_S:
+                    if failures and now - last_log > log_interval:
                         logger.warning(
                             "metrics-poller: %d/%d fetches failed (first: %r)",
                             len(failures), len(endpoints), failures[0],
                         )
-                        last_report = now
-                    elif now - last_report > _REPORT_EVERY_S:
+                        last_log = now
+                    elif now - last_log > log_interval:
                         logger.info(
                             "metrics-poller: %d endpoints, scrape %.0fms, interval %.0fms",
                             len(endpoints), (now - started) * 1000, self._interval * 1000,
                         )
-                        last_report = now
+                        last_log = now
                 self._stop.wait(max(0.0, self._interval - (time.monotonic() - started)))
         finally:
             loop.run_until_complete(session.close())
