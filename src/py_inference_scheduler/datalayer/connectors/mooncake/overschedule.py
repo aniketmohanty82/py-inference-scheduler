@@ -21,7 +21,9 @@ from vllm.logger import init_logger
 from vllm.v1.core.sched.scheduler import Scheduler
 from vllm.v1.request import Request
 
-logger = init_logger(__name__)
+# Must live under the vllm logger hierarchy: the EngineCore only configures
+# handlers for "vllm.*", so INFO from any other namespace is silently dropped.
+logger = init_logger("vllm.rls.overschedule")
 
 # Set per request via vllm_xargs; only tagged requests are offloaded.
 OFFLOAD_TAG_KEY = "rls_offload"
