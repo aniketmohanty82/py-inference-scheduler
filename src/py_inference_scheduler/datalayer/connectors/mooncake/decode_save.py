@@ -28,6 +28,7 @@ from vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store.data import (
 )
 from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import KVCacheConfig
+from vllm.v1.request import Request
 
 
 def should_save_decode_request(
@@ -65,6 +66,27 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
         )
         value = extra_config.get("save_decode_kv", False)
         self.save_decode_kv = value is True or str(value).lower() == "true"
+
+    def get_num_new_matched_tokens(
+        self,
+        request: Request,
+        num_computed_tokens: int,
+    ) -> tuple[int, bool]:
+        """Skip the store lookup when local KV already covers the prompt.
+
+        The base lookup is a blocking ZMQ hop plus a master RPC carrying one
+        key per block per rank, and it runs inside the scheduler loop - so it
+        stalls the engine for every request, including ones the local prefix
+        cache already satisfies. Upstream only compares against the local hit
+        after paying for the lookup; comparing first costs nothing.
+        """
+        sched = self.connector_scheduler
+        if sched is not None:
+            block_size = sched._block_size
+            token_len = request.num_tokens // block_size * block_size
+            if num_computed_tokens >= token_len:
+                return 0, False
+        return super().get_num_new_matched_tokens(request, num_computed_tokens)
 
     def build_connector_meta(
         self, scheduler_output: SchedulerOutput
