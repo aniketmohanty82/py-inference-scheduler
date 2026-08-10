@@ -38,6 +38,11 @@ def wants_offload(request: Request) -> bool:
     return extra_args.get(OFFLOAD_TAG_KEY) in {"1", 1}
 
 
+def _extra_config(vllm_config: VllmConfig) -> dict:
+    kv_transfer_config = vllm_config.kv_transfer_config
+    return kv_transfer_config.kv_connector_extra_config if kv_transfer_config else {}
+
+
 def preserve_prefix_blocks_from_config(vllm_config: VllmConfig) -> int:
     """
     Number of leading blocks never evicted, from kv_connector_extra_config.
@@ -45,11 +50,7 @@ def preserve_prefix_blocks_from_config(vllm_config: VllmConfig) -> int:
     Required and validated at engine boot so a bad deploy fails loudly instead
     of silently evicting the shared system-prompt blocks.
     """
-    kv_transfer_config = vllm_config.kv_transfer_config
-    extra_config = (
-        kv_transfer_config.kv_connector_extra_config if kv_transfer_config else {}
-    )
-    value = extra_config.get("preserve_prefix_blocks")
+    value = _extra_config(vllm_config).get("preserve_prefix_blocks")
     # extra_config values arrive as JSON ints or strings.
     if isinstance(value, bool) or not str(value).isdigit():
         raise ValueError(
@@ -57,6 +58,21 @@ def preserve_prefix_blocks_from_config(vllm_config: VllmConfig) -> int:
             " integer) in kv_connector_extra_config"
         )
     return int(str(value))
+
+
+def min_kv_usage_from_config(vllm_config: VllmConfig) -> float:
+    """KV usage (0.0-1.0) below which finished turns keep their blocks."""
+    value = _extra_config(vllm_config).get("min_kv_usage")
+    try:
+        usage = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        usage = -1.0
+    if not 0.0 <= usage <= 1.0:
+        raise ValueError(
+            "OverschedulingScheduler requires min_kv_usage (a float in [0, 1])"
+            " in kv_connector_extra_config"
+        )
+    return usage
 
 
 class OverschedulingScheduler(Scheduler):
@@ -72,7 +88,18 @@ class OverschedulingScheduler(Scheduler):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.preserve_prefix_blocks = preserve_prefix_blocks_from_config(self.vllm_config)
+        self.min_kv_usage = min_kv_usage_from_config(self.vllm_config)
         self.num_offloaded_blocks = 0
+        self.num_skipped_idle = 0
+
+    def _under_pressure(self) -> bool:
+        """True when HBM is contended enough for offloading to pay for itself."""
+        if self.min_kv_usage <= 0.0:
+            return True
+        if self.kv_cache_manager.usage >= self.min_kv_usage:
+            return True
+        self.num_skipped_idle += 1
+        return False
 
     def _free_request(
         self,
@@ -87,7 +114,7 @@ class OverschedulingScheduler(Scheduler):
         # saves), and preserve_prefix_blocks shields the shared prefix at
         # moments no other request happens to reference it.
         evict_ids: set[int] = set()
-        if wants_offload(request):
+        if wants_offload(request) and self._under_pressure():
             blocks_per_group = self.kv_cache_manager.coordinator.get_blocks(
                 request.request_id
             )

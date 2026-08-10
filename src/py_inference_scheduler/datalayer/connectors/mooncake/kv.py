@@ -23,6 +23,9 @@ OVERSCHEDULING_ENABLE_ENV = "ENABLE_MOONCAKE_OVERSCHEDULING"
 # system-prompt prefix). Required when overscheduling is enabled.
 PRESERVE_PREFIX_ENV = "MOONCAKE_OVERSCHEDULING_PRESERVE_PREFIX_BLOCKS"
 
+# KV usage below which finished turns keep their blocks; 0 always offloads.
+MIN_KV_USAGE_ENV = "MOONCAKE_OVERSCHEDULING_MIN_KV_USAGE"
+
 # vLLM workers import the connector from this path.
 _CONNECTOR_MODULE = "py_inference_scheduler.datalayer.connectors.mooncake.decode_save"
 
@@ -62,6 +65,20 @@ def _preserve_prefix_blocks() -> int:
     return int(raw)
 
 
+def _min_kv_usage() -> float:
+    raw = os.environ.get(MIN_KV_USAGE_ENV)
+    try:
+        usage = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        usage = -1.0
+    if not 0.0 <= usage <= 1.0:
+        raise RuntimeError(
+            f"{MIN_KV_USAGE_ENV} must be a float in [0, 1] when"
+            f" {OVERSCHEDULING_ENABLE_ENV}=1"
+        )
+    return usage
+
+
 def mooncake_engine_kwargs() -> dict:
     # sha256_cbor is stable across Python versions and sha isn't.
     extra_config: dict = {"save_decode_kv": True}
@@ -76,6 +93,7 @@ def mooncake_engine_kwargs() -> dict:
     }
     if overscheduling_enabled():
         extra_config["preserve_prefix_blocks"] = _preserve_prefix_blocks()
+        extra_config["min_kv_usage"] = _min_kv_usage()
         kwargs["scheduler_cls"] = _OVERSCHEDULING_SCHEDULER_CLS
     return kwargs
 
