@@ -27,6 +27,7 @@ from py_inference_scheduler.framework import Endpoint
 
 logger = logging.getLogger(__name__)
 
+# Implementations must not raise: scrape errors belong in routing_stats["error"]
 FetchMetrics = Callable[[Endpoint, InflightStore, aiohttp.ClientSession], Awaitable[None]]
 
 _LOG_CADENCE = 300
@@ -40,7 +41,8 @@ class MetricsPoller:
 
     WARNING: the thread shares the GIL, so the poll must stay I/O-bound.
     CPU-bound work here can delay routing decisions.
-    staleness() returns the snapshot's age.
+    staleness() returns the age of the last poll cycle that got usable stats
+    from at least one endpoint.
     """
 
     def __init__(
@@ -79,26 +81,27 @@ class MetricsPoller:
                 started = time.monotonic()
                 endpoints = self._list_endpoints()
                 if endpoints:
-                    results = loop.run_until_complete(
-                        asyncio.gather(
-                            *[self._fetch(ep, self._inflight, session) for ep in endpoints],
-                            return_exceptions=True,
+                    try:
+                        loop.run_until_complete(
+                            asyncio.gather(*[
+                                self._fetch(ep, self._inflight, session) for ep in endpoints
+                            ])
                         )
-                    )
-                    failures = [r for r in results if isinstance(r, BaseException)]
-                    if len(failures) < len(endpoints):
-                        self._last_refresh = time.monotonic()
+                    except Exception:
+                        logger.exception("metrics-poller: fetch raised despite contract")
+                    # refresh only when at least one endpoint yielded usable stats
+                    for ep in endpoints:
+                        stats = ep.attributes.get("routing_stats")
+                        if isinstance(stats, dict) and stats.get("error") is None:
+                            self._last_refresh = time.monotonic()
+                            break
                     now = time.monotonic()
-                    if failures and now - last_log > log_interval:
-                        logger.warning(
-                            "metrics-poller: %d/%d fetches failed (first: %r)",
-                            len(failures), len(endpoints), failures[0],
-                        )
-                        last_log = now
-                    elif now - last_log > log_interval:
+                    if now - last_log > log_interval:
                         logger.info(
                             "metrics-poller: %d endpoints, scrape %.0fms, interval %.0fms",
-                            len(endpoints), (now - started) * 1000, self._interval * 1000,
+                            len(endpoints),
+                            (now - started) * 1000,
+                            self._interval * 1000,
                         )
                         last_log = now
                 self._stop.wait(max(0.0, self._interval - (time.monotonic() - started)))
