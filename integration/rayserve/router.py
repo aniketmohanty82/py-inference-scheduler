@@ -341,6 +341,9 @@ class IGWRouter(RequestRouter):
 engine_kwargs: dict[str, object] = {
     "enable_prefix_caching": True,
     "tensor_parallel_size": 2,
+    # pressure experiment: shrink KV so measured client load (~35 peak
+    # in-flight x ~10k tokens) actually contends for HBM
+    "gpu_memory_utilization": 0.40,
     # Parse <tool_call> blocks server-side for OpenAI tools clients.
     "tool_call_parser": "hermes",
     "enable_auto_tool_choice": True,
@@ -387,8 +390,8 @@ llm_config = LLMConfig(
     engine_kwargs=engine_kwargs,
     deployment_config={
         "autoscaling_config": {
-            "min_replicas": 4,
-            "max_replicas": 4,
+            "min_replicas": 2,
+            "max_replicas": 2,
         },
         "request_router_config": {
             # Note our custom IGWRouter here
