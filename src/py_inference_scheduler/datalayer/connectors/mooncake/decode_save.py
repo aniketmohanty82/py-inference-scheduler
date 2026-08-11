@@ -86,7 +86,12 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
             token_len = request.num_tokens // block_size * block_size
             if num_computed_tokens >= token_len:
                 return 0, False
-        return super().get_num_new_matched_tokens(request, num_computed_tokens)
+        # vllm is absent from the typecheck env, so the base call is Any; the
+        # annotation is where its contract gets stated.
+        matched: tuple[int, bool] = super().get_num_new_matched_tokens(
+            request, num_computed_tokens
+        )
+        return matched
 
     def build_connector_meta(
         self, scheduler_output: SchedulerOutput

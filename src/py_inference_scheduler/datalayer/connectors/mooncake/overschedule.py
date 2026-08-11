@@ -123,7 +123,9 @@ class OverschedulingScheduler(Scheduler):
                     if block.ref_cnt == 1 and not block.is_null:
                         evict_ids.add(block.block_id)
 
-        result = super()._free_request(request, delay_free_blocks)
+        # vllm is absent from the typecheck env, so the base call is Any; the
+        # annotation is where its contract gets stated.
+        result: dict[str, Any] | None = super()._free_request(request, delay_free_blocks)
 
         if evict_ids:
             self.kv_cache_manager.evict_blocks(evict_ids)
