@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
 from typing import Sequence
@@ -32,6 +33,12 @@ from py_inference_scheduler.framework import (
     SchedulingResult,
     ScoredEndpoint,
 )
+
+logger = logging.getLogger(__name__)
+
+# Child logger: RLS_DECISION_LOG=1 logs per-request decision detail
+# Performance will DEGRADE with this on.
+decision_logger = logging.getLogger(__name__ + ".decisions")
 
 
 class Scheduler:
@@ -81,7 +88,7 @@ class Scheduler:
             return
         mtime = pathlib.Path(self.config_path).stat().st_mtime
         if mtime > self.last_mtime:
-            print(f"Reloading scheduler config from {self.config_path}")
+            logger.info("Reloading scheduler config from %s", self.config_path)
             with pathlib.Path(self.config_path).open(encoding="utf-8") as f:
                 config_dict = yaml.safe_load(f)
             if not isinstance(config_dict, dict):
@@ -91,38 +98,43 @@ class Scheduler:
             self.profiles = config.profiles
             self.last_mtime = mtime
 
-    def schedule(
-        self, request: LLMRequest, candidates: Sequence[Endpoint]
-    ) -> SchedulingResult:
+    def schedule(self, request: LLMRequest, candidates: Sequence[Endpoint]) -> SchedulingResult:
         self._maybe_reload_config()
         if not candidates:
             raise ValueError("no scheduling candidates provided")
+
+        # guard to prevent computation on request path when DEBUG not enabled
+        if decision_logger.isEnabledFor(logging.DEBUG):
+            decision_logger.debug(
+                "request %s candidates: %s",
+                request.request_id,
+                {
+                    e.name: {
+                        "queue_len": e.attributes.get("queue_len"),
+                        "stats": e.attributes.get("routing_stats"),
+                    }
+                    for e in candidates
+                },
+            )
 
         cycle_state = CycleState()
         profile_results: dict[str, ProfileRunResult | None] = {}
 
         # ask profile handler which profiles to run
-        selected = self.profile_handler.pick(
-            cycle_state, request, self.profiles, profile_results
-        )
+        selected = self.profile_handler.pick(cycle_state, request, self.profiles, profile_results)
         assert selected is not None  # noqa: S101
 
-        def run_profile(
-            profile_name: str, profile: SchedulerProfile
-        ) -> ProfileRunResult | None:
+        def run_profile(profile_name: str, profile: SchedulerProfile) -> ProfileRunResult | None:
             try:
                 return profile.run(request, cycle_state, candidates)
-            except Exception as e:  # noqa: BLE001
-                print(f"Error running profile {profile_name}: ")
-                print(repr(e))
+            except Exception:
+                logger.exception("Error running profile %s", profile_name)
                 return None
 
         for name, profile in selected.items():
             profile_results[name] = run_profile(name, profile)
 
-        primary = self.profile_handler.process_results(
-            cycle_state, request, profile_results
-        )
+        primary = self.profile_handler.process_results(cycle_state, request, profile_results)
 
         # Build SchedulingResult
         result = SchedulingResult(
@@ -135,28 +147,24 @@ class Scheduler:
             if primary is not None and primary in result.profile_results
             else []
         )
-        print(f"Selected endpoint {selected_eps}")
+        logger.debug("Selected endpoint %s", selected_eps)
         if selected_eps and primary is not None:
             for w in self.profiles[primary].scorers:
                 if hasattr(w.scorer, "pre_request"):
                     w.scorer.pre_request(cycle_state, request, selected_eps[0].endpoint)  # type: ignore[attr-defined]
         return result
 
-    def run(
-        self, request: LLMRequest, candidates: Sequence[Endpoint]
-    ) -> Sequence[ScoredEndpoint]:
+    def run(self, request: LLMRequest, candidates: Sequence[Endpoint]) -> Sequence[ScoredEndpoint]:
         scheduler_output = self.schedule(request, candidates)
         profile_name = scheduler_output.primary_profile_name
         profile_results = (
-            scheduler_output.profile_results.get(profile_name)
-            if profile_name is not None
-            else None
+            scheduler_output.profile_results.get(profile_name) if profile_name is not None else None
         )
 
-        print(f"Profile {profile_name} results: {profile_results}")
+        logger.debug("Profile %s results: %s", profile_name, profile_results)
         selected_endpoint = profile_results.endpoint_list[:1] if profile_results else []
 
         if len(selected_endpoint) > 0:
             return selected_endpoint  # pick top 1
-        print("No endpoint selected, defaulting to framework routing logic")
+        logger.debug("No endpoint selected, defaulting to framework routing logic")
         return []

@@ -14,10 +14,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Mapping, Protocol, Sequence
 
 from .types import CycleState, Endpoint, LLMRequest, ProfileRunResult, ScoredEndpoint
+
+logger = logging.getLogger(__name__)
 
 
 class FilterPlugin(Protocol):
@@ -115,7 +118,9 @@ class SchedulerProfile:
         total_scores: dict[str, float] = dict.fromkeys(endpoints_map.keys(), 0.0)
         for w in self.scorers:
             raw_sc = w.scorer.score(cycle_state, request, endpoints_map)
-            print(f"Scorer {w.scorer} raw scores: {raw_sc}")
+            # guard: skips the call overhead on the request path when DEBUG is off
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Scorer %s raw scores: %s", w.scorer, raw_sc)
             # normalize raw_sc values to [0,1] across endpoints present in endpoints_map
             vals = [float(raw_sc.get(name, 0.0)) for name in endpoints_map]
             if vals:
@@ -133,9 +138,7 @@ class SchedulerProfile:
 
         # create ScoredEndpoint list preserving endpoint info
         scored = [
-            ScoredEndpoint(
-                endpoint=endpoints_map[name], score=total_scores.get(name, 0.0)
-            )
+            ScoredEndpoint(endpoint=endpoints_map[name], score=total_scores.get(name, 0.0))
             for name in endpoints_map
         ]
         # sort descending

@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Sequence
 
@@ -23,6 +24,8 @@ from py_inference_scheduler.framework import (
     LLMRequest,
     register_flow_control,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @register_flow_control("kv_saturation")
@@ -79,7 +82,9 @@ class KVSaturationPlugin(FlowControlPlugin):
                 physical_kv = routing_stats.get("kv", 1.0)  # type: ignore[attr-defined]
                 if physical_kv < drip_threshold_kv:
                     self._last_drip_at = now
-                    print(f"[BUDGET] Drip Admission to {c.name} (Physical KV: {physical_kv:.2f})")
+                    logger.debug(
+                        "[BUDGET] Drip Admission to %s (Physical KV: %.2f)", c.name, physical_kv
+                    )
                     return [c]
         return []
 
@@ -100,9 +105,11 @@ class KVSaturationPlugin(FlowControlPlugin):
             tokens_required,
         )
         self._budgeted_requests.add(request.request_id)
-        print(
-            f"[BUDGET] Admission committed for req={request.request_id} to replica={selected.name} "
-            f"(New Usage: {self._replica_token_usage[selected.name]})"
+        logger.debug(
+            "[BUDGET] Admission committed for req=%s to replica=%s (New Usage: %s)",
+            request.request_id,
+            selected.name,
+            self._replica_token_usage[selected.name],
         )
 
     def release(self, request: LLMRequest, endpoint_name: str) -> None:
@@ -112,9 +119,11 @@ class KVSaturationPlugin(FlowControlPlugin):
                 0,
                 self._replica_token_usage.get(replica_id_to_reclaim, 0) - tokens,
             )
-            print(
-                f"[BUDGET] Released req={request.request_id} from replica={replica_id_to_reclaim} "
-                f"(New Usage: {self._replica_token_usage[replica_id_to_reclaim]})"
+            logger.debug(
+                "[BUDGET] Released req=%s from replica=%s (New Usage: %s)",
+                request.request_id,
+                replica_id_to_reclaim,
+                self._replica_token_usage[replica_id_to_reclaim],
             )
             self._budgeted_requests.discard(request.request_id)
 
@@ -123,7 +132,9 @@ class KVSaturationPlugin(FlowControlPlugin):
             "isl": isl,
             "osl": osl,
         }
-        print(f"[BUDGET] Learned stats for rollout={rollout_request_id}: ISL={isl}, OSL={osl}")
+        logger.debug(
+            "[BUDGET] Learned stats for rollout=%s: ISL=%d, OSL=%d", rollout_request_id, isl, osl
+        )
 
     def _get_rollout_request_id(self, body: Any) -> tuple[str, int]:  # noqa: ANN401
         import struct
@@ -163,7 +174,7 @@ class KVSaturationPlugin(FlowControlPlugin):
                 )
 
         except Exception as e:  # noqa: BLE001
-            print(f"[PLUGIN ERROR] Failed to parse request ID securely: {e}")
+            logger.warning("Failed to parse request ID securely: %s", e)
 
         return "", 0
 

@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections import OrderedDict
 from typing import Mapping, Sequence, cast
 
 from py_inference_scheduler.framework import CycleState, Endpoint, LLMRequest, register_scorer
+
+logger = logging.getLogger(__name__)
 
 
 class PrefixIndexer:
@@ -90,7 +93,7 @@ def _get_user_input_bytes(body: object) -> bytes | None:
     try:
         return json.dumps(body, separators=(",", ":")).encode("utf-8")
     except Exception:  # noqa: BLE001
-        print("Unable to serialize body to bytes for prefix hashing")
+        logger.warning("Unable to serialize body to bytes for prefix hashing")
         return None
 
 
@@ -189,9 +192,7 @@ class PrefixCacheScorer:
         if len(scores) == 0 or max_score < (total * self.min_match_ratio):
             for name in pods:
                 scores[name] = 0.0
-            min_count = min(
-                len(self.indexer._server_to_hashes.get(name, {})) for name in pods
-            )
+            min_count = min(len(self.indexer._server_to_hashes.get(name, {})) for name in pods)
             for name in pods:
                 if len(self.indexer._server_to_hashes.get(name, {})) == min_count:
                     scores[name] = 1.0
@@ -209,7 +210,7 @@ class PrefixCacheScorer:
         if hashes is not None:
             self.add_prefixes_for_server(selected_endpoint.name, cast(Sequence[int], hashes))
         else:
-            print("Warning: prefix_hashes not found in cycle_state in pre_request")
+            logger.warning("prefix_hashes not found in cycle_state in pre_request")
             body_bytes = _get_user_input_bytes(request.body)
             hashes = _hash_prompt_bytes(
                 request.target_model,
