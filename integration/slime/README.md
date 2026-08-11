@@ -72,6 +72,9 @@ python -m integration.slime --host 0.0.0.0 --port 8000 --metrics-refresh-ms 100
 
 It uses the bundled `examples/scheduler.yaml` by default; pass `--config /path/to/your.yaml` to
 override with a custom policy. The poll intervals for metrics is set by `--metrics-refresh-ms`(default is 100ms).
+Set `RLS_DECISION_LOG=1` in the environment to log each request's per-endpoint stats at decision
+time. The line is formatted and written inside the scheduling call itself, so it adds routing
+latency on every request while enabled — leave it off for benchmarks.
 
 Then point slime at it — the **only** change to slime's launch is two flags:
 

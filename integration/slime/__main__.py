@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import pathlib
 from collections.abc import Callable
 
@@ -77,6 +78,12 @@ def run(
         )
 
     logging.basicConfig(level=args.log_level.upper())
+    if os.environ.get("RLS_DECISION_LOG") == "1":
+        # per-request candidate stats without global DEBUG noise
+        # costs one formatted log line per request while enabled - not for benchmarking
+        from py_inference_scheduler.core.scheduler import decision_logger
+
+        decision_logger.setLevel(logging.DEBUG)
 
     with pathlib.Path(args.config).open(encoding="utf-8") as f:
         config_dict = yaml.safe_load(f)

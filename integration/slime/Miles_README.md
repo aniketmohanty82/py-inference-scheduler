@@ -53,6 +53,9 @@ python -m integration.slime --host 0.0.0.0 --port 8000
 
 It uses the bundled `examples/scheduler.yaml` by default; pass `--config /path/to/your.yaml` to
 override with a custom policy. You can also just change `examples/scheduler.yaml` as mentioned above.
+Set `RLS_DECISION_LOG=1` in the environment to log each request's per-endpoint stats at decision
+time. The line is formatted and written inside the scheduling call itself, so it adds routing
+latency on every request while enabled — leave it off for benchmarks.
 
 Then point miles at it — the **only** change to miles' launch is two flags (and leave
 `--use-miles-router` unset). Run `bash scripts/run-qwen3-4B.sh` as documented, adding two flags to
