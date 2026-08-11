@@ -63,12 +63,42 @@ def test_refreshes_stats_and_becomes_fresh():
         p.stop()
 
 
-def test_all_failures_never_mark_fresh():
+def test_raising_fetch_keeps_polling_but_stays_stale(caplog):
+    # fetch callables must not raise. If one does, the poller logs the
+    # contract violation and keeps polling, but the metrics stay stale
+    calls = itertools.count(1)
+    attempts = [0]
+
+    async def fetch(ep, inflight, session):
+        attempts[0] = next(calls)
+        raise RuntimeError("scrape failed")
+
     ep = Endpoint(name="a", attributes={})
-    p = MetricsPoller(lambda: [ep], InflightStore(), _failing_fetch(), interval_ms=10)
+    p = MetricsPoller(lambda: [ep], InflightStore(), fetch, interval_ms=10)
     p.start()
     try:
-        time.sleep(0.1)
+        assert _wait_for(lambda: attempts[0] >= 3)
+        assert p.staleness() == float("inf")
+        assert any("despite contract" in r.message for r in caplog.records)
+    finally:
+        p.stop()
+
+
+def test_all_soft_errors_stay_stale():
+    # contract-compliant failure: fetch records the error and returns;
+    # cycles where every endpoint errored must not refresh staleness
+    calls = itertools.count(1)
+    attempts = [0]
+
+    async def fetch(ep, inflight, session):
+        attempts[0] = next(calls)
+        ep.attributes["routing_stats"] = {"error": "HTTP error 503"}
+
+    ep = Endpoint(name="a", attributes={})
+    p = MetricsPoller(lambda: [ep], InflightStore(), fetch, interval_ms=10)
+    p.start()
+    try:
+        assert _wait_for(lambda: attempts[0] >= 3)
         assert p.staleness() == float("inf")
     finally:
         p.stop()
