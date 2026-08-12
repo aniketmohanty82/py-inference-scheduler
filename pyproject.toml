@@ -57,9 +57,10 @@ disallow_untyped_defs = false
 module = ["pytest.*", "ray.*"]
 follow_imports = "skip"
 
-# vllm is an engine-runtime dependency, never installed in the typecheck env.
+# vllm is an engine-runtime dependency and the vllm-router fork wheel lives only
+# in deployment venvs - neither is installed in the typecheck env.
 [[tool.mypy.overrides]]
-module = ["vllm.*"]
+module = ["vllm.*", "vllm_router.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
