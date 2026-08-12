@@ -1,0 +1,22 @@
+profile_handler:
+  type: single_profile
+profiles:
+  composed_filter:
+    filters:
+      - type: saturation
+        kv_threshold: 0.95
+        waiting_threshold: 16
+    scorers:
+      - type: prefix_cache
+        weight: 4.0
+        max_prefix_blocks: 2048
+        lru_capacity_per_server: 262144
+      - type: waiting_queue
+        weight: 1.0
+      - type: kv_cache
+        weight: 0.5
+      - type: sticky_session
+        weight: 4.0
+        header_name: x-rls-session-id
+    picker:
+      type: max_score

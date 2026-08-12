@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tau-slime
+  labels:
+    app: tau-slime
+spec:
+  restartPolicy: Never
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: slime
+      image: slimerl/slime:v0.3.0
+      command: ["sleep", "infinity"]
+      env:
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: hf_api_token
+        - name: LD_LIBRARY_PATH
+          value: /usr/local/nvidia/lib64
+      resources:
+        limits:
+          nvidia.com/gpu: "8"
+      volumeMounts:
+        - name: shm
+          mountPath: /dev/shm
+        - name: nvidia
+          mountPath: /usr/local/nvidia
+  volumes:
+    - name: shm
+      emptyDir:
+        medium: Memory
+    - name: nvidia
+      hostPath:
+        path: /home/kubernetes/bin/nvidia

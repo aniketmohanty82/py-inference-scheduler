@@ -1,0 +1,99 @@
+diff --git a/examples/tau-bench/generate_with_tau.py b/examples/tau-bench/generate_with_tau.py
+index ce80c8d9..b68aabc3 100644
+--- a/examples/tau-bench/generate_with_tau.py
++++ b/examples/tau-bench/generate_with_tau.py
+@@ -8,6 +8,7 @@ results to the format expected by slime's training pipeline.
+ 
+ import logging
+ import os
++import pathlib
+ from typing import Any
+ 
+ from tau_bench.envs import get_env
+@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
+ TAU_CONFIGS = {
+     "env": "retail",  # Select between ["retail", "airline"]
+     "agent": "tool-calling",  # Select between ["tool-calling", "act", "react", "few-shot"]
+-    "user_model": "gemini-2.5-flash-lite",  # Cheap Model for user simulator
++    "user_model": "gemini-3.1-flash-lite",  # Cheap Model for user simulator
+     "task_split": "train",  # Select between ["train", "test", "dev"] for retail
+     "user_strategy": "llm",  # Select between ["llm", "react", "verify", "reflection"]
+     "model_provider": "auto_router",  # Unused, required
+@@ -31,7 +32,7 @@ TAU_CONFIGS = {
+     "user_model_provider": "gemini",
+ }
+ # Replace with your actual API key for user sim
+-GEMINI_API_KEY = "NONE"
++GEMINI_API_KEY = pathlib.Path("/root/gemini_key").read_text().strip()
+ os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
+ tau_config = RunConfig(**TAU_CONFIGS)
+ 
+@@ -148,6 +149,11 @@ async def generate(args: dict[str, Any], sample: Sample, sampling_params: dict)
+ 
+     # Convert to slime Sample format
+     result_sample = res_to_sample(interaction_result, task_index)
++    # Preserve the unique per-sample index slime assigned (task_index is shared
++    # by all n_samples_per_prompt siblings; reusing it collapses dp_schedule
++    # groups: num_groups 32 < global_batch_size 256 -> zero train steps).
++    result_sample.index = sample.index
++    result_sample.group_id = sample.group_id
+ 
+     logger.info(f"Finished agent-environment interaction for task {task_index}")
+     return result_sample
+diff --git a/examples/tau-bench/trainable_agents.py b/examples/tau-bench/trainable_agents.py
+index 5cfc3f43..92a5cda3 100644
+--- a/examples/tau-bench/trainable_agents.py
++++ b/examples/tau-bench/trainable_agents.py
+@@ -1,3 +1,4 @@
++import asyncio
+ import json
+ import logging
+ from dataclasses import dataclass
+@@ -123,9 +124,9 @@ class TrainableAgentMixin:
+         Returns:
+             Environment step result
+         """
+-        return env.step(action)
++        return await asyncio.to_thread(env.step, action)
+ 
+-    def _initialize_environment(self, env, task_index: int | None) -> tuple[str, dict[str, Any]]:
++    async def _initialize_environment(self, env, task_index: int | None) -> tuple[str, dict[str, Any]]:
+         """
+         Initialize the environment and get initial observation.
+ 
+@@ -137,9 +138,9 @@ class TrainableAgentMixin:
+             Tuple of (observation, info)
+         """
+         if task_index is not None:
+-            env_reset_res = env.reset(task_index=task_index)
++            env_reset_res = await asyncio.to_thread(env.reset, task_index=task_index)
+         else:
+-            env_reset_res = env.reset()
++            env_reset_res = await asyncio.to_thread(env.reset)
+         return env_reset_res.observation, env_reset_res.info.model_dump()
+ 
+     def _build_initial_messages(self, obs: str) -> list[dict[str, Any]]:
+@@ -203,7 +204,7 @@ class TrainableAgentMixin:
+         url = f"http://{rollout_args.sglang_router_ip}:" f"{rollout_args.sglang_router_port}/generate"
+ 
+         # Get initial environment state
+-        obs, info = self._initialize_environment(env, task_index)
++        obs, info = await self._initialize_environment(env, task_index)
+ 
+         # Build initial conversation
+         messages = self._build_initial_messages(obs)
+diff --git a/slime/backends/megatron_utils/loss.py b/slime/backends/megatron_utils/loss.py
+index 91311014..33b4eaad 100644
+--- a/slime/backends/megatron_utils/loss.py
++++ b/slime/backends/megatron_utils/loss.py
+@@ -614,7 +614,9 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch)
+ 
+     if args.kl_coef == 0 or not log_probs:
+         # when kl_coef is 0, we won't compute ref_log_prob
+-        xs = log_probs or rollout_log_probs or values
++        # loss_masks as last-resort shape donor: custom rollouts (tau-bench) return no
++        # logprobs, and with kl_coef=0 + single-step reuse, log_probs is not yet computed.
++        xs = log_probs or rollout_log_probs or values or loss_masks
+         kl = [torch.zeros_like(x, dtype=torch.float32, device=x.device) for x in xs]
+     else:
+         kl = [

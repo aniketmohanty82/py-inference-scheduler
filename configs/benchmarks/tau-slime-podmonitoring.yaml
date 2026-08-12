@@ -1,0 +1,33 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: tau-slime-engines
+spec:
+  selector:
+    matchLabels:
+      app: tau-slime
+  endpoints:
+    - port: 15000
+      path: /metrics
+      interval: 15s
+    - port: 15002
+      path: /metrics
+      interval: 15s
+    - port: 15004
+      path: /metrics
+      interval: 15s
+    - port: 15006
+      path: /metrics
+      interval: 15s
+    - port: 15008
+      path: /metrics
+      interval: 15s
+    - port: 15010
+      path: /metrics
+      interval: 15s
+    - port: 15012
+      path: /metrics
+      interval: 15s
+    - port: 15014
+      path: /metrics
+      interval: 15s
