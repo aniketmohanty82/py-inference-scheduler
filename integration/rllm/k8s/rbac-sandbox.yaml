@@ -15,7 +15,8 @@ rules:
   verbs: ["create", "get", "list", "watch", "delete"]
 - apiGroups: [""]
   resources: ["pods/exec"]
-  verbs: ["create"]
+  # the python client's WebSocket exec handshakes with GET, kubectl with POST
+  verbs: ["create", "get"]
 - apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get"]
