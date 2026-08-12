@@ -1,19 +1,3 @@
-From 20d55a32f16bdb84d99ce6cc41a1514eb4979aa5 Mon Sep 17 00:00:00 2001
-From: Aniket Mohanty <aniketmohanty@google.com>
-Date: Wed, 12 Aug 2026 21:38:09 +0000
-Subject: [PATCH] gateway: expose routing_policy through GatewayManager and env
-
-- RLLM_GATEWAY_ROUTING_POLICY env var accepted by the gateway server
-  (process mode inherits it from the trainer environment)
-- rllm.gateway.routing_policy config key plumbed through GatewayManager
-  into both subprocess and thread launch modes
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
----
- rllm-model-gateway/src/rllm_model_gateway/server.py |  1 +
- rllm/gateway/manager.py                             | 10 +++++++++-
- 2 files changed, 10 insertions(+), 1 deletion(-)
-
 diff --git a/rllm-model-gateway/src/rllm_model_gateway/server.py b/rllm-model-gateway/src/rllm_model_gateway/server.py
 index 826d9722..ef898735 100644
 --- a/rllm-model-gateway/src/rllm_model_gateway/server.py
@@ -73,6 +57,26 @@ index a13f8143..1e34e182 100644
          )
          app = create_app(config=gw_config, local_handler=local_handler)
  
--- 
-2.55.0.691.gc56d675ccc-goog
-
+diff --git a/rllm/hooks.py b/rllm/hooks.py
+index 39a0bb13..61e75c2e 100644
+--- a/rllm/hooks.py
++++ b/rllm/hooks.py
+@@ -24,6 +24,7 @@ any per-task bind.
+ from __future__ import annotations
+ 
+ import logging
++import os
+ from dataclasses import dataclass, field
+ from typing import TYPE_CHECKING, Any
+ 
+@@ -321,6 +322,10 @@ def pin_gateway_host_loopback(config: DictConfig) -> DictConfig:
+     """Pin ``rllm.gateway.host=127.0.0.1`` if not explicitly set, so docker containers can reach it via ``host.docker.internal``."""
+     if config.rllm.get("gateway", {}).get("host"):
+         return config
++    if os.environ.get("DOCKER_HOST"):
++        # Remote docker daemon: its containers cannot reach this host via
++        # loopback; leave host unset so the gateway advertises a routable IP.
++        return config
+     return OmegaConf.merge(
+         config,
+         OmegaConf.create({"rllm": {"gateway": {"host": "127.0.0.1"}}}),

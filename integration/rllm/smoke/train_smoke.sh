@@ -28,7 +28,7 @@ python -u "$SMOKE_DIR/train_smoke.py" \
     rllm.algorithm.use_rllm=true \
     rllm.gateway.store=sqlite \
     rllm.gateway.db_path="$TRACE_DB" \
-    rllm.workflow.n_parallel_tasks=8 \
+    rllm.workflow.n_parallel_tasks=4 \
     rllm.trainer.total_batches=2 \
     rllm.rollout.train.temperature=0.6 \
     rllm.rollout.val.temperature=0.6 \
