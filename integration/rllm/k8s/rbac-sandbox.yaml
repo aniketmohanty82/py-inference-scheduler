@@ -1,0 +1,34 @@
+# ServiceAccount + Role for RayJob pods that manage R2E-Gym task pods via the
+# vendored kubernetes sandbox backend (create/exec/delete, default ns only).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rllm-sandbox-runner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rllm-sandbox-runner
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rllm-sandbox-runner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rllm-sandbox-runner
+subjects:
+- kind: ServiceAccount
+  name: rllm-sandbox-runner
+  namespace: default

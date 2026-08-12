@@ -10,6 +10,50 @@ index 826d9722..ef898735 100644
      }
      for env_key, config_key in env_map.items():
          val = os.environ.get(env_key)
+diff --git a/rllm/cli/eval.py b/rllm/cli/eval.py
+index e065ca8c..06680832 100644
+--- a/rllm/cli/eval.py
++++ b/rllm/cli/eval.py
+@@ -551,7 +551,7 @@ def _run_eval(
+     "--sandbox-backend",
+     "sandbox_backend",
+     default=None,
+-    type=click.Choice(["docker", "local", "modal", "daytona", "e2b", "runloop", "gke", "apple-container"], case_sensitive=False),
++    type=click.Choice(["docker", "local", "modal", "daytona", "kubernetes", "e2b", "runloop", "gke", "apple-container"], case_sensitive=False),
+     help="Sandbox/environment backend. For Harbor agents: docker, daytona, modal, e2b, etc. For sandboxed agents: docker, local, modal.",
+ )
+ @click.option("--sandbox-concurrency", "sandbox_concurrency", default=None, type=int, help="Override max concurrent sandboxes (default: agent's max_concurrent).")
+diff --git a/rllm/cli/train.py b/rllm/cli/train.py
+index e877fc18..a62adc73 100644
+--- a/rllm/cli/train.py
++++ b/rllm/cli/train.py
+@@ -581,7 +581,7 @@ def _load_or_pull_dataset(name: str, split: str, catalog: dict, catalog_entry_ov
+     "--sandbox-backend",
+     "sandbox_backend",
+     default=None,
+-    type=click.Choice(["docker", "local", "modal", "daytona", "e2b", "runloop", "gke", "apple-container"], case_sensitive=False),
++    type=click.Choice(["docker", "local", "modal", "daytona", "kubernetes", "e2b", "runloop", "gke", "apple-container"], case_sensitive=False),
+     help="Sandbox backend for SandboxedAgentFlow harnesses (default: per-task or docker). Remote backends auto-spawn a cloudflared tunnel for the gateway.",
+ )
+ @click.option("--sandbox-concurrency", "sandbox_concurrency", default=None, type=int, help="Override max concurrent sandboxes (default: agent's max_concurrent — usually 64).")
+diff --git a/rllm/eval/_resolution.py b/rllm/eval/_resolution.py
+index f4131748..21df0497 100644
+--- a/rllm/eval/_resolution.py
++++ b/rllm/eval/_resolution.py
+@@ -245,6 +245,13 @@ def _sandbox_resource_kwargs(task: Task, backend: str) -> dict:
+         # for multi-GB SWE images routinely exceeds the SDK's 120s default.
+         # Honor the task's declared build timeout, with a pull-friendly floor.
+         kw["create_timeout"] = float(env.get("build_timeout_sec") or 600.0)
++    elif backend == "kubernetes":
++        if cpus:
++            kw["cpu"] = float(cpus)
++        if mem_mb:
++            kw["memory_mb"] = int(mem_mb)
++        if disk_mb:
++            kw["storage_mb"] = int(disk_mb)
+     return kw
+ 
+ 
 diff --git a/rllm/gateway/manager.py b/rllm/gateway/manager.py
 index a13f8143..1e34e182 100644
 --- a/rllm/gateway/manager.py
@@ -57,8 +101,24 @@ index a13f8143..1e34e182 100644
          )
          app = create_app(config=gw_config, local_handler=local_handler)
  
+diff --git a/rllm/gateway/tunnel.py b/rllm/gateway/tunnel.py
+index faf97e79..986a3c1f 100644
+--- a/rllm/gateway/tunnel.py
++++ b/rllm/gateway/tunnel.py
+@@ -24,8 +24,9 @@ logger = logging.getLogger(__name__)
+ 
+ _status = Console()
+ 
+-# Sandbox backends that share network with the gateway host.
+-LOCAL_SANDBOX_BACKENDS: frozenset[str] = frozenset({"docker", "local", "apple-container"})
++# Sandbox backends that share network with the gateway host. kubernetes pods
++# reach the gateway's pod IP over cluster networking, so no tunnel either.
++LOCAL_SANDBOX_BACKENDS: frozenset[str] = frozenset({"docker", "local", "apple-container", "kubernetes"})
+ 
+ 
+ def is_local_sandbox_backend(name: str | None) -> bool:
 diff --git a/rllm/hooks.py b/rllm/hooks.py
-index 39a0bb13..61e75c2e 100644
+index 39a0bb13..c5785721 100644
 --- a/rllm/hooks.py
 +++ b/rllm/hooks.py
 @@ -24,6 +24,7 @@ any per-task bind.
@@ -69,14 +129,275 @@ index 39a0bb13..61e75c2e 100644
  from dataclasses import dataclass, field
  from typing import TYPE_CHECKING, Any
  
-@@ -321,6 +322,10 @@ def pin_gateway_host_loopback(config: DictConfig) -> DictConfig:
+@@ -321,6 +322,11 @@ def pin_gateway_host_loopback(config: DictConfig) -> DictConfig:
      """Pin ``rllm.gateway.host=127.0.0.1`` if not explicitly set, so docker containers can reach it via ``host.docker.internal``."""
      if config.rllm.get("gateway", {}).get("host"):
          return config
-+    if os.environ.get("DOCKER_HOST"):
-+        # Remote docker daemon: its containers cannot reach this host via
-+        # loopback; leave host unset so the gateway advertises a routable IP.
++    if os.environ.get("DOCKER_HOST") or os.environ.get("RLLM_GATEWAY_NO_LOOPBACK_PIN") == "1":
++        # Remote docker daemon or off-host sandboxes (e.g. kubernetes pods):
++        # loopback is unreachable from the containers; leave host unset so the
++        # gateway advertises a routable IP.
 +        return config
      return OmegaConf.merge(
          config,
          OmegaConf.create({"rllm": {"gateway": {"host": "127.0.0.1"}}}),
+diff --git a/rllm/sandbox/backends/kubernetes_backend.py b/rllm/sandbox/backends/kubernetes_backend.py
+new file mode 100644
+index 00000000..8937f9ba
+--- /dev/null
++++ b/rllm/sandbox/backends/kubernetes_backend.py
+@@ -0,0 +1,223 @@
++"""Kubernetes sandbox backend: one pod per task, exec-based I/O.
++
++Shaped after the Modal backend: non-interactive exec, base64-chunked file
++transfer, atexit sweeper for leaked sandboxes. Pods dial out to the gateway
++directly (cluster networking), so no tunnel is needed; pair with
++RLLM_GATEWAY_NO_LOOPBACK_PIN=1 so the gateway advertises a routable IP.
++
++Cluster knobs come from env:
++    RLLM_K8S_NAMESPACE          pod namespace (default: "default")
++    RLLM_K8S_NODE_SELECTOR      "k=v[,k=v]" node selector for task pods
++    RLLM_K8S_IMAGE_PULL_SECRET  optional imagePullSecrets name
++    RLLM_K8S_POD_TIMEOUT        seconds to wait for Running (default: 600)
++"""
++
++import atexit
++import base64
++import io
++import logging
++import os
++import shlex
++import tarfile
++import time
++import uuid
++import weakref
++from pathlib import Path
++
++logger = logging.getLogger(__name__)
++
++_CHUNK_BYTES = 49_152  # keep each exec argv comfortably under ARG_MAX
++
++_live_sandboxes: "weakref.WeakSet[KubernetesSandbox]" = weakref.WeakSet()
++
++
++def _sweep() -> None:
++    for sandbox in list(_live_sandboxes):
++        try:
++            sandbox.close()
++        except Exception:
++            pass
++
++
++atexit.register(_sweep)
++
++
++class KubernetesSandbox:
++    """Sandbox protocol implementation backed by a Kubernetes pod."""
++
++    def __init__(
++        self,
++        image: str,
++        name: str | None = None,
++        cpu: float | None = None,
++        memory_mb: int | None = None,
++        storage_mb: int | None = None,
++        **_ignored,
++    ) -> None:
++        try:
++            from kubernetes import client, config
++        except ImportError as e:  # pragma: no cover
++            raise ImportError("KubernetesSandbox requires the 'kubernetes' package (pip install kubernetes)") from e
++
++        try:
++            config.load_incluster_config()
++        except config.ConfigException:
++            config.load_kube_config()
++
++        self._core = client.CoreV1Api()
++        self._namespace = os.environ.get("RLLM_K8S_NAMESPACE", "default")
++        self._name = f"rllm-sandbox-{name or uuid.uuid4().hex[:12]}".lower()
++        self._closed = False
++
++        resources: dict[str, dict[str, str]] = {"requests": {}, "limits": {}}
++        if cpu:
++            resources["requests"]["cpu"] = str(cpu)
++        if memory_mb:
++            resources["requests"]["memory"] = f"{int(memory_mb)}Mi"
++            resources["limits"]["memory"] = f"{int(memory_mb)}Mi"
++        if storage_mb:
++            resources["requests"]["ephemeral-storage"] = f"{int(storage_mb)}Mi"
++
++        node_selector = {}
++        raw_selector = os.environ.get("RLLM_K8S_NODE_SELECTOR", "")
++        for pair in filter(None, raw_selector.split(",")):
++            key, _, value = pair.partition("=")
++            node_selector[key.strip()] = value.strip()
++
++        spec: dict = {
++            "restartPolicy": "Never",
++            "terminationGracePeriodSeconds": 5,
++            "containers": [
++                {
++                    "name": "sandbox",
++                    "image": image,
++                    "command": ["sleep", "infinity"],
++                    "resources": {k: v for k, v in resources.items() if v},
++                }
++            ],
++        }
++        if node_selector:
++            spec["nodeSelector"] = node_selector
++        pull_secret = os.environ.get("RLLM_K8S_IMAGE_PULL_SECRET")
++        if pull_secret:
++            spec["imagePullSecrets"] = [{"name": pull_secret}]
++
++        manifest = {
++            "apiVersion": "v1",
++            "kind": "Pod",
++            "metadata": {"name": self._name, "labels": {"app": "rllm-sandbox"}},
++            "spec": spec,
++        }
++        self._core.create_namespaced_pod(namespace=self._namespace, body=manifest)
++        _live_sandboxes.add(self)
++        self._wait_running(float(os.environ.get("RLLM_K8S_POD_TIMEOUT", "600")))
++        logger.info("KubernetesSandbox %s running (image=%s)", self._name, image)
++
++    # -- Sandbox protocol ----------------------------------------------------
++
++    def exec(self, command: str, timeout: float | None = None, user: str | None = None) -> str:
++        from kubernetes.stream import stream
++
++        shell = ["bash", "-c", command]
++        if user:
++            # k8s exec has no user switch; runuser needs root in the pod,
++            # which R2E/testbed images run as.
++            shell = ["runuser", "-u", user, "--", "bash", "-c", command]
++
++        resp = stream(
++            self._core.connect_get_namespaced_pod_exec,
++            self._name,
++            self._namespace,
++            command=shell,
++            container="sandbox",
++            stderr=True,
++            stdin=False,
++            stdout=True,
++            tty=False,
++            _preload_content=False,
++        )
++        deadline = time.monotonic() + timeout if timeout else None
++        stdout_parts: list[str] = []
++        stderr_parts: list[str] = []
++        while resp.is_open():
++            resp.update(timeout=1)
++            if resp.peek_stdout():
++                stdout_parts.append(resp.read_stdout())
++            if resp.peek_stderr():
++                stderr_parts.append(resp.read_stderr())
++            if deadline and time.monotonic() > deadline:
++                resp.close()
++                raise RuntimeError(f"exec timed out after {timeout}s: {command[:200]}")
++        # Drain anything buffered after the channel closed.
++        if resp.peek_stdout():
++            stdout_parts.append(resp.read_stdout())
++        if resp.peek_stderr():
++            stderr_parts.append(resp.read_stderr())
++        returncode = resp.returncode
++        if returncode != 0:
++            stderr_tail = "".join(stderr_parts)[-600:]
++            raise RuntimeError(f"exec failed (rc={returncode}): {stderr_tail}")
++        return "".join(stdout_parts)
++
++    def upload_file(self, local_path: str | Path, remote_path: str | Path) -> None:
++        data = Path(local_path).read_bytes()
++        remote = str(remote_path)
++        parent = os.path.dirname(remote) or "/"
++        staging = f"/tmp/.rllm-upload-{uuid.uuid4().hex[:8]}"
++        self.exec(f"mkdir -p {shlex.quote(parent)} && : > {staging}")
++        for offset in range(0, len(data), _CHUNK_BYTES):
++            chunk = base64.b64encode(data[offset : offset + _CHUNK_BYTES]).decode()
++            self.exec(f"printf %s {chunk} >> {staging}")
++        self.exec(f"base64 -d {staging} > {shlex.quote(remote)} && rm -f {staging}")
++
++    def upload_dir(self, local_path: str | Path, remote_path: str | Path) -> None:
++        buffer = io.BytesIO()
++        with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
++            tar.add(str(local_path), arcname=".")
++        data = buffer.getvalue()
++        remote = str(remote_path)
++        staging = f"/tmp/.rllm-upload-{uuid.uuid4().hex[:8]}"
++        self.exec(f"mkdir -p {shlex.quote(remote)} && : > {staging}")
++        for offset in range(0, len(data), _CHUNK_BYTES):
++            chunk = base64.b64encode(data[offset : offset + _CHUNK_BYTES]).decode()
++            self.exec(f"printf %s {chunk} >> {staging}")
++        self.exec(
++            f"base64 -d {staging} | tar xzf - --no-same-owner -C {shlex.quote(remote)} && rm -f {staging}"
++        )
++
++    def is_alive(self) -> bool:
++        if self._closed:
++            return False
++        try:
++            pod = self._core.read_namespaced_pod(name=self._name, namespace=self._namespace)
++            return pod.status.phase == "Running"
++        except Exception:
++            return False
++
++    def close(self) -> None:
++        if self._closed:
++            return
++        self._closed = True
++        try:
++            self._core.delete_namespaced_pod(
++                name=self._name, namespace=self._namespace, grace_period_seconds=5
++            )
++        except Exception:
++            logger.debug("KubernetesSandbox %s already gone", self._name)
++        _live_sandboxes.discard(self)
++
++    # -- Internal ------------------------------------------------------------
++
++    def _wait_running(self, timeout: float) -> None:
++        deadline = time.monotonic() + timeout
++        last_phase = "Unknown"
++        while time.monotonic() < deadline:
++            pod = self._core.read_namespaced_pod(name=self._name, namespace=self._namespace)
++            last_phase = pod.status.phase or "Unknown"
++            if last_phase == "Running":
++                return
++            if last_phase in ("Failed", "Succeeded"):
++                break
++            time.sleep(2)
++        self.close()
++        raise RuntimeError(f"pod {self._name} not Running after {timeout}s (phase={last_phase})")
+diff --git a/rllm/sandbox/sandboxed_flow.py b/rllm/sandbox/sandboxed_flow.py
+index 7b3cd00a..e98ca0b8 100644
+--- a/rllm/sandbox/sandboxed_flow.py
++++ b/rllm/sandbox/sandboxed_flow.py
+@@ -87,8 +87,12 @@ def create_sandbox(backend: str, name: str, image: str, **kwargs) -> Sandbox:
+         from rllm.sandbox.backends.daytona import DaytonaSandbox
+ 
+         return DaytonaSandbox(name=name, image=image, **kwargs)
++    elif backend == "kubernetes":
++        from rllm.sandbox.backends.kubernetes_backend import KubernetesSandbox
++
++        return KubernetesSandbox(name=name, image=image, **kwargs)
+     else:
+-        raise ValueError(f"Unknown sandbox backend: {backend}. Available: docker, local, modal, daytona")
++        raise ValueError(f"Unknown sandbox backend: {backend}. Available: docker, local, modal, daytona, kubernetes")
+ 
+ 
+ def build_snapshot(backend: str, task: Task, key: str, prior_ref: str | None = None, *, force: bool = False, install_script: str = "") -> str | None:
+diff --git a/rllm/sandbox/snapshot.py b/rllm/sandbox/snapshot.py
+index 27d11d04..7b0412ae 100644
+--- a/rllm/sandbox/snapshot.py
++++ b/rllm/sandbox/snapshot.py
+@@ -26,7 +26,7 @@ if TYPE_CHECKING:
+ logger = logging.getLogger(__name__)
+ 
+ # Backends with no snapshot mechanism — get_sandbox always takes the cold path.
+-_NO_SNAPSHOT_BACKENDS = {"docker", "local"}
++_NO_SNAPSHOT_BACKENDS = {"docker", "local", "kubernetes"}
+ 
+ # Default local trust horizon for a snapshot entry (7 days).
+ _DEFAULT_TTL_HOURS = env_float("RLLM_SNAPSHOT_TTL_HOURS", 168.0)  # set env var: export RLLM_SNAPSHOT_TTL_HOURS=xxx

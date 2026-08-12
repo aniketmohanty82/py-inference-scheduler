@@ -35,6 +35,7 @@ RUN uv pip install --system --no-cache \
     --override /tmp/overrides.txt \
     -e "/opt/rllm[verl]" \
     docker \
+    kubernetes \
     cupy-cuda12x
 
 COPY . /opt/py-inference-scheduler
@@ -54,6 +55,8 @@ for mod in (
     "py_inference_scheduler.datalayer.connectors.mooncake.decode_save",
     "py_inference_scheduler.datalayer.metrics.poller",
     "docker",
+    "kubernetes",
+    "rllm.sandbox.backends.kubernetes_backend",
     "cupy",
 ):
     importlib.import_module(mod)

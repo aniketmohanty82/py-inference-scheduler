@@ -9,6 +9,8 @@ Usage (from the rllm repo root, config overrides in train_smoke.sh):
     python /path/to/train_smoke.py rllm/backend=verl ...
 """
 
+import os
+
 import hydra
 from omegaconf import DictConfig
 
@@ -32,7 +34,9 @@ def main(config: DictConfig) -> None:
         config=config,
         train_dataset=train_dataset,
         val_dataset=train_dataset,
-        sandbox_backend="docker",
+        # kubernetes = task pods on the cluster (vendored backend); use docker
+        # for a workstation run with a local daemon.
+        sandbox_backend=os.environ.get("RLS_SANDBOX_BACKEND", "kubernetes"),
     )
     trainer.train()
 

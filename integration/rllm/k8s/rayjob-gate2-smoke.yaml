@@ -1,0 +1,141 @@
+# Gate-2 smoke RayJob: Qwen3-4B + LoRA, verl backend, colocated sync loop on
+# ONE 8xH200 node; R2E-Gym task containers run as pods on the CPU pool via the
+# vendored kubernetes sandbox backend (see patches/PINS.md).
+#
+# Prereqs on the cluster: kuberay-operator, hf-secret, rbac-sandbox.yaml, and
+# the rdma-gpu-pool (a3-ultra) node pool. Mooncake is OFF for this gate.
+#
+# Harvest before deleting: the gateway sqlite trace DB lives on the pod that
+# ran the trainer actor (kubectl cp <worker-pod>:/tmp/rllm-smoke-traces.db).
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: rllm-gate2-smoke
+spec:
+  shutdownAfterJobFinishes: false
+  entrypoint: >-
+    bash -lc "
+    set -euo pipefail;
+    cd /opt/py-inference-scheduler;
+    python integration/rllm/smoke/prepare_r2egym_subset.py --limit 8;
+    bash integration/rllm/smoke/train_smoke.sh
+    "
+  rayClusterSpec:
+    rayVersion: "2.56.0"
+    headGroupSpec:
+      rayStartParams:
+        num-cpus: "0"
+        num-gpus: "0"
+        dashboard-host: "0.0.0.0"
+      template:
+        spec:
+          serviceAccountName: rllm-sandbox-runner
+          containers:
+          - name: ray-head
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:dev
+            imagePullPolicy: Always
+            ports:
+            - containerPort: 6379
+              name: gcs
+            - containerPort: 8265
+              name: dashboard
+            env:
+            - name: RLS_SANDBOX_BACKEND
+              value: "kubernetes"
+            - name: RLLM_GATEWAY_NO_LOOPBACK_PIN
+              value: "1"
+            - name: RLLM_K8S_NAMESPACE
+              value: "default"
+            - name: RLLM_K8S_NODE_SELECTOR
+              value: "cloud.google.com/gke-nodepool=default-pool"
+            - name: PYTHONHASHSEED
+              value: "0"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            resources:
+              requests:
+                cpu: "3"
+                memory: 8Gi
+              limits:
+                cpu: "3"
+                memory: 8Gi
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-tmp
+          volumes:
+          - name: ray-tmp
+            emptyDir: {}
+    workerGroupSpecs:
+    - replicas: 1
+      minReplicas: 1
+      maxReplicas: 1
+      groupName: gpu-group
+      rayStartParams:
+        num-gpus: "8"
+      template:
+        spec:
+          serviceAccountName: rllm-sandbox-runner
+          nodeSelector:
+            cloud.google.com/gke-networking-dra-driver: "true"
+          tolerations:
+          - key: cloud.google.com/gke-queued
+            operator: Exists
+            effect: NoSchedule
+          - key: cloud.google.com/gke-spot
+            operator: Exists
+            effect: NoSchedule
+          - key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule
+          containers:
+          - name: ray-worker
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:dev
+            imagePullPolicy: Always
+            securityContext:
+              capabilities:
+                add: ["IPC_LOCK"]
+            env:
+            - name: RLS_SANDBOX_BACKEND
+              value: "kubernetes"
+            - name: RLLM_GATEWAY_NO_LOOPBACK_PIN
+              value: "1"
+            - name: RLLM_K8S_NAMESPACE
+              value: "default"
+            - name: RLLM_K8S_NODE_SELECTOR
+              value: "cloud.google.com/gke-nodepool=default-pool"
+            - name: PYTHONHASHSEED
+              value: "0"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            resources:
+              requests:
+                cpu: "100"
+                memory: 800Gi
+                nvidia.com/gpu: "8"
+              limits:
+                cpu: "100"
+                memory: 800Gi
+                nvidia.com/gpu: "8"
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-tmp
+            - mountPath: /dev/shm
+              name: dshm
+          volumes:
+          - name: ray-tmp
+            emptyDir: {}
+          - name: dshm
+            emptyDir:
+              medium: Memory
+              sizeLimit: 128Gi
