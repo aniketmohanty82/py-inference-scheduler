@@ -1,0 +1,35 @@
+# tau3 runner for the us-west1-c A/B cluster (rls-ab-west). Same as the home
+# runner but on the default pool (no dedicated bench pool here).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tau3-runner
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: default-pool
+  restartPolicy: Never
+  containers:
+    - name: runner
+      image: python:3.12-bookworm
+      command: ["sleep", "infinity"]
+      workingDir: /workspace
+      env:
+        - name: RLS_API_BASE
+          value: "http://ray-serve-llm-mooncake-serve-svc.default.svc.cluster.local:8000/v1"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gemini-api-key
+              key: key
+      resources:
+        requests:
+          # deliberately constrained: tool latency should include the CPU
+          # contention a normal rollout client experiences
+          cpu: "6"
+          memory: 16Gi
+      volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+  volumes:
+    - name: workspace
+      emptyDir: {}

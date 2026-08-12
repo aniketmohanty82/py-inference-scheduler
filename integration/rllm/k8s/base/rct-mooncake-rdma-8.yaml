@@ -1,0 +1,17 @@
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"resource.k8s.io/v1","kind":"ResourceClaimTemplate","metadata":{"annotations":{},"name":"mooncake-rdma-8","namespace":"default"},"spec":{"metadata":{},"spec":{"devices":{"requests":[{"exactly":{"allocationMode":"ExactCount","count":8,"deviceClassName":"mrdma.google.com"},"name":"rdma"}]}}}}
+  name: mooncake-rdma-8
+spec:
+  metadata: {}
+  spec:
+    devices:
+      requests:
+      - exactly:
+          allocationMode: ExactCount
+          count: 8
+          deviceClassName: mrdma.google.com
+        name: rdma

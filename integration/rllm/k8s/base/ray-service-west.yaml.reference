@@ -1,0 +1,153 @@
+# RayService for the single-node A/B on rls-ab-west (us-west1-c).
+# Derived from the mooncake validation service (~/rdma-auto/demo-A.yaml);
+# delta: working_dir -> overscheduling branch, overscheduling env flags on,
+# relocation off (not in this branch), engine replicas forced to 2 via serve
+# config override (branch code pins autoscaling 1/1).
+#
+# Apply assumes the cluster already has: kuberay-operator, scheduler-config +
+# mooncake-config ConfigMaps, mooncake-master, hf-secret, and the
+# mooncake-rdma-8 ResourceClaimTemplate.
+
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: ray-serve-llm-mooncake
+spec:
+  serveConfigV2: |
+    applications:
+      - name: llm-app
+        import_path: integration.rayserve.router:app
+        runtime_env:
+          # Pinned to a commit: Ray caches working_dir zips by URL and assumes
+          # them immutable (no revalidation), so a branch URL can silently
+          # deploy stale or mixed-version code. Update the SHA per push.
+          working_dir: "https://github.com/aniketmohanty82/py-inference-scheduler/archive/50cc5e6c5b1a.zip"
+          env_vars:
+            # src-layout branch: make py_inference_scheduler importable from
+            # the zip root (relative entry resolves against the working_dir).
+            PYTHONPATH: "src"
+            ENABLE_MOONCAKE_KV: "1"
+            # OFF arm of the A/B: eviction policy disabled, store still on so
+            # the comparison isolates the overscheduling policy alone.
+            ENABLE_MOONCAKE_OVERSCHEDULING: "1"
+            # Bootstrap guard (~4.3k-token pedestal / 16-token blocks); replace
+            # with the measured value from compute_preserve_prefix.py before
+            # the A/B.
+            MOONCAKE_OVERSCHEDULING_PRESERVE_PREFIX_BLOCKS: "270"
+        # NOTE: serveConfigV2 deployment overrides fail here - the serve
+        # controller imports the app module outside the working_dir env
+        # (ModuleNotFoundError: integration). Replica count must come from
+        # the branch code; smoke runs single-replica.
+  rayClusterConfig:
+    rayVersion: "2.56.0"
+    headGroupSpec:
+      rayStartParams:
+        num-cpus: "0"
+        num-gpus: "0"
+        dashboard-host: "0.0.0.0"
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/ray-llm-mooncake:2.56.0
+            imagePullPolicy: Always
+            ports:
+            - containerPort: 8000
+              name: serve
+            - containerPort: 6379
+              name: gcs
+            - containerPort: 8265
+              name: dashboard
+            env:
+            - name: RAY_SERVE_DEFAULT_HTTP_HOST
+              value: "0.0.0.0"
+            - name: ROUTER_CONFIG_PATH
+              value: "/etc/scheduler/scheduler.yaml"
+            resources:
+              limits:
+                cpu: "900m"
+                memory: "3Gi"
+              requests:
+                cpu: "900m"
+                memory: "3Gi"
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-tmp
+            - mountPath: /etc/scheduler
+              name: scheduler-vol
+          volumes:
+          - name: ray-tmp
+            emptyDir: {}
+          - name: scheduler-vol
+            configMap:
+              name: scheduler-config
+    workerGroupSpecs:
+    - replicas: 1
+      minReplicas: 1
+      maxReplicas: 1
+      numOfHosts: 1
+      groupName: gpu-group
+      rayStartParams:
+        num-gpus: "8"
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/gke-networking-dra-driver: "true"
+          tolerations:
+          - key: cloud.google.com/gke-queued
+            operator: Exists
+            effect: NoSchedule
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchLabels:
+                    ray.io/group: gpu-group
+                topologyKey: kubernetes.io/hostname
+          resourceClaims:
+          - name: rdma
+            resourceClaimTemplateName: mooncake-rdma-8
+          containers:
+          - name: ray-worker
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/ray-llm-mooncake:2.56.0
+            imagePullPolicy: Always
+            securityContext:
+              capabilities:
+                add: ["IPC_LOCK"]
+            env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            - name: RAY_SERVE_DEFAULT_HTTP_HOST
+              value: "0.0.0.0"
+            - name: ROUTER_CONFIG_PATH
+              value: "/etc/scheduler/scheduler.yaml"
+            resources:
+              limits:
+                cpu: "100"
+                memory: "800Gi"
+                nvidia.com/gpu: "8"
+              requests:
+                cpu: "100"
+                memory: "800Gi"
+                nvidia.com/gpu: "8"
+              claims:
+              - name: rdma
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-tmp
+            - mountPath: /etc/scheduler
+              name: scheduler-vol
+            - mountPath: /etc/mooncake
+              name: mooncake-vol
+          volumes:
+          - name: ray-tmp
+            emptyDir: {}
+          - name: scheduler-vol
+            configMap:
+              name: scheduler-config
+          - name: mooncake-vol
+            configMap:
+              name: mooncake-config

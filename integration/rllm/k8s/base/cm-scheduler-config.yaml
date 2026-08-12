@@ -1,0 +1,21 @@
+apiVersion: v1
+data:
+  scheduler.yaml: |
+    profile_handler:
+      type: single_profile
+    profiles:
+      epp_backpressure:
+        scorers:
+          - type: waiting_queue
+            weight: 1.0
+          - type: running_queue
+            weight: 1.0
+          - type: kv_cache
+            weight: 2.0
+        picker:
+          type: max_score
+kind: ConfigMap
+metadata:
+  annotations:
+      {"apiVersion":"v1","data":{"scheduler.yaml":"profile_handler:\n  type: single_profile\nprofiles:\n  epp_backpressure:\n    scorers:\n      - type: waiting_queue\n        weight: 1.0\n      - type: running_queue\n        weight: 1.0\n      - type: kv_cache\n        weight: 2.0\n    picker:\n      type: max_score\n"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"scheduler-config","namespace":"default"}}
+  name: scheduler-config
