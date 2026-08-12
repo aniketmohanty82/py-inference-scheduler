@@ -36,6 +36,28 @@ index e877fc18..a62adc73 100644
      help="Sandbox backend for SandboxedAgentFlow harnesses (default: per-task or docker). Remote backends auto-spawn a cloudflared tunnel for the gateway.",
  )
  @click.option("--sandbox-concurrency", "sandbox_concurrency", default=None, type=int, help="Override max concurrent sandboxes (default: agent's max_concurrent — usually 64).")
+diff --git a/rllm/data/utils.py b/rllm/data/utils.py
+index e5290a64..fd44a561 100644
+--- a/rllm/data/utils.py
++++ b/rllm/data/utils.py
+@@ -17,11 +17,16 @@ def task_from_row(row: dict[str, Any], task_id: str) -> Task:
+     Shared by the engine (per-task at rollout) and the sandbox warm-pool
+     schedule so both derive the same ``env_key`` for a given row.
+     """
++    # Rows materialized by benchmark builders (r2egym, harbor) carry a
++    # task_path pointing at the on-disk task dir; root the Task there so the
++    # tests/test.sh verifier and environment/ resolve - mirrors the eval
++    # loader (rllm/tasks/loader.py) which does the same for harbor rows.
++    task_path = row.get("task_path")
+     return Task(
+         id=str(task_id),
+         instruction=str(row.get("question", row.get("instruction", ""))),
+         metadata=row,
+-        dataset_dir=Path("."),
++        dataset_dir=Path(task_path) if task_path else Path("."),
+     )
+ 
+ 
 diff --git a/rllm/eval/_resolution.py b/rllm/eval/_resolution.py
 index f4131748..21df0497 100644
 --- a/rllm/eval/_resolution.py
