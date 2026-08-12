@@ -14,6 +14,16 @@ ARG RLLM_SHA=1d1109a655e291b3001d8526d7c9ecc5b9328226
 USER root
 RUN pip install --no-cache-dir uv
 
+# flash-attn (pulled in by rllm[verl]) has no cu130/torch2.11 wheel and its sdist
+# doesn't declare torch as a build dep: pre-build it alone against the image's
+# torch with isolation off (sm90-only for H200, bounded parallelism), so the
+# main install below keeps normal build isolation for everything else. Kept
+# ahead of the rllm clone so patch iterations reuse this ~40min layer.
+RUN uv pip install --system --no-cache ninja packaging
+ENV MAX_JOBS=16 \
+    FLASH_ATTN_CUDA_ARCHS=90
+RUN uv pip install --system --no-cache --no-build-isolation flash-attn==2.8.3
+
 RUN git clone https://github.com/rllm-org/rllm.git /opt/rllm \
     && git -C /opt/rllm checkout ${RLLM_SHA}
 
@@ -21,14 +31,6 @@ COPY integration/rllm/patches/rllm-gateway-routing-policy.diff /tmp/rllm-gateway
 RUN git -C /opt/rllm apply /tmp/rllm-gateway-routing-policy.diff
 
 COPY integration/rllm/image/overrides.txt /tmp/overrides.txt
-# flash-attn (pulled in by rllm[verl]) has no cu130/torch2.11 wheel and its sdist
-# doesn't declare torch as a build dep: pre-build it alone against the image's
-# torch with isolation off (sm90-only for H200, bounded parallelism), so the
-# main install below keeps normal build isolation for everything else.
-RUN uv pip install --system --no-cache ninja packaging
-ENV MAX_JOBS=16 \
-    FLASH_ATTN_CUDA_ARCHS=90
-RUN uv pip install --system --no-cache --no-build-isolation flash-attn==2.8.3
 RUN uv pip install --system --no-cache \
     --override /tmp/overrides.txt \
     -e "/opt/rllm[verl]" \
