@@ -13,11 +13,12 @@ metadata:
   name: rllm-gate2-smoke
 spec:
   shutdownAfterJobFinishes: false
+  # Task subset + registry are baked into the image at RLLM_HOME=/opt/rllm-home
+  # (cluster-wide identical paths); no runtime prep step.
   entrypoint: >-
     bash -lc "
     set -euo pipefail;
     cd /opt/py-inference-scheduler;
-    python integration/rllm/smoke/prepare_r2egym_subset.py --limit 8;
     bash integration/rllm/smoke/train_smoke.sh
     "
   rayClusterSpec:
