@@ -34,6 +34,8 @@ class DirectKVCacheLogger(StatLoggerBase):
         self,
         scheduler_stats: object,
         iteration_stats: object,
+        # Unused, but vllm 0.22 added it to StatLoggerBase.record and passes it
+        # on every stats poll; without it the first poll raises.
         mm_cache_stats: object = None,
         engine_idx: int = 0,
     ) -> None:
