@@ -51,8 +51,8 @@ def mooncake_env_vars() -> dict:
         ),
         # Error out if no RDMA verbs device exists instead of silent TCP.
         "MC_FORCE_HCA": "1",
-        # GKE COS nodes have no nvidia-peermem module that I found; GPU KV registration
-        # must go through the dmabuf path (ibv_reg_dmabuf_mr).
-        # removable for non GKE COS nodes that have peermem.
-        "WITH_NVIDIA_PEERMEM": "0",
+        # GKE COS nodes have no nvidia-peermem module; GPU KV registration must
+        # go through the dmabuf path (ibv_reg_dmabuf_mr). Override on hosts that
+        # do have peermem.
+        "WITH_NVIDIA_PEERMEM": os.environ.get("WITH_NVIDIA_PEERMEM", "0"),
     }
