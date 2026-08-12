@@ -56,12 +56,14 @@ spec:
                   name: hf-secret
                   key: hf_api_token
             resources:
+              # r2egym builder materializes the full 4,578-row HF dataset in
+              # memory (~7GB) before subsetting.
               requests:
                 cpu: "3"
-                memory: 8Gi
+                memory: 16Gi
               limits:
                 cpu: "3"
-                memory: 8Gi
+                memory: 16Gi
             volumeMounts:
             - mountPath: /tmp/ray
               name: ray-tmp
