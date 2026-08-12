@@ -1,0 +1,6 @@
+.git
+.venv
+benchmark-results
+**/__pycache__
+**/*.pyc
+.claude
