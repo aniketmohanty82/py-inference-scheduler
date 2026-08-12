@@ -1,0 +1,20 @@
+# Scheduler profile for the gateway RoutingPolicy (arms B and C).
+# No prefix_cache scorer: the gateway policy hook exposes no request body,
+# so prefix locality comes from sticky_session on the gateway session id.
+profile_handler:
+  type: single_profile
+# No saturation filter either: it is not on the overscheduling branch lineage
+# (only the tau-test branches carry it); kv_cache scoring provides the
+# pressure signal instead.
+profiles:
+  rllm_gateway:
+    scorers:
+      - type: waiting_queue
+        weight: 1.0
+      - type: kv_cache
+        weight: 0.5
+      - type: sticky_session
+        weight: 4.0
+        header_name: x-rls-session-id
+    picker:
+      type: max_score
