@@ -26,6 +26,14 @@ class RoutingPolicy(Protocol):
     def on_worker_change(self, workers: list[WorkerInfo]) -> None: ...
 ```
 
+Gate-1 validation (2026-08-12, local): patched gateway loaded a custom policy from
+`RLLM_GATEWAY_ROUTING_POLICY`, delivered the URL-path session id to
+`select_worker`, and honored its choice; full-stack resolution
+(`rllm[verl]` + py-inference-scheduler) succeeds against PyPI **only with
+`--override integration/rllm/image/overrides.txt`** (replicates rllm's
+project-level uv overrides; without them verl's `numpy<2` vs vllm's
+`numpy>=2`-via-opencv is unsatisfiable).
+
 Notes fixed at this SHA:
 - `_load_policy()` instantiates the class with NO arguments — our policy must be
   constructible from env vars alone.

@@ -1,0 +1,7 @@
+# uv --override file replicating rllm's [tool.uv] override-dependencies.
+# Mandatory when installing rllm[verl] outside the rllm repo: verl==0.8.0 pins
+# numpy<2 while vllm==0.22.1 needs numpy>=2 via opencv-python-headless; upstream
+# resolves this only through these project-level overrides.
+litellm[proxy]==1.83.0
+numpy>=1.26.0
+rich>=14.1.0
