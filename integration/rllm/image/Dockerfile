@@ -21,6 +21,14 @@ COPY integration/rllm/patches/rllm-gateway-routing-policy.diff /tmp/rllm-gateway
 RUN git -C /opt/rllm apply /tmp/rllm-gateway-routing-policy.diff
 
 COPY integration/rllm/image/overrides.txt /tmp/overrides.txt
+# flash-attn (pulled in by rllm[verl]) has no cu130/torch2.11 wheel and its sdist
+# doesn't declare torch as a build dep: pre-build it alone against the image's
+# torch with isolation off (sm90-only for H200, bounded parallelism), so the
+# main install below keeps normal build isolation for everything else.
+RUN uv pip install --system --no-cache ninja packaging
+ENV MAX_JOBS=16 \
+    FLASH_ATTN_CUDA_ARCHS=90
+RUN uv pip install --system --no-cache --no-build-isolation flash-attn==2.8.3
 RUN uv pip install --system --no-cache \
     --override /tmp/overrides.txt \
     -e "/opt/rllm[verl]" \

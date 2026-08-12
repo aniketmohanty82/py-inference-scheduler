@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from vllm.config import VllmConfig
@@ -28,12 +29,27 @@ logger = init_logger("vllm.rls.overschedule")
 # Set per request via vllm_xargs; only tagged requests are offloaded.
 OFFLOAD_TAG_KEY = "rls_offload"
 
+# When set, every generation request is treated as tagged. For RL training,
+# where the client (an agent harness behind a gateway) cannot inject
+# vllm_xargs on its own requests.
+ENV_OFFLOAD_ALL = "MOONCAKE_OVERSCHEDULING_OFFLOAD_ALL"
 
-def wants_offload(request: Request) -> bool:
-    """True when the client tagged this request for offload-on-finish."""
+
+def offload_all_from_env() -> bool:
+    return os.environ.get(ENV_OFFLOAD_ALL, "0") == "1"
+
+
+def wants_offload(request: Request, offload_all: bool = False) -> bool:
+    """True when this request should be offloaded on finish.
+
+    Pooling requests never offload; otherwise a request qualifies when the
+    engine runs offload-all or the client tagged it via vllm_xargs.
+    """
     sampling_params = request.sampling_params
     if sampling_params is None:  # pooling requests carry no sampling params
         return False
+    if offload_all:
+        return True
     extra_args = sampling_params.extra_args or {}
     return extra_args.get(OFFLOAD_TAG_KEY) in {"1", 1}
 
@@ -89,6 +105,9 @@ class OverschedulingScheduler(Scheduler):
         super().__init__(*args, **kwargs)
         self.preserve_prefix_blocks = preserve_prefix_blocks_from_config(self.vllm_config)
         self.min_kv_usage = min_kv_usage_from_config(self.vllm_config)
+        self.offload_all = offload_all_from_env()
+        if self.offload_all:
+            logger.info("overschedule: %s set - offloading every finished request", ENV_OFFLOAD_ALL)
         self.num_offloaded_blocks = 0
         self.num_skipped_idle = 0
 
@@ -114,7 +133,7 @@ class OverschedulingScheduler(Scheduler):
         # saves), and preserve_prefix_blocks shields the shared prefix at
         # moments no other request happens to reference it.
         evict_ids: set[int] = set()
-        if wants_offload(request) and self._under_pressure():
+        if wants_offload(request, self.offload_all) and self._under_pressure():
             blocks_per_group = self.kv_cache_manager.coordinator.get_blocks(
                 request.request_id
             )
