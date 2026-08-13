@@ -22,7 +22,7 @@ This integration is always used for RL training traffic (bursty rollout dispatch
 
 1. **RL framework**: Which framework drives the rollouts? If it is **slime, miles, or vime**, a dedicated integration already exists ([integration/slime](../../../integration/slime), [integration/vime](../../../integration/vime)) — confirm the user specifically wants the vllm-router path (e.g. they already operate vllm-router) before proceeding.
 2. **Worker registration**: Are engine URLs **static** (known at router launch) or do engines **self-register at runtime** (`POST /workers`)?
-3. **Request identity**: Does the framework tag each request with a per-trajectory/session header (e.g. a routing key or session id)? This determines whether session-affinity scorers (sticky session, consistent hash) are usable; without it, only engine-gauge and queue-based scorers apply.
+3. **Request identity**: Does the framework tag each request with a per-trajectory/session header, and if so, what is the exact header name? That string becomes the `sticky_session` scorer's `header_name` (Section 3.3). Without such a header, session affinity is not usable and only engine-gauge and queue-based scorers apply.
 4. **Environment**: Bare **VM / container** or **Kubernetes**? Which OS family? (The build commands below assume Debian/Ubuntu.)
 
 *Answer 1 gates the whole skill. Answers 2–3 select the launch flags and policy configuration (Sections 3.3, 4). Answer 4 adjusts the build commands (Section 3.1).*
@@ -66,7 +66,7 @@ This integration is always used for RL training traffic (bursty rollout dispatch
 Base config: [integration/slime/examples/scheduler.yaml](../../../integration/slime/examples/scheduler.yaml). Selecting and weighting scorers is workload tuning — defer to the [Scheduler Customization Guide](../../../docs/scheduler_customization.md) for the available scorers, pickers, and flow-control plugins, and work through it with the user rather than prescribing a profile.
 
 - The guide does not yet document the `saturation` filter on main ([plugins/filters/saturation.py](../../../src/py_inference_scheduler/plugins/filters/saturation.py)); read its source when configuring filters.
-- One constraint is integration-specific, not workload tuning: session-affinity scorers (sticky session, consistent hash) require the per-request identity header from triage answer 3. Omit them if the framework provides none.
+- One constraint is integration-specific, not workload tuning: the `sticky_session` scorer requires the per-request identity header from triage answer 3, configured as its `header_name` parameter. If the header is missing or the name mismatches, the scorer silently scores every endpoint 0.0 (a no-op, not an error). Omit the scorer if the framework sends no such header.
 
 ### 3.4 Worker contract
 
