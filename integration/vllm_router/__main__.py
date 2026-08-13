@@ -20,6 +20,7 @@ import os
 
 from integration.vllm_router.factory import ENV_CONFIG, ENV_METRICS_INTERVAL_MS
 
+# This is how the Rust router finds this integration: set as --external-policy-factory below
 FACTORY_SPEC = "integration.vllm_router.factory:make_policy"
 
 

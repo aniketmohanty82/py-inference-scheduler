@@ -65,7 +65,7 @@ class VllmRouterSchedulerAdapter:
     """Bridges the vllm-router fork's external-policy callable to Scheduler.
 
     The router calls select() from multiple tokio threads while holding the
-    GIL; the adapter lock serializes decisions because scheduler plugins are
+    GIL. The adapter lock serializes decisions because scheduler plugins are
     not thread-safe (the GIL alone does not make multi-step selection atomic).
     Workers register with the router, not with us, so the Endpoint registry
     is built lazily from the worker dicts of each call and TTL-pruned.
@@ -130,7 +130,7 @@ class VllmRouterSchedulerAdapter:
         request_text: str | None,
         headers: dict[str, str] | None,
     ) -> int | None:
-        """External-policy callable: index into workers, or None for fallback.
+        """Return the position of the chosen worker in `workers`, or None for fallback.
 
         Never raises: any failure defers to the router's built-in fallback.
         """
@@ -159,7 +159,7 @@ class VllmRouterSchedulerAdapter:
         return None
 
     def _sync_endpoints(self, workers: Sequence[dict[str, Any]]) -> list[Endpoint]:
-        """Upsert endpoints from this call's worker dicts; prune the unseen.
+        """Upsert endpoints from select() call's worker dicts.
 
         queue_len is written here from the router's load counter and kept
         fresh between requests by the poller via _RouterLoadView.
