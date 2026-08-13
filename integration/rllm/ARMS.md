@@ -63,20 +63,24 @@ Delta vs B, all through channels proven in the smokes:
 
 ## The scheduler profile (shared by B and C, frozen)
 
-`configs/scheduler.yaml`: waiting_queue 1.0 + kv_cache 0.5 +
-sticky_session 4.0 (header x-rls-session-id ← gateway session id), max_score
-picker. Derived from the tau3 champion profile with two forced removals:
+`configs/scheduler.yaml` is now the FULL tau3 champion profile: saturation
+filter (kv 0.95 / waiting 16) + prefix_cache 4.0 (max_prefix_blocks 2048,
+lru 262144) + waiting_queue 1.0 + kv_cache 0.5 + sticky_session 4.0,
+max_score picker. The two former gaps were closed on 2026-08-13:
 
-- `prefix_cache` (champion weight 4.0): impossible at this insertion point -
-  the gateway RoutingPolicy hook receives no request body to hash. Prefix
-  locality is delegated to sticky_session, which for single-session
-  multi-turn trajectories targets the same blocks.
-- `saturation` filter: not on the overscheduling branch lineage.
+- `prefix_cache`: the vendored gateway patch threads the parsed request
+  body into body-aware policies (a policy opting in via a `request_body`
+  parameter; stock policies untouched). The policy hashes the growing
+  `messages` list - validated live: turn 2 of a session scored 0.667 prefix
+  match on exactly the worker that served turn 1.
+- `saturation` filter: cherry-picked from the saturation-filter lineage
+  (482cde1 + 39dd12e + tests).
 
-NOT tuned for RL-rollout traffic - deliberately: the A/B compares arms under
-one fixed profile; profile tuning on this workload is a separate experiment
-after convergence parity is established. If tuning ever happens, it must
-land in BOTH B and C identically or the B/C isolation breaks.
+Weights are the tau3-proven set, NOT re-tuned for RL-rollout traffic -
+deliberately: the A/B compares arms under one fixed profile; tuning on this
+workload is a separate experiment after convergence parity is established.
+If tuning ever happens, it must land in BOTH B and C identically or the
+B/C isolation breaks.
 
 ## Current overall status (2026-08-13)
 

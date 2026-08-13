@@ -18,7 +18,7 @@ import logging
 import os
 import pathlib
 import threading
-from typing import Any, Sequence
+from typing import Protocol, Sequence
 from uuid import uuid4
 
 import yaml
@@ -36,6 +36,12 @@ ENV_CONFIG = "ROUTER_CONFIG_PATH"
 ENV_METRICS_INTERVAL_MS = "RLS_METRICS_INTERVAL_MS"
 ENV_SESSION_HEADER = "RLS_SESSION_HEADER"
 DEFAULT_SESSION_HEADER = "x-rls-session-id"
+
+
+class WorkerLike(Protocol):
+    """Structural stand-in for the gateway's WorkerInfo (rllm stays unimported)."""
+
+    url: str
 
 
 class _GatewayLoadView(InflightStore):
@@ -112,16 +118,30 @@ class SchedulerRoutingPolicy:
 
     # -- RoutingPolicy protocol ---------------------------------------------
 
-    def select_worker(self, workers: list[Any], session_id: str | None, active_counts: dict[str, int]) -> Any:
+    def select_worker(
+        self,
+        workers: list[WorkerLike],
+        session_id: str | None,
+        active_counts: dict[str, int],
+        request_body: dict[str, object] | None = None,
+    ) -> WorkerLike:
         try:
             with self._lock:
                 candidates = self._sync_endpoints(workers, active_counts)
                 headers = {self._session_header: session_id} if session_id else {}
+                # messages/prompt feed the prefix_cache scorer; growing
+                # multi-turn conversations hash to growing shared prefixes.
+                body = None
+                target_model = None
+                if request_body:
+                    body = request_body.get("messages") or request_body.get("prompt")
+                    model_value = request_body.get("model")
+                    target_model = model_value if isinstance(model_value, str) else None
                 request = LLMRequest(
                     request_id=uuid4().hex,
-                    target_model=None,
+                    target_model=target_model,
                     headers=headers,
-                    body=None,
+                    body=body,
                 )
                 scored = self._scheduler.run(request, candidates)
             if scored:
@@ -134,7 +154,7 @@ class SchedulerRoutingPolicy:
             logger.exception("Selection failed, falling back to least-loaded")
         return min(workers, key=lambda w: active_counts.get(w.url, 0))
 
-    def on_worker_change(self, workers: list[Any]) -> None:
+    def on_worker_change(self, workers: list[WorkerLike]) -> None:
         """Gateway add/remove signal: replace the endpoint registry."""
         with self._lock:
             current = {str(w.url) for w in workers}
@@ -164,7 +184,9 @@ class SchedulerRoutingPolicy:
             logger.info("Tracking worker %s", url)
         return endpoint
 
-    def _sync_endpoints(self, workers: Sequence[Any], active_counts: dict[str, int]) -> list[Endpoint]:
+    def _sync_endpoints(
+        self, workers: Sequence[WorkerLike], active_counts: dict[str, int]
+    ) -> list[Endpoint]:
         candidates: list[Endpoint] = []
         loads: dict[str, int] = {}
         for worker in workers:

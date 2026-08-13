@@ -1,3 +1,43 @@
+diff --git a/rllm-model-gateway/src/rllm_model_gateway/proxy.py b/rllm-model-gateway/src/rllm_model_gateway/proxy.py
+index 8276c92f..4ef71fe8 100644
+--- a/rllm-model-gateway/src/rllm_model_gateway/proxy.py
++++ b/rllm-model-gateway/src/rllm_model_gateway/proxy.py
+@@ -203,7 +203,7 @@ class ReverseProxy:
+             status_code = 200
+         else:
+             # HTTP proxy path
+-            worker = self.router.route(session_id)
++            worker = self.router.route(session_id, request_body=request_body)
+             url = self._build_url(worker.api_url, request.url.path, str(request.url.query))
+             headers = self._forward_headers(request)
+             try:
+@@ -312,7 +312,7 @@ class ReverseProxy:
+         """Non-streaming cumulative turn: send non-streaming to vLLM, return JSON."""
+         t0 = time.perf_counter()
+ 
+-        worker = self.router.route(session_id)
++        worker = self.router.route(session_id, request_body=request_body)
+         url = self._build_url(worker.api_url, "/v1/completions", "")
+         headers = self._forward_headers(request)
+         raw_body = json.dumps(completions_body).encode()
+@@ -377,7 +377,7 @@ class ReverseProxy:
+         """Streaming cumulative turn: stream from vLLM, translate chunks to chat format."""
+         completions_body["stream"] = True
+ 
+-        worker = self.router.route(session_id)
++        worker = self.router.route(session_id, request_body=request_body)
+         url = self._build_url(worker.api_url, "/v1/completions", "")
+         headers = self._forward_headers(request)
+         raw_body = json.dumps(completions_body).encode()
+@@ -517,7 +517,7 @@ class ReverseProxy:
+         if self.local_handler is not None:
+             return await self._handle_streaming_local(request_body, session_id, originally_requested_logprobs, request.state.weight_version)
+ 
+-        worker = self.router.route(session_id)
++        worker = self.router.route(session_id, request_body=request_body)
+         url = self._build_url(worker.api_url, request.url.path, str(request.url.query))
+         headers = self._forward_headers(request)
+ 
 diff --git a/rllm-model-gateway/src/rllm_model_gateway/server.py b/rllm-model-gateway/src/rllm_model_gateway/server.py
 index 826d9722..ef898735 100644
 --- a/rllm-model-gateway/src/rllm_model_gateway/server.py
@@ -10,6 +50,48 @@ index 826d9722..ef898735 100644
      }
      for env_key, config_key in env_map.items():
          val = os.environ.get(env_key)
+diff --git a/rllm-model-gateway/src/rllm_model_gateway/session_router.py b/rllm-model-gateway/src/rllm_model_gateway/session_router.py
+index ae9622f2..f22c09f4 100644
+--- a/rllm-model-gateway/src/rllm_model_gateway/session_router.py
++++ b/rllm-model-gateway/src/rllm_model_gateway/session_router.py
+@@ -6,6 +6,7 @@ Reference implementations:
+ """
+ 
+ import asyncio
++import inspect
+ import logging
+ from collections import OrderedDict
+ from typing import Protocol
+@@ -124,6 +125,12 @@ class SessionRouter:
+         self.active_counts: dict[str, int] = {}
+         self.failure_counts: dict[str, int] = {}
+         self.policy: RoutingPolicy = policy or StickyLeastLoadedPolicy()
++        # Body-aware policies (e.g. prefix-cache scoring) opt in by declaring
++        # a ``request_body`` parameter; the stock protocol stays unchanged.
++        try:
++            self._policy_takes_body = "request_body" in inspect.signature(self.policy.select_worker).parameters
++        except (TypeError, ValueError):
++            self._policy_takes_body = False
+         self._health_interval = health_check_interval
+         self._failure_threshold = failure_threshold
+         self._health_task: asyncio.Task[None] | None = None
+@@ -165,11 +172,14 @@ class SessionRouter:
+ 
+     # -- Routing -----------------------------------------------------------
+ 
+-    def route(self, session_id: str | None = None) -> WorkerInfo:
++    def route(self, session_id: str | None = None, request_body: dict | None = None) -> WorkerInfo:
+         healthy = [w for w in self.workers if w.url not in self.dead_workers]
+         if not healthy:
+             raise RuntimeError("No healthy workers available")
+-        worker = self.policy.select_worker(healthy, session_id, self.active_counts)
++        if self._policy_takes_body:
++            worker = self.policy.select_worker(healthy, session_id, self.active_counts, request_body=request_body)
++        else:
++            worker = self.policy.select_worker(healthy, session_id, self.active_counts)
+         self.active_counts[worker.url] = self.active_counts.get(worker.url, 0) + 1
+         return worker
+ 
 diff --git a/rllm/cli/eval.py b/rllm/cli/eval.py
 index e065ca8c..06680832 100644
 --- a/rllm/cli/eval.py

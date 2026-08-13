@@ -1,14 +1,20 @@
-# Scheduler profile for the gateway RoutingPolicy (arms B and C).
-# No prefix_cache scorer: the gateway policy hook exposes no request body,
-# so prefix locality comes from sticky_session on the gateway session id.
+# Scheduler profile for the gateway RoutingPolicy (arms B and C) - the full
+# tau3 champion profile: the vendored gateway patch threads the parsed
+# request body into body-aware policies, so prefix_cache hashes the growing
+# messages list, and the saturation filter is cherry-picked onto this branch.
 profile_handler:
   type: single_profile
-# No saturation filter either: it is not on the overscheduling branch lineage
-# (only the tau-test branches carry it); kv_cache scoring provides the
-# pressure signal instead.
 profiles:
   rllm_gateway:
+    filters:
+      - type: saturation
+        kv_threshold: 0.95
+        waiting_threshold: 16
     scorers:
+      - type: prefix_cache
+        weight: 4.0
+        max_prefix_blocks: 2048
+        lru_capacity_per_server: 262144
       - type: waiting_queue
         weight: 1.0
       - type: kv_cache

@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 
-@pytest.fixture()
+@pytest.fixture
 def overschedule(monkeypatch):
     if "vllm" not in sys.modules:
         vllm = types.ModuleType("vllm")
@@ -49,7 +49,7 @@ def overschedule(monkeypatch):
     return overschedule
 
 
-def _request(extra_args=None, pooling=False):
+def _request(extra_args=None, *, pooling=False):
     if pooling:
         return SimpleNamespace(sampling_params=None)
     return SimpleNamespace(sampling_params=SimpleNamespace(extra_args=extra_args))

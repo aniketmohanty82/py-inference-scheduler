@@ -20,7 +20,8 @@ from rllm.data.r2egym_builder import build_benchmark
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=8)
-    parser.add_argument("--out-dir", type=Path, default=Path.home() / ".rllm" / "tasks" / "r2egym_smoke")
+    default_out = Path.home() / ".rllm" / "tasks" / "r2egym_smoke"
+    parser.add_argument("--out-dir", type=Path, default=default_out)
     args = parser.parse_args()
 
     build_benchmark(

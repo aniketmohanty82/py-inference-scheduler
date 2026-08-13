@@ -39,7 +39,7 @@ def offload_all_from_env() -> bool:
     return os.environ.get(ENV_OFFLOAD_ALL, "0") == "1"
 
 
-def wants_offload(request: Request, offload_all: bool = False) -> bool:
+def wants_offload(request: Request, *, offload_all: bool = False) -> bool:
     """True when this request should be offloaded on finish.
 
     Pooling requests never offload; otherwise a request qualifies when the
@@ -133,7 +133,7 @@ class OverschedulingScheduler(Scheduler):
         # saves), and preserve_prefix_blocks shields the shared prefix at
         # moments no other request happens to reference it.
         evict_ids: set[int] = set()
-        if wants_offload(request, self.offload_all) and self._under_pressure():
+        if wants_offload(request, offload_all=self.offload_all) and self._under_pressure():
             blocks_per_group = self.kv_cache_manager.coordinator.get_blocks(
                 request.request_id
             )

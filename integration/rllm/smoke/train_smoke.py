@@ -13,7 +13,6 @@ import os
 
 import hydra
 from omegaconf import DictConfig
-
 from rllm.data.dataset import DatasetRegistry
 from rllm.eval.agent_loader import load_agent
 from rllm.trainer import AgentTrainer
