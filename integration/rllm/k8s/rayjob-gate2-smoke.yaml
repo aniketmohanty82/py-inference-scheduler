@@ -25,6 +25,8 @@ spec:
     bash integration/rllm/smoke/train_smoke.sh
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.enable_auto_tool_choice=true
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.tool_call_parser=hermes
+    rllm.rollout.train.max_tokens=4096
+    rllm.rollout.val.max_tokens=4096
     "
   rayClusterSpec:
     rayVersion: "2.56.0"
