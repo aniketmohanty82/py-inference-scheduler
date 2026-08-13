@@ -15,11 +15,16 @@ spec:
   shutdownAfterJobFinishes: false
   # Task subset + registry are baked into the image at RLLM_HOME=/opt/rllm-home
   # (cluster-wide identical paths); no runtime prep step.
+  # The two engine_kwargs overrides double as the Gate-3 passthrough probe:
+  # mini-swe-agent sends tool_choice=auto, which vllm serve rejects without
+  # these flags - so rollouts only work if engine_kwargs reach the argv.
   entrypoint: >-
     bash -lc "
     set -euo pipefail;
     cd /opt/py-inference-scheduler;
     bash integration/rllm/smoke/train_smoke.sh
+    ++actor_rollout_ref.rollout.engine_kwargs.vllm.enable_auto_tool_choice=true
+    ++actor_rollout_ref.rollout.engine_kwargs.vllm.tool_call_parser=hermes
     "
   rayClusterSpec:
     rayVersion: "2.56.0"
