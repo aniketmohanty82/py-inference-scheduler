@@ -1,105 +1,140 @@
 ---
 name: vllm-router-integration
-description: Wire py-inference-scheduler into vllm-router as the routing policy via our external-policy fork. Use when a user runs vllm-router (any platform, any RL framework or serving stack) and wants this repo's scorers deciding which worker serves each request. Covers build, launch, framework wiring, verification, and the failure modes that are invisible from the README.
+description: >-
+  Guide to integrate py-inference-scheduler into vllm-router as the routing
+  policy via the external-policy fork, and to troubleshoot broken builds,
+  launches, routing, or metrics. Use when a user runs vllm-router for RL
+  rollout traffic (any platform, any RL framework) and wants this repo's
+  scorers deciding which worker serves each request.
 ---
 
-# vllm-router integration (external policy)
+# vllm-router Scheduler Integration Skill
 
-The canonical steps live in [integration/vllm_router/README.md](../../../integration/vllm_router/README.md) —
-follow it for the happy path. This skill adds the operational knowledge around it: what breaks, why,
-and how the pieces behave under real traffic. Assume nothing about the user's platform: no Kubernetes,
-no specific cloud, any RL framework or none.
+This skill provides the architectural context, setup decisions, and diagnostic flows required to wire `py-inference-scheduler` into vllm-router through [our external-policy fork](https://github.com/aniketmohanty82/router/tree/external-policy) (branch `external-policy`, based on vllm-router v0.1.15).
 
-## Mental model (30 seconds)
+Before integrating or debugging, always read the [vllm-router Integration README](../../../integration/vllm_router/README.md) — it is the canonical install / configure / run / verify sequence. This skill adds the setup-specific decisions and failure modes the README does not cover.
 
-Our [vllm-router fork](https://github.com/aniketmohanty82/router/tree/external-policy) (base v0.1.15)
-adds `--external-policy-factory MODULE:FUNCTION`. At launch it imports the factory and calls it once;
-the returned callable is invoked per request as `select(workers, request_text, headers) -> int | None`
-on a Rust thread holding the GIL. `integration.vllm_router.factory:make_policy` is that factory: it
-builds a `Scheduler` from yaml and returns the adapter's `select`. `None` or any exception falls back
-to `--external-fallback-policy` (default round_robin) — the scheduler can never fail a request, only
-route it. Engine gauges arrive via a background poller thread scraping worker `/metrics`; router-side
-inflight counts arrive live inside each `select` call.
+---
 
-## Build & install — failure modes first
+## 1. Initial Triage: Establish the Setup
 
-1. **System packages**: the fork's Rust build needs a C compiler, `pkg-config`, and OpenSSL headers.
-   Missing → cargo exit 101 with `openssl-sys` "Could not find directory of OpenSSL installation"
-   buried in pip output. Debian/Ubuntu: `apt-get update && apt-get install -y build-essential
-   pkg-config libssl-dev`. (Containers usually need the `update` — stale apt lists say
-   "Unable to locate package".)
-2. **Rust toolchain**: `rustup` stable is fine. The build compiles silently for several minutes.
-3. **Python version binds at install**: the extension compiles against the interpreter that runs
-   `pip install .` — despite the wheel's `cp38-abi3` filename, treat it as version-specific. Install
-   fork and scheduler into the SAME venv.
-4. **Scheduler install**: `pip install -e . --no-deps` then
-   `pip install aiohttp prometheus-client pyyaml setproctitle`. Plain "run from repo root" does NOT
-   work (src layout). pip prints scary unmet-dependency warnings for ray/fastapi/uvicorn — expected
-   and harmless with `--no-deps`; those are for other integrations.
+This integration is always used for RL training traffic (bursty rollout dispatch). Before executing any steps, you **MUST** ask the user to clarify their setup if it is not already explicitly clear from the conversation history. Ask the user:
 
-## Worker contract (what the router expects of vLLM workers)
+1. **RL framework**: Which framework drives the rollouts? If it is **slime, miles, or vime**, a dedicated integration already exists ([integration/slime](../../../integration/slime), [integration/vime](../../../integration/vime)) — confirm the user specifically wants the vllm-router path (e.g. they already operate vllm-router) before proceeding.
+2. **Worker registration**: Are engine URLs **static** (known at router launch) or do engines **self-register at runtime** (`POST /workers`)?
+3. **Request identity**: Does the framework tag each request with a per-trajectory/session header (e.g. a routing key or session id)? This determines whether session-affinity scorers (sticky session, consistent hash) are usable; without it, only engine-gauge and queue-based scorers apply.
+4. **Environment**: Bare **VM / container** or **Kubernetes**? Which OS family? (The build commands below assume Debian/Ubuntu.)
 
-- `GET /health` → 200. The router **blocks before serving** until every `--worker-urls` entry answers
-  (default up to 600s). A hung startup usually means an unreachable worker, not a router bug.
-- `GET /metrics` → Prometheus text. Scorers read `vllm:num_requests_waiting`,
-  `vllm:num_requests_running`, `vllm:kv_cache_usage_perc`. **Missing gauges parse as silent zeros**
-  (no error) — wrong metric names (e.g. `vllm:gpu_cache_usage_perc`) look exactly like idle workers.
-- The inference endpoints being proxied (`/v1/completions`, `/v1/chat/completions`, `/generate`,
-  `/inference/v1/generate`). Real vLLM serves all of this out of the box.
-- Workers can also register at runtime: `POST /workers {"url": "..."}` and deregister
-  `DELETE /workers/{url}`. Frameworks whose engines self-register need only the router's address.
+*Answer 1 gates the whole skill. Answers 2–3 select the launch flags and policy configuration (Sections 3.3, 4). Answer 4 adjusts the build commands (Section 3.1).*
 
-## Wiring a custom RL framework
+---
 
-Point the framework's rollout/generation HTTP client at the router's `--host:--port` instead of a
-worker. Any HTTP dialect the workers speak passes through — the router extracts routing text from
-text prompts or token-id payloads automatically. Two patterns:
-- **Static workers**: pass them as `--worker-urls` at router launch.
-- **Self-registering engines** (slime/vime-style): engines `POST /workers` at boot; start the router
-  BEFORE the framework job. Note the router keeps its registry in memory — restarting the router
-  requires engines to re-register (usually: restart the run).
+## 2. Architectural Blueprint (Code Boundaries)
 
-## Policy config fit — the expensive lesson
+### 2.1 Control Flow (Launch & Routing)
 
-Reuse `integration/slime/examples/scheduler.yaml` as the base. Two rules learned on GPUs:
-- **Always keep `least_queue` in the profile.** At burst arrival (RL rollouts dispatch hundreds of
-  requests in ~1s), engine gauges truthfully read zero — all engine-side scorers tie, and without the
-  live router-load tie-breaker the max_score picker sends the ENTIRE burst to one engine
-  (observed: 131 requests on one worker at kv 0.995 while three sat idle).
-- **Drop or down-weight `prefix_cache` for GRPO-style traffic** where all prompts share a chat
-  template and samples are duplicated per prompt: universal shared prefixes make affinity herd
-  instead of partition (observed: +67% rollout time vs round_robin). It earns its keep on
-  multi-session serving traffic with distinct prefixes.
+1. **Entry point**: `python -m integration.vllm_router` ([__main__.py](../../../integration/vllm_router/__main__.py)) parses the two integration flags (`--external-scheduler-config`, `--external-metrics-interval-ms`), exports them as environment variables (`ROUTER_CONFIG_PATH`, `RLS_METRICS_INTERVAL_MS`), sets `--external-policy-factory integration.vllm_router.factory:make_policy` on the router args, and hands off to the fork's `launch_router`. All other flags pass through to vllm-router unchanged.
+2. **Factory (once, at startup)**: the fork imports and calls `make_policy(router_args)` ([factory.py](../../../integration/vllm_router/factory.py)). It builds the `Scheduler` from the yaml config, constructs `VllmRouterSchedulerAdapter`, seeds statically known workers from `--worker-urls`, starts the metrics poller, and returns `adapter.select`. It raises on missing/invalid config — launch fails closed; the router's fallback policy is reserved for per-request failures.
+3. **Per request**: the router calls `select(workers, request_text, headers) -> int | None` ([adapter.py](../../../integration/vllm_router/adapter.py)) on a Rust thread holding the GIL. The adapter upserts the offered worker dicts into its endpoint registry (TTL-pruned, 60s default), runs the `Scheduler`, and returns the chosen worker's position in `workers`.
+4. **Fallback**: `None` or any exception routes that request via the router's built-in `--external-fallback-policy` (default `round_robin`). The scheduler can never fail a request, only route it.
 
-## Operations
+### 2.2 Data Flow (Metrics)
 
-- **Process name**: the router retitles itself to `vllm::router` (setproctitle) — `pkill python`
-  misses it; match `vllm::router`. In minimal containers without pkill, scan `/proc/[0-9]*/comm`.
-- **Prometheus exporter port**: the router binds `:29000` for its own metrics regardless of `--port`.
-  A second router on the same host panics with `FailedToCreateHTTPListener("Address already in use")`
-  — pass a distinct `--prometheus-port`.
-- **Observability**: `RLS_DECISION_LOG=1` logs each request's per-endpoint stats at decision time
-  (adds routing latency while on — never during benchmarks). `--log-level debug` adds per-scorer raw
-  scores and the selected endpoint. Poller staleness (`routing on stale metrics` warnings downstream)
-  means NO endpoint yielded usable stats — per-endpoint failures live in each endpoint's
-  `routing_stats["error"]`, visible in the decision log.
-- **Fallback streaks**: `Selection failed, deferring to router fallback` in the log means the
-  scheduler is erroring and round_robin is silently serving — treat a streak as an incident even
-  though requests succeed.
+- **Engine gauges**: a background `MetricsPoller` thread scrapes each registered worker's `GET /metrics` (Prometheus text) off the request path and parses `vllm:num_requests_waiting`, `vllm:num_requests_running`, and `vllm:kv_cache_usage_perc` into each endpoint's `routing_stats`.
+- **Inflight counts**: the router tracks per-worker inflight requests itself; the count arrives inside every `select` call as the `load` key of each worker dict and is written to the endpoint's `queue_len`. This value is live even when engine gauges have not moved yet.
+- **Worker discovery**: workers register with the router, not with the scheduler. The adapter learns the worker set lazily from each `select` call, plus optional startup seeding from `--worker-urls`. There is no deregistration signal; the TTL prune substitutes for it.
 
-## Verify (in order)
+---
 
-1. Startup: `Loaded scheduler config: {...Profiles: [...]}` then `Assigning policy external` as
-   workers register; `Seeded worker <url>` for static workers, `Tracking worker <url>` for runtime
-   registrations.
-2. Traffic: send a completion through the router; 200 proves the proxy path.
-3. Decisions: with `RLS_DECISION_LOG=1`, each request logs
-   `request <id> candidates: {url: {queue_len, stats}}` — confirm `error: None` and, under sustained
-   load, NONZERO `num_running_reqs`/`kv` (zeros under load = gauge-name or scrape problem; zeros at
-   burst instant = normal, see policy-fit section).
+## 3. Pre-Flight Checklist
 
-## Known-good validation reference
+### 3.1 Fork build prerequisites
 
-Mechanical overhead measured below run-to-run noise vs stock round_robin on 8xH100 (synthetic 4-arm
-inference-perf A/B and a vime GRPO A/B with identical decisions); README cold-tested end-to-end by a
-context-free agent and re-validated against real vLLM workers.
+1. Rust toolchain (rustup stable).
+2. C compiler, `pkg-config`, and OpenSSL headers: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`. In containers, `apt-get update` must run first or apt reports "Unable to locate package".
+3. The extension compiles against the Python interpreter that runs `pip install .`. Install the fork and the scheduler into the **same venv**, and treat the built wheel as interpreter-specific regardless of its `abi3` filename.
+4. The build compiles silently for several minutes. This is normal.
+
+### 3.2 Scheduler install
+
+- `pip install -e . --no-deps`, then `pip install aiohttp prometheus-client pyyaml setproctitle`.
+- Running from the repo root **without installing** does not work (src layout).
+- pip prints unmet-dependency warnings for ray/fastapi/uvicorn — expected and harmless with `--no-deps`; those belong to other integrations.
+
+### 3.3 Policy configuration
+
+Base config: [integration/slime/examples/scheduler.yaml](../../../integration/slime/examples/scheduler.yaml). Selecting and weighting scorers is workload tuning — defer to the [Scheduler Customization Guide](../../../docs/scheduler_customization.md) for the available scorers, pickers, and flow-control plugins, and work through it with the user rather than prescribing a profile.
+
+- The guide does not yet document the `kv_saturation` flow-control filter on main ([plugins/flow_control/kv_saturation.py](../../../src/py_inference_scheduler/plugins/flow_control/kv_saturation.py)); read its source when configuring flow control.
+- One constraint is integration-specific, not workload tuning: session-affinity scorers (sticky session, consistent hash) require the per-request identity header from triage answer 3. Omit them if the framework provides none.
+
+### 3.4 Worker contract
+
+- `GET /health` → 200. The router blocks before serving until every `--worker-urls` entry answers (up to 600s).
+- `GET /metrics` → Prometheus text containing the three gauges in Section 2.2. **Missing gauge names parse as silent zeros, not errors** — a wrong name (e.g. `vllm:gpu_cache_usage_perc`) is indistinguishable from an idle worker.
+- The proxied inference endpoints: `/v1/completions`, `/v1/chat/completions`, `/generate`, `/inference/v1/generate`. Real vLLM servers provide all of the above out of the box.
+
+---
+
+## 4. Framework Wiring
+
+Point the framework's rollout/generation HTTP client at the router's `--host:--port` instead of at a worker. Any HTTP dialect the workers speak passes through; the router extracts routing text from text prompts or token-id payloads automatically.
+
+- **Static workers** (triage answer 1 = static): pass them as `--worker-urls` at router launch. The adapter seeds them so the first requests are scored on real stats.
+- **Self-registering engines** (triage answer 1 = runtime): engines `POST /workers {"url": "..."}` at boot and may deregister with `DELETE /workers/{url}`. Start the router **before** the framework job. The router's worker registry is in-memory: if the router restarts, engines must re-register (usually by restarting the run).
+
+---
+
+## 5. Self-Healing Diagnostic Flow
+
+Follow this progressive diagnostic tree to isolate and fix the exact failure point:
+
+### Step 5.1: Does the fork build fail? (Install Phase)
+
+- **Symptom**: `pip install .` of the fork fails; `cargo ... failed with code 101` and `openssl-sys` "Could not find directory of OpenSSL installation" buried in the pip output.
+- **Root Cause**: missing system packages (Section 3.1).
+- **Fix**: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`, then reinstall.
+
+### Step 5.2: Does the router fail at launch? (Startup Phase)
+
+- **Symptom**: `SystemExit: vllm-router (the Rust router fork) is not installed`.
+  **Root Cause**: the fork wheel is missing from the active venv (or was installed into a different one).
+  **Fix**: repeat README Step 1 inside the same environment; verify with `pip show vllm-router`.
+- **Symptom**: `ValueError: ROUTER_CONFIG_PATH must point to a scheduler yaml config`.
+  **Root Cause**: the factory was invoked without the launcher setting the config path (launch fails closed by design).
+  **Fix**: launch via `python -m integration.vllm_router --external-scheduler-config <path>`.
+- **Symptom**: panic `FailedToCreateHTTPListener("Address already in use")`.
+  **Root Cause**: the router binds `:29000` for its own Prometheus exporter regardless of `--port`; a second or stale router already holds it.
+  **Fix**: kill the stale `vllm::router` process (see Step 5.6) or pass a distinct `--prometheus-port`.
+
+### Step 5.3: Does the router hang before serving? (Health-Gate Phase)
+
+- **Symptom**: startup produces no listening message for a long time (up to 600s).
+- **Root Cause**: at least one `--worker-urls` entry is not answering `GET /health`.
+- **Fix**: `curl <worker>/health` for each entry; correct or remove unreachable workers.
+
+### Step 5.4: Is routing happening only via fallback? (Selection Phase)
+
+- **Symptom**: `Selection failed, deferring to router fallback` in the router log. Requests still succeed because the fallback policy is serving.
+- **Diagnostic**: the exception traceback is logged with that message; read it. Treat a streak of these as an incident even though traffic flows — the scheduler is erroring on every request.
+
+### Step 5.5: Are metrics missing or stuck at zero? (Scraping Phase)
+
+- **Diagnostic 1 (scrape errors)**: run with `RLS_DECISION_LOG=1` and inspect each decision line's per-endpoint stats. A scrape failure appears as `error: <message>` in that endpoint's `routing_stats`.
+- **Diagnostic 2 (gauge-name mismatch)**: `error: None` with zeros under **sustained** load means the worker's `/metrics` does not expose the exact gauge names in Section 2.2. `curl <worker>/metrics` and compare.
+- **Diagnostic 3 (burst timing)**: zeros at the instant of burst arrival are normal — gauges lag dispatch; this is not a scrape failure. Inflight `queue_len` from the router's load counters is the signal that stays live through a burst (Section 2.2).
+- **Diagnostic 4 (staleness)**: poller staleness warnings mean **no** endpoint yielded usable stats in the interval; check per-endpoint `error` values to find out why.
+
+### Step 5.6: Can you not find or kill the router process? (Operations)
+
+- **Symptom**: `pkill python` does not terminate the router; or two routers appear to run.
+- **Root Cause**: the router renames its process to `vllm::router` (setproctitle).
+- **Fix**: match `vllm::router` with `pkill`/`pgrep`. In minimal containers without pkill, scan `/proc/[0-9]*/comm` for `vllm::router`.
+
+---
+
+## 6. Verification (in order)
+
+1. **Startup**: `Loaded scheduler config: {...}`, then `Assigning policy external`, then `Seeded worker <url>` for each static worker (or `Tracking worker <url>` for runtime registrations).
+2. **Traffic**: send one completion through the router; a 200 response proves the proxy path.
+3. **Decisions**: with `RLS_DECISION_LOG=1`, each request logs `request <id> candidates: {url: {queue_len, stats}}`. Confirm `error: None` for every endpoint and, under sustained load, nonzero `num_running_reqs`/`kv`. Note the toggle adds routing latency on every request while enabled — leave it off for benchmarks.
