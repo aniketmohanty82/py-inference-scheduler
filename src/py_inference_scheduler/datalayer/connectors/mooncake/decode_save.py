@@ -130,6 +130,7 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
                 cached.num_computed_tokens[i]
                 + scheduler_output.num_scheduled_tokens[req_id]
             )
+            # Feeds num_saved_tokens, which advances when the put is issued, not done.
             tracker.token_len = max(tracker.token_len, true_token_len)
 
             tracker.update(new_block_ids)
