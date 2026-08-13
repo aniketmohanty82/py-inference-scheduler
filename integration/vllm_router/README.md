@@ -27,15 +27,11 @@ Key components:
   returns `adapter.select`.
 - [`__main__.py`](./__main__.py): the `python -m integration.vllm_router` launcher.
 
----
-
 ## Prerequisites (Step 1)
 
 Install the fork and this repo into the same environment.
 
-**Build and install the fork.** The build needs a Rust toolchain plus a C compiler, `pkg-config`, and
-OpenSSL headers (Debian/Ubuntu: `apt install build-essential pkg-config libssl-dev`), and the extension
-builds against the Python it is installed with:
+**Build and install the fork:**
 
 ```bash
 git clone -b external-policy https://github.com/aniketmohanty82/router.git
@@ -43,8 +39,11 @@ cd router
 pip install .
 ```
 
-> [!NOTE]
-> The build compiles the Rust extension silently for several minutes — this is normal.
+> [!IMPORTANT]
+> The build needs a Rust toolchain plus a C compiler, `pkg-config`, and OpenSSL headers
+> (Debian/Ubuntu: `apt install build-essential pkg-config libssl-dev`). The extension builds against
+> the Python it is installed with, so run `pip install` from the target environment. The build
+> compiles the Rust extension silently for several minutes — this is normal.
 
 **Clone this repo and install the scheduler**:
 
