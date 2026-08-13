@@ -65,7 +65,7 @@ This integration is always used for RL training traffic (bursty rollout dispatch
 
 Base config: [integration/slime/examples/scheduler.yaml](../../../integration/slime/examples/scheduler.yaml). Selecting and weighting scorers is workload tuning — defer to the [Scheduler Customization Guide](../../../docs/scheduler_customization.md) for the available scorers, pickers, and flow-control plugins, and work through it with the user rather than prescribing a profile.
 
-- The guide does not yet document the `kv_saturation` flow-control filter on main ([plugins/flow_control/kv_saturation.py](../../../src/py_inference_scheduler/plugins/flow_control/kv_saturation.py)); read its source when configuring flow control.
+- The guide does not yet document the `saturation` filter on main ([plugins/filters/saturation.py](../../../src/py_inference_scheduler/plugins/filters/saturation.py)); read its source when configuring filters.
 - One constraint is integration-specific, not workload tuning: session-affinity scorers (sticky session, consistent hash) require the per-request identity header from triage answer 3. Omit them if the framework provides none.
 
 ### 3.4 Worker contract
