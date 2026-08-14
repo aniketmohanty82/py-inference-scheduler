@@ -33,6 +33,11 @@ spec:
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.scheduler_cls=py_inference_scheduler.datalayer.connectors.mooncake.overschedule.OverschedulingScheduler
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor
     actor_rollout_ref.rollout.gpu_memory_utilization=0.65
+    rllm.async_training.enable=true
+    actor_rollout_ref.hybrid_engine=False
+    trainer.n_gpus_per_node=4
+    rollout.nnodes=1
+    rollout.n_gpus_per_node=4
     rllm.rollout.train.max_tokens=4096
     rllm.rollout.val.max_tokens=4096
     actor_rollout_ref.rollout.tensor_model_parallel_size=2
