@@ -39,6 +39,19 @@ def offload_all_from_env() -> bool:
     return os.environ.get(ENV_OFFLOAD_ALL, "0") == "1"
 
 
+def offload_all_from_config(vllm_config: VllmConfig) -> bool:
+    """offload_all from kv_connector_extra_config, falling back to the env flag.
+
+    Extra config is the reliable channel: it provably reaches the EngineCore
+    process (preserve_prefix_blocks arrives the same way), while env vars
+    depend on how the engine process was spawned.
+    """
+    value = _extra_config(vllm_config).get("offload_all")
+    if value is None:
+        return offload_all_from_env()
+    return value in {True, "true", "True", "1"}
+
+
 def wants_offload(request: Request, *, offload_all: bool = False) -> bool:
     """True when this request should be offloaded on finish.
 
@@ -105,7 +118,7 @@ class OverschedulingScheduler(Scheduler):
         super().__init__(*args, **kwargs)
         self.preserve_prefix_blocks = preserve_prefix_blocks_from_config(self.vllm_config)
         self.min_kv_usage = min_kv_usage_from_config(self.vllm_config)
-        self.offload_all = offload_all_from_env()
+        self.offload_all = offload_all_from_config(self.vllm_config)
         if self.offload_all:
             logger.info("overschedule: %s set - offloading every finished request", ENV_OFFLOAD_ALL)
         self.num_offloaded_blocks = 0

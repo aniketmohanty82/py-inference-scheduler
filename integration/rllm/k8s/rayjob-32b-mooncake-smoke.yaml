@@ -29,9 +29,10 @@ spec:
     bash integration/rllm/smoke/train_smoke.sh
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.enable_auto_tool_choice=true
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.tool_call_parser=hermes
-    ++actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config='{kv_connector: DecodeKVSavingConnector, kv_connector_module_path: py_inference_scheduler.datalayer.connectors.mooncake.decode_save, kv_role: kv_both, kv_connector_extra_config: {save_decode_kv: true, preserve_prefix_blocks: 32, min_kv_usage: 0.0}}'
+    ++actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config='{kv_connector: DecodeKVSavingConnector, kv_connector_module_path: py_inference_scheduler.datalayer.connectors.mooncake.decode_save, kv_role: kv_both, kv_connector_extra_config: {save_decode_kv: true, preserve_prefix_blocks: 32, min_kv_usage: 0.0, offload_all: true}}'
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.scheduler_cls=py_inference_scheduler.datalayer.connectors.mooncake.overschedule.OverschedulingScheduler
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.65
     rllm.rollout.train.max_tokens=4096
     rllm.rollout.val.max_tokens=4096
     actor_rollout_ref.rollout.tensor_model_parallel_size=2

@@ -79,3 +79,22 @@ def test_offload_all_env_gate(overschedule, monkeypatch):
     assert overschedule.offload_all_from_env() is True
     monkeypatch.setenv(overschedule.ENV_OFFLOAD_ALL, "0")
     assert overschedule.offload_all_from_env() is False
+
+
+def _vllm_config(extra):
+    kv = SimpleNamespace(kv_connector_extra_config=extra)
+    return SimpleNamespace(kv_transfer_config=kv)
+
+
+def test_offload_all_from_config_overrides(overschedule, monkeypatch):
+    monkeypatch.delenv(overschedule.ENV_OFFLOAD_ALL, raising=False)
+    assert overschedule.offload_all_from_config(_vllm_config({"offload_all": True})) is True
+    assert overschedule.offload_all_from_config(_vllm_config({"offload_all": "true"})) is True
+    assert overschedule.offload_all_from_config(_vllm_config({"offload_all": False})) is False
+
+
+def test_offload_all_config_falls_back_to_env(overschedule, monkeypatch):
+    monkeypatch.setenv(overschedule.ENV_OFFLOAD_ALL, "1")
+    assert overschedule.offload_all_from_config(_vllm_config({})) is True
+    monkeypatch.delenv(overschedule.ENV_OFFLOAD_ALL, raising=False)
+    assert overschedule.offload_all_from_config(_vllm_config({})) is False
