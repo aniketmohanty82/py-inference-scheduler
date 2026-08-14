@@ -34,6 +34,7 @@ spec:
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor
     actor_rollout_ref.rollout.gpu_memory_utilization=0.65
     rllm.async_training.enable=true
+    rllm.workflow.raise_on_error=false
     actor_rollout_ref.hybrid_engine=False
     trainer.n_gpus_per_node=4
     rollout.nnodes=1
