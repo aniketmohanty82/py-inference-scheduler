@@ -247,10 +247,10 @@ index 39a0bb13..c5785721 100644
          OmegaConf.create({"rllm": {"gateway": {"host": "127.0.0.1"}}}),
 diff --git a/rllm/sandbox/backends/kubernetes_backend.py b/rllm/sandbox/backends/kubernetes_backend.py
 new file mode 100644
-index 00000000..3d1acfb7
+index 00000000..13f4d75c
 --- /dev/null
 +++ b/rllm/sandbox/backends/kubernetes_backend.py
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,240 @@
 +"""Kubernetes sandbox backend: one pod per task, exec-based I/O.
 +
 +Shaped after the Modal backend: non-interactive exec, base64-chunked file
@@ -263,6 +263,12 @@ index 00000000..3d1acfb7
 +    RLLM_K8S_NODE_SELECTOR      "k=v[,k=v]" node selector for task pods
 +    RLLM_K8S_IMAGE_PULL_SECRET  optional imagePullSecrets name
 +    RLLM_K8S_POD_TIMEOUT        seconds to wait for Running (default: 600)
++    RLLM_K8S_CPU_REQUEST        override cpu request for every task pod
++                                (e.g. "250m") - task.toml values assume
++                                dedicated capacity; high-concurrency smokes
++                                overcommit the CPU pool instead
++    RLLM_K8S_MEMORY_REQUEST_MB  override memory request (int MiB); the
++                                task.toml value stays as the LIMIT
 +"""
 +
 +import atexit
@@ -328,9 +334,15 @@ index 00000000..3d1acfb7
 +        self._closed = False
 +
 +        resources: dict[str, dict[str, str]] = {"requests": {}, "limits": {}}
-+        if cpu:
-+            resources["requests"]["cpu"] = str(cpu)
-+        if memory_mb:
++        cpu_request = os.environ.get("RLLM_K8S_CPU_REQUEST") or (str(cpu) if cpu else None)
++        if cpu_request:
++            resources["requests"]["cpu"] = cpu_request
++        memory_request = os.environ.get("RLLM_K8S_MEMORY_REQUEST_MB")
++        if memory_request:
++            resources["requests"]["memory"] = f"{int(memory_request)}Mi"
++            if memory_mb:
++                resources["limits"]["memory"] = f"{int(memory_mb)}Mi"
++        elif memory_mb:
 +            resources["requests"]["memory"] = f"{int(memory_mb)}Mi"
 +            resources["limits"]["memory"] = f"{int(memory_mb)}Mi"
 +        if storage_mb:
