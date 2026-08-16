@@ -128,6 +128,41 @@ spec:
             operator: Exists
             effect: NoSchedule
           containers:
+          # In-pod scraper: engines and gateway die with the job, so counters
+          # must be captured live; sidecar stdout is retrievable via
+          # `kubectl logs <pod> -c metrics-scraper` even after the run.
+          - name: metrics-scraper
+            image: python:3.11-slim
+            command: ["python", "-u", "-c"]
+            args:
+              - |
+                import json, time, urllib.request
+                def get(url, timeout=4):
+                    with urllib.request.urlopen(url, timeout=timeout) as r:
+                        return r.read().decode()
+                while True:
+                    try:
+                        workers = json.loads(get("http://127.0.0.1:9090/admin/workers"))
+                        print("TS", int(time.time()), "workers:", len(workers), flush=True)
+                        for w in workers:
+                            try:
+                                text = get(w["url"] + "/metrics")
+                            except Exception as e:
+                                print("ERR", w["url"], e, flush=True)
+                                continue
+                            for line in text.splitlines():
+                                if line.startswith("#"):
+                                    continue
+                                if ("prefix_cache" in line or "num_preemptions" in line
+                                        or "kv_cache_usage" in line):
+                                    print("URL", w["url"], line, flush=True)
+                    except Exception as e:
+                        print("NOGATEWAY", e, flush=True)
+                    time.sleep(30)
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
           - name: ray-worker
             image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:dev
             imagePullPolicy: Always
