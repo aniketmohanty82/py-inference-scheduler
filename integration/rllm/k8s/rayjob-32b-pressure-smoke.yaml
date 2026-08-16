@@ -33,8 +33,11 @@ spec:
     actor_rollout_ref.rollout.tensor_model_parallel_size=2
     data.max_prompt_length=16384
     +rllm.gateway.routing_policy=integration.rllm.policy.SchedulerRoutingPolicy
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.40
-    actor_rollout_ref.rollout.n=8
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.30
+    actor_rollout_ref.rollout.n=2
+    data.train_batch_size=64
+    data.val_batch_size=64
+    actor_rollout_ref.actor.ppo_mini_batch_size=64
     rllm.workflow.n_parallel_tasks=64
     rllm.trainer.total_batches=1
     trainer.experiment_name=32b-pressure-smoke
