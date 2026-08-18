@@ -55,3 +55,39 @@ rollout phase - counters cover the full pressure window.
 
 Raw scrapes: v3_metrics_raw.log (61 snapshots, 30s cadence). Analysis
 script: job tmp analyze_hitrate.py (final-snapshot cumulative counters).
+
+## v4 - SINGLE TP=2 replica, gmu 0.30, 64-way concurrency: sustained thrash
+
+Separated mode (trainer 4 GPUs + rollout 2 GPUs), 32 distinct tasks x n=2,
+n_parallel_tasks=64, ~85k-token KV pool vs multi-hundred-k demand.
+Requires sandbox requests dropped to 50m/256Mi (CPU pool caps at ~16 pods
+otherwise) and orphaned-sandbox cleanup between runs (relaunches leak the
+previous run's 64 pods and can deadlock the head pod's own scheduling).
+
+Saturated window (first kv>=0.95 to end of load, 66 min, 132 samples):
+
+| metric | value |
+|---|---|
+| kv usage | mean 86.5%, max 99.9%, >=90% for 52% of samples, >=95% for 36% |
+| preemptions | **133** (first nonzero of the whole series) |
+| cache-lookup queries in window | 2.44B token-lookups |
+| lookup hit rate in window | **2.4%** (2.5% whole-run) |
+
+The pressure gradient across the series is the result:
+
+| run | peak KV | preemptions | hit rate |
+|---|---|---|---|
+| v1 (8 tasks, 4 replicas, gmu .40) | 26% | 0 | 91.9% |
+| v3 (64 tasks, 4 replicas, gmu .30) | 72% | 0 | 87.7% |
+| v4 (32 tasks, 1 replica, gmu .30) | 99.9%, pinned | 133 | **2.4%** |
+
+Metric caveat: prefix_cache_queries counts block lookups per SCHEDULING
+attempt; under thrash, preempted/requeued requests re-query repeatedly, so
+the denominator includes requeue storms (query volume 64x v3 while compute
+capacity halved - implausible as real prefill tokens). Read 2.4% as "the
+cache answered almost nothing during saturation", not as a token-weighted
+prefill-savings figure. Either way this is the recompute cascade
+overscheduling targets: every evicted history re-prefills from scratch,
+preemption restarts multiply the load, and the engine spends the window
+re-doing work it had already done. This is the regime for the arm-C
+comparison once the Mooncake store wiring is fixed.
