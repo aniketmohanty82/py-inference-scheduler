@@ -35,11 +35,17 @@ spec:
     +rllm.gateway.routing_policy=integration.rllm.policy.SchedulerRoutingPolicy
     actor_rollout_ref.rollout.gpu_memory_utilization=0.30
     actor_rollout_ref.rollout.n=2
-    data.train_batch_size=64
-    data.val_batch_size=64
-    actor_rollout_ref.actor.ppo_mini_batch_size=64
+    data.train_batch_size=32
+    data.val_batch_size=32
+    actor_rollout_ref.actor.ppo_mini_batch_size=32
     rllm.workflow.n_parallel_tasks=64
     rllm.trainer.total_batches=1
+    rllm.async_training.enable=true
+    rllm.workflow.raise_on_error=false
+    actor_rollout_ref.hybrid_engine=False
+    trainer.n_gpus_per_node=4
+    rollout.nnodes=1
+    rollout.n_gpus_per_node=2
     trainer.experiment_name=32b-pressure-smoke
     "
   rayClusterSpec:
