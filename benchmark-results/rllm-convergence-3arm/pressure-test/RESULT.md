@@ -81,6 +81,29 @@ The pressure gradient across the series is the result:
 | v3 (64 tasks, 4 replicas, gmu .30) | 72% | 0 | 87.7% |
 | v4 (32 tasks, 1 replica, gmu .30) | 99.9%, pinned | 133 | **2.4%** |
 
+## v5-v7: replication + dose-response (2026-08-17/18)
+
+Three more single-replica saturated runs, same harness (self-driving
+run_pressure.sh; sandbox-orphan cleanup between runs):
+
+| run | gmu | window | kv mean/max | preempt | window queries | hit rate |
+|---|---|---|---|---|---|---|
+| v4 | 0.30 | 66 min | 86.5% / 99.9% | 133 | 2.44B | 2.4% |
+| v5 (replicate) | 0.30 | 70 min | 88.4% / 99.7% | 141 | 2.92B | **2.4%** |
+| v6b (harsher) | 0.27 | 68 min | 79.5% / 100.0% | 125 | 3.42B | **1.4%** |
+| v7 (larger pool) | 0.35 | 56 min | 90.0% / 99.9% | 124 | 1.48B | **2.3%** |
+
+(gmu 0.25 does not boot: 2.25 GiB KV < the 4 GiB one-request floor at
+max_model_len 32768 - the knob's hard lower bound.)
+
+Verdict: the collapse is REPRODUCIBLE (2.4% twice at identical config) and
+consistent across pool sizes once demand is past the cliff (1.4-2.4% band,
+124-141 preemptions in every saturated run). Requeue churn scales inversely
+with pool size (3.42B lookups at the smallest pool vs 1.48B at the largest)
+- smaller pools thrash harder even when the terminal hit rate is similar.
+Contrast: the same workload on 4 replicas never exceeded 72% KV and held
+87.7-91.9% hit rates with zero preemptions.
+
 Metric caveat: prefix_cache_queries counts block lookups per SCHEDULING
 attempt; under thrash, preempted/requeued requests re-query repeatedly, so
 the denominator includes requeue storms (query volume 64x v3 while compute
