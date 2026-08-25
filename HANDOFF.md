@@ -89,8 +89,8 @@ protect the cache until demand is deliberately concentrated.
 - Analysis: job-dir `tmp/analyze_v4.py <raw-log>` - windowed deltas of
   cumulative counters (window = first kv>=0.95 through last kv>=0.5,
   drain excluded). Single-replica assumption in the script.
-- Raw scrapes: `v1/v3/v4/v5/v6_gmu027/v7_gmu035_metrics_raw.log` in this
-  directory. Full narrative: RESULT.md alongside.
+- Raw scrapes: `benchmark-results/rllm-convergence-3arm/pressure-test/*_metrics_raw.log`.
+  Full narrative: RESULT.md in the same directory.
 - Sandbox pods need `RLLM_K8S_CPU_REQUEST=50m` / `RLLM_K8S_MEMORY_REQUEST_MB=256`
   or the 2-node CPU pool caps at ~16 concurrent task pods.
 
@@ -99,7 +99,7 @@ protect the cache until demand is deliberately concentrated.
 1. **Arm-C rerun of this sweep** once the Mooncake store path works (as of
    08-14 it is miswired under verl: zero puts on our master, gets fail
    rc=-800; suspect verl 0.8's TransferQueue running its own localhost
-   MooncakeStore - see `../32b-mooncake-smoke/RESULT.md`). Expected claim:
+   MooncakeStore - see `benchmark-results/rllm-convergence-3arm/32b-mooncake-smoke/RESULT.md`). Expected claim:
    overscheduling holds hit rate (or replaces recompute with store pulls)
    in exactly this collapse regime.
 2. A token-weighted hit-rate metric (dedupe requeue lookups) if a
