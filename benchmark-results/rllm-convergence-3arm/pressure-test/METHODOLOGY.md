@@ -7,90 +7,115 @@ them. All raw data referenced is committed alongside this file.
 
 ## 1. Hardware
 
-**GPU nodes** (one per run; runs are single-node):
-- GKE `rls-ab-west`, zone us-west1-c, node pools `rdma-gpu-pool` (spot) /
-  `rdma-gpu-flex` (DWS flex-start), machine `a3-ultragpu-8g`:
-  8x NVIDIA H200 (141 GB HBM3e each), 1872 GB RAM, hyperdisk-balanced
-  500 GB boot, gVNIC primary NIC + 8x CX-7 RDMA NICs attached as
-  additional node networks (`gvnic-sub-west`, `rdma-sub-west-0..7`),
-  DRANET (`cloud.google.com/gke-networking-dra-driver=true`) exposing
-  `mrdma.google.com` devices via ResourceClaimTemplate `mooncake-rdma-8`.
-- Nodes are SPOT: identity varies per run (same machine type); one
-  mid-run preemption occurred in the series (mooncake smoke era, not in
-  any run reported below).
+**GPU nodes** (one per run; all runs single-node):
 
-**CPU nodes** (task sandboxes + control plane): 2x n2-standard-8 (8 vCPU /
-32 GB each), also hosting kuberay-operator, mooncake-master, the Ray head
-pod (3 CPU/16Gi), and the RayJob submitter.
+| attribute | value |
+|---|---|
+| cluster / zone | GKE `rls-ab-west`, us-west1-c |
+| node pools | `rdma-gpu-pool` (spot), `rdma-gpu-flex` (DWS flex-start) |
+| machine type | a3-ultragpu-8g |
+| GPUs | 8x NVIDIA H200, 141 GB HBM3e each |
+| host RAM | 1872 GB |
+| boot disk | hyperdisk-balanced, 500 GB |
+| primary NIC | gVNIC (`gvnic-sub-west`) |
+| RDMA NICs | 8x CX-7 via additional node networks (`rdma-sub-west-0..7`) |
+| RDMA exposure | DRANET (`gke-networking-dra-driver=true`), `mrdma.google.com` devices, ResourceClaimTemplate `mooncake-rdma-8` |
+| provisioning | SPOT - node identity varies per run (same machine type); one mid-run preemption in the series (mooncake-smoke era, not in any reported run) |
 
-**Worker pod shape** (GPU node): whole-node pod - 100 CPU / 800Gi /
-8 GPU requests+limits, IPC_LOCK, /dev/shm 128Gi tmpfs, plus (store arm and
-recompute-measured arm only) /etc/mooncake ConfigMap mount and the rdma-8
-resource claim.
+**CPU nodes** (task sandboxes + control plane):
 
-**Mooncake store**: embedded mode - segments are mounted BY the vLLM
-worker processes themselves (32 GB per client, `local_buffer_size` 4 GB),
-coordinated by the `mooncake-master` Deployment (grpc :50051, metrics
-:9003) on the CPU pool. protocol=rdma, metadata P2PHANDSHAKE, device_name
-auto-selected (unpinned - see threat T9). Single-node runs => all
-store traffic is same-node RDMA loopback through the HCA (`MC_FORCE_HCA=1`).
+| attribute | value |
+|---|---|
+| shape | 2x n2-standard-8 (8 vCPU / 32 GB each) |
+| co-tenants | kuberay-operator, mooncake-master, Ray head pod (3 CPU/16Gi), RayJob submitter |
+
+**Worker pod** (GPU node):
+
+| attribute | value |
+|---|---|
+| resources | 100 CPU / 800 Gi / 8 GPU (requests = limits) |
+| capabilities | IPC_LOCK |
+| /dev/shm | 128 Gi tmpfs |
+| store/rc arms only | /etc/mooncake ConfigMap mount + rdma-8 resource claim |
+
+**Mooncake store**:
+
+| attribute | value |
+|---|---|
+| mode | embedded - segments mounted BY the vLLM worker processes |
+| segment / buffer | 32 GB global segment per client, 4 GB local buffer |
+| master | `mooncake-master` Deployment on CPU pool (grpc :50051, metrics :9003) |
+| protocol / metadata | rdma, P2PHANDSHAKE |
+| device selection | auto (device_name unpinned - threat T9) |
+| traffic locality | single-node runs => all store traffic is same-node RDMA loopback through the HCA (`MC_FORCE_HCA=1`) |
 
 ## 2. Software stack (image `rllm-verl-mooncake:dev`)
 
-Base `ray-llm-mooncake:2.56.0` (Ray 2.56.0, Python 3.12, torch 2.11+cu130,
-CUDA 13.0) plus: vLLM 0.22.1 (pip), verl 0.8.0, rllm @ 1d1109a6 with our
-vendored patch (gateway routing_policy plumbing, kubernetes sandbox
-backend, task_from_row task_path fix, loopback-pin skip), flash-attn 2.8.3
-(source-built, sm90-only), stock mooncake wheels, py-inference-scheduler
-(this repo, branch rllm-convergence). Dependency resolution requires
-rllm's uv overrides (image/overrides.txt: numpy>=1.26 etc.).
+| component | version / pin |
+|---|---|
+| base image | ray-llm-mooncake:2.56.0 (Ray 2.56.0, Python 3.12, torch 2.11+cu130, CUDA 13.0) |
+| vLLM | 0.22.1 (pip) |
+| verl | 0.8.0 |
+| rllm | @ 1d1109a6 + vendored patch (gateway routing_policy, kubernetes sandbox backend, task_from_row task_path fix, loopback-pin skip) |
+| flash-attn | 2.8.3, source-built, sm90-only |
+| mooncake | stock wheels |
+| py-inference-scheduler | this repo, branch rllm-convergence |
+| dependency note | rllm out-of-repo installs require uv overrides (image/overrides.txt) |
 
-Model: Qwen/Qwen3-32B (bf16, GQA: 64 layers, 8 KV heads, head_dim 128 =>
-~256 KB KV per token full-model; TP=2 splits this per GPU). LoRA r32/a32
-on the trainer side.
+**Model**:
+
+| attribute | value |
+|---|---|
+| model | Qwen/Qwen3-32B, bf16 |
+| KV geometry | GQA - 64 layers, 8 KV heads, head_dim 128 => ~256 KB KV/token full-model (halved per GPU at TP=2) |
+| trainer | LoRA r32 / alpha 32 |
 
 ## 3. Workload
 
-DeepSWE-style RL sampling step, driven by rllm's AgentTrainer (verl
-backend, fully-async mode, `raise_on_error=false`, ONE training batch):
+DeepSWE-style RL sampling step via rllm AgentTrainer:
 
-- **Tasks**: `r2egym_smoke` = first 64 rows of R2E-Gym/R2E-Gym-Subset
-  (HF), materialized at image build (deterministic first-N; heavily
-  orange3-repo). Runs use `data.train_batch_size=32` tasks x GRPO
-  `rollout.n=2` samples = **64 rollouts (trajectories) per run**.
-- **Agent**: mini-swe-agent, installed at rollout time INSIDE each task
-  container. Task containers = k8s pods on the CPU pool (our vendored
-  kubernetes sandbox backend; requests overridden to 50m/256Mi so all 64
-  fit - CPU is oversubscribed, tool latency absorbs it).
-- **Turn structure**: each turn = one OpenAI /chat/completions request
-  carrying the FULL conversation history (system + instruction + all
-  prior responses + tool outputs). Measured turn structure (from the
-  healthy-runs logs): ~6.6-7.1 turns/trajectory mean, runaways to 33-81
-  turns; per-turn prompt grows ~1k -> 11-16k tokens (max served >=16,384;
-  max attempted >=28,673, rejected); mean per-turn tool-call gap 4.2 s,
-  mean generation 6.6 s (pooled 1,669 turns).
-- **Request path**: agent (in task pod) -> rllm Model Gateway (sqlite
-  trace store; injects logprobs+return_token_ids) -> our
-  SchedulerRoutingPolicy (champion profile: saturation filter kv 0.95/
-  waiting 16, prefix_cache 4.0, waiting_queue 1.0, kv_cache 0.5,
-  sticky_session 4.0) -> vLLM replica(s). With ONE replica the filter's
-  drop is overridden by the policy's least-loaded fallback (identical in
-  both arms).
-- **Sampling params**: temperature 0.6, max_tokens 4096/turn,
-  max_model_len 32768, data.max_prompt_length 16384 (training-side clip).
-  NOT seeded per-request: trajectories are stochastic run-to-run (T2).
-- **Reward**: task test-suite execution in-sandbox (rewards were ~0
-  throughout - irrelevant to serving-side measurements, identical across
-  arms).
-- **Engines**: verl-launched `vllm serve` (vLLM's own OpenAI app),
-  separated topology - trainer FSDP on 4 GPUs, rollout replica(s) on the
-  rest. Pressure/pullbench runs: ONE replica at TP=2 (2 GPUs), 2 GPUs
-  idle. `gpu_memory_utilization` (gmu) is the pool-size knob.
+| attribute | value |
+|---|---|
+| framework path | rllm AgentTrainer, verl backend, fully-async, `raise_on_error=false`, ONE training batch |
+| task set | `r2egym_smoke` = first 64 rows of R2E-Gym/R2E-Gym-Subset (baked at image build; deterministic first-N; heavily orange3) |
+| batch shape | 32 tasks x GRPO n=2 = **64 rollouts/run**, `n_parallel_tasks=64` |
+| agent | mini-swe-agent, installed at rollout time inside each task container |
+| sandboxes | k8s pods on the CPU pool (vendored kubernetes backend); requests overridden to 50m/256Mi (CPU oversubscribed - T7) |
+| request path | agent (task pod) -> rllm Model Gateway (sqlite traces; injects logprobs + return_token_ids) -> SchedulerRoutingPolicy -> vLLM |
+| scheduler profile | champion: saturation filter (kv 0.95 / waiting 16), prefix_cache 4.0, waiting_queue 1.0, kv_cache 0.5, sticky_session 4.0 |
+| single-replica note | the filter drops the sole saturated replica; policy's least-loaded fallback routes anyway (identical both arms - T11) |
+| engines | verl-launched `vllm serve` (vLLM's own OpenAI app); separated topology: trainer FSDP 4 GPUs, ONE rollout replica TP=2, 2 GPUs idle |
+| reward | in-sandbox test-suite execution; ~0 throughout (T12) |
 
-Pool arithmetic at gmu 0.30 / TP=2: 0.30x141 GB budget/GPU minus ~31 GB
-weights/GPU leaves ~5-6 GiB KV/GPU (vLLM reported 2.25 GiB at gmu 0.25,
-below the 4 GiB single-32k-request floor -> won't boot). Aggregate demand:
-64 trajectories x up to 16k-token histories >> pool.
+**Sampling parameters**:
+
+| parameter | value |
+|---|---|
+| temperature | 0.6 (NOT seeded per-request - trajectories stochastic, T2) |
+| max_tokens per turn | 4096 |
+| max_model_len | 32768 |
+| data.max_prompt_length | 16384 (training-side clip) |
+
+**Measured turn structure** (from healthy-run logs, pooled 1,669 turns):
+
+| characteristic | value |
+|---|---|
+| turns per trajectory | ~6.6-7.1 mean; runaways 33-81 |
+| per-turn prompt growth | ~1k -> 11-16k tokens (full history re-sent every turn) |
+| longest served prompt | >=16,384 tokens (clip-bounded) |
+| longest attempted prompt | >=28,673 tokens (rejected by engine) |
+| tool-call gap per turn | 4.2 s mean, 8-10 s p90 |
+| generation per turn | 6.6 s mean |
+| KV idle share (tool gaps) | ~40% of trajectory wall-clock |
+
+**Pool arithmetic** (gmu 0.30, TP=2):
+
+| quantity | value |
+|---|---|
+| per-GPU budget | 0.30 x 141 GB = ~42 GB |
+| weights per GPU | ~31 GB |
+| KV pool per GPU | ~5-6 GiB (gmu 0.25 leaves 2.25 GiB < 4 GiB one-request floor -> won't boot) |
+| aggregate demand | 64 trajectories x up to 16k-token histories >> pool |
 
 ## 4. Run matrix
 
