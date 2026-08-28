@@ -166,15 +166,15 @@ Collapse replicated 3x at identical config (2.4/2.4/2.3%), dose-responsive
 
 | metric (saturated window) | store#1 | store#2 | recompute-measured |
 |---|---|---|---|
-| window duration | 25.5 min | 25.5 min | 55.5 min (lower bound; 56/64 done at harvest) |
-| rollouts completed in window | 64/64 | 64/64 | 56/64 |
-| preemptions | 7 | 7 | 128 |
+| window duration | 25.5 min | 25.5 min | 68.5 min (final; run SUCCEEDED) |
+| rollouts completed in window | 64/64 | 64/64 | 64/64 (final) |
+| preemptions | 7 | 7 | 132 |
 | kv usage mean (behavior) | 97.6% (stable) | 98.5% (stable) | 89.2% (oscillating 59-100%) |
-| local lookup hit rate | 6.6% | 6.2% | 2.3% |
+| local lookup hit rate | 6.6% | 6.2% | 3.8% (final) |
 | store-tier (external) queries -> hits | 405,363 -> 270,016 (66.6%) | 380,376 -> 229,360 (60.3%) | n/a |
-| COMPUTED prompt tokens | 245,191 | 268,950 | 19,808,935 |
-| computed prompt tok/s | 160 | 176 | 5,956 |
-| generation tok/s | 25 | 35 | 318 |
+| COMPUTED prompt tokens | 245,191 | 268,950 | 24,174,340 |
+| computed prompt tok/s | 160 | 176 | 5,887 |
+| generation tok/s | 25 | 35 | 296 |
 | computed as % of served | 77.0% | 86.6% | 99.9% |
 | master batch_put_end (saves, cumulative day) | 83k+ | (cumulative) | 0 |
 
@@ -183,11 +183,10 @@ Whole-run totals (store#1/#2): prompt computed 820,941 / 897,080; gen
 
 ### 6c. Derived comparisons
 
-- Same-work sampling time: 25.5 vs >=55.5 min => **>=2.2x faster with the
-  store** (2.5-2.7x against v4/v5 baselines). All 64 rollouts finished in
-  the store windows; recompute had 8 unfinished at harvest.
-- Prefill compute for the same delivered work: 19.8M vs ~0.25M computed
-  prompt tokens => **~75-80x less prefill compute** with the store. The
+- Same-work sampling time (final): 25.5 vs 68.5 min => **2.7x faster with
+  the store**, consistent with the 2.5-2.7x range vs v4/v5 baselines.
+- Prefill compute for the same delivered work (final): 24.2M vs ~0.25M
+  computed prompt tokens => **~90-95x less prefill compute** with the store. The
   recompute arm's 6,274 tok/s engine throughput is 99.9% redundant
   re-prefill - engine tok/s measures the fire, not the output.
 - Preemptions: 128-141 vs 7 (**~19x fewer**).
@@ -228,10 +227,10 @@ generation 6.6s mean. KV idle (tool gaps) ~40% of trajectory wall.
   Token totals per run vary O(10%); "same work" means same task set and
   rollout count, not identical tokens. Direction unaffected (2.2-2.7x
   across all pairings); exact multipliers carry this noise.
-- **T3 - recompute-measured window is a LOWER bound**: harvested at
-  55.5 min with 8/64 rollouts still unfinished (straggler retry loops).
-  Every additional minute makes recompute look worse, so the reported
-  ratios are conservative.
+- **T3 (resolved)**: the recompute run subsequently completed; final
+  window 68.5 min with all 64 rollouts, preemptions 132, computed prompt
+  24.2M tokens. Tables above show FINAL values; the mid-run harvest
+  (55.5 min / 56 rollouts / 19.8M) is preserved in PULLBENCH.md history.
 - **T4 - scrape thinning under load**: the sidecar's 4s timeouts drop
   some 30s samples during peak thrash (recompute arms have coarser
   sampling). Cumulative counters are unaffected; window boundaries are
