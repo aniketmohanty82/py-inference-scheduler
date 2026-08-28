@@ -63,5 +63,45 @@ HANDOFF.md predicted. Evict-on-turn-end (OverschedulingScheduler) is
 expected to shift the win earlier (below-saturation proactive freeing);
 that comparison is arm C vs this store arm, and is now unblocked.
 
-Raw: pullbench_store_v1_raw.log / v2 alongside; recompute arm raws are
-v4/v5_metrics_raw.log. Manifest: integration/rllm/k8s/rayjob-32b-pullbench-store.yaml.
+## Measured token throughput (2026-08-28 rerun of the recompute arm with
+## token counters - no imputation)
+
+Recompute arm rerun (rayjob-32b-pullbench-recompute.yaml = store manifest
+minus ONLY the kv_transfer_config line). Its saturated window, measured:
+
+| | store #1 | store #2 | recompute (measured) |
+|---|---|---|---|
+| window | 25.5 min (all 64 rollouts done) | 25.5 min (all 64) | 55.5 min (56/64 done, tail still crawling) |
+| computed prompt tokens | 245k | 269k | **19.8M** |
+| computed prompt tok/s | 160 | 176 | **5,956** |
+| generation tok/s | 25 | 35 | 318 |
+| combined engine tok/s | 234 | 238 | 6,274 |
+| computed as % of served | 77% | 87% | **99.9%** |
+| preemptions | 7 | 7 | 128 |
+| local hit rate | 6.6% | 6.2% | 2.3% |
+
+(Counter note: in this vLLM build `request_prompt_tokens_sum` equals
+`prompt_tokens_total` - both count COMPUTED prompt tokens.)
+
+Correct reading - the raw tok/s comparison INVERTS naively: the recompute
+arm shows 27x higher engine token throughput because it is 27x busier doing
+redundant work. Same 64-trajectory workload:
+
+- recompute: **19.8M prompt tokens computed** (99.9% redundant re-prefill
+  of evicted/preempted history), 5,956 tok/s of sustained wasted compute,
+  and still 8 rollouts unfinished at 55.5 min.
+- store: **~0.25M prompt tokens computed** (the store + cache supplied the
+  rest), all 64 rollouts done in 25.5 min.
+
+=> ~75-80x less prefill compute for the same delivered trajectories, which
+converts to >=2.2x faster same-work sampling in this measured pair (2.5-2.7x
+vs the v4/v5 baselines). "Throughput" for RL sampling must be counted in
+delivered trajectories per wall-clock, not engine tokens per second - engine
+tok/s under thrash measures the size of the fire, not the output.
+
+This rerun is also the third replication of the recompute collapse
+(2.3% hit rate, 128 preemptions - v4: 2.4%/133, v5: 2.4%/141).
+
+Raw: pullbench_store_v1/v2_raw.log, pullbench_recompute_v1_raw.log;
+earlier recompute baselines: v4/v5_metrics_raw.log.
+Manifests: rayjob-32b-pullbench-store.yaml / -recompute.yaml.
