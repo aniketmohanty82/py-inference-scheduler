@@ -1,0 +1,297 @@
+# pb2-1n RECOMPUTE arm: SINGLE-NODE control for the 2-node pullbench (pb2).
+# Identical workload and config (TP=2, gmu 0.30, 16k contexts, 64 tasks x
+# n=2 = 128 rollouts, 2 replicas) but everything packs onto ONE 8-GPU pod:
+# trainer PG (4 GPUs) + both TP=2 replica PGs (verl packs by default -
+# observed 2026-08-31). All 4 Mooncake segments live on this node, so
+# every store pull is same-node NIC loopback - isolates the fabric cost
+# when compared against the 2-node store arm.
+#
+# Measure DURING the run (counters die with the engines): metrics-scraper
+# sidecars ride every pod; the one that finds the gateway at
+# 127.0.0.1:9090 captures both replicas' series.
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: rllm-32b-pb2-1n-recompute
+spec:
+  shutdownAfterJobFinishes: false
+  # Task subset + registry are baked into the image at RLLM_HOME=/opt/rllm-home
+  # (cluster-wide identical paths); no runtime prep step.
+  entrypoint: >-
+    bash -lc "
+    set -euo pipefail;
+    cd /opt/py-inference-scheduler;
+    MODEL_PATH=Qwen/Qwen3-32B
+    bash integration/rllm/smoke/train_smoke.sh
+    ++actor_rollout_ref.rollout.engine_kwargs.vllm.enable_auto_tool_choice=true
+    ++actor_rollout_ref.rollout.engine_kwargs.vllm.tool_call_parser=hermes
+    ++actor_rollout_ref.rollout.engine_kwargs.vllm.disable_log_stats=false
+    ++actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor
+    rllm.rollout.train.max_tokens=4096
+    rllm.rollout.val.max_tokens=4096
+    actor_rollout_ref.rollout.tensor_model_parallel_size=2
+    data.max_prompt_length=16384
+    +rllm.gateway.routing_policy=integration.rllm.policy.SchedulerRoutingPolicy
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.30
+    actor_rollout_ref.rollout.n=2
+    data.train_batch_size=64
+    data.val_batch_size=64
+    actor_rollout_ref.actor.ppo_mini_batch_size=64
+    rllm.workflow.n_parallel_tasks=128
+    rllm.trainer.total_batches=1
+    rllm.async_training.enable=true
+    rllm.workflow.raise_on_error=false
+    actor_rollout_ref.hybrid_engine=False
+    trainer.n_gpus_per_node=4
+    rollout.nnodes=2
+    rollout.n_gpus_per_node=2
+    trainer.experiment_name=32b-pb2-1n-recompute
+    "
+  rayClusterSpec:
+    rayVersion: "2.56.0"
+    headGroupSpec:
+      rayStartParams:
+        num-cpus: "0"
+        num-gpus: "0"
+        dashboard-host: "0.0.0.0"
+      template:
+        spec:
+          serviceAccountName: rllm-sandbox-runner
+          containers:
+          - name: ray-head
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:dev
+            imagePullPolicy: Always
+            ports:
+            - containerPort: 6379
+              name: gcs
+            - containerPort: 8265
+              name: dashboard
+            env:
+            - name: RLS_SANDBOX_BACKEND
+              value: "kubernetes"
+            - name: RLS_SANDBOX_CONCURRENCY
+              value: "128"
+            - name: ROUTER_CONFIG_PATH
+              value: "/opt/py-inference-scheduler/integration/rllm/configs/scheduler.yaml"
+            # integration/ is repo-root code, not part of the installed
+            # py_inference_scheduler package - the gateway subprocess imports
+            # the policy by dotted path and needs the repo on sys.path.
+            - name: PYTHONPATH
+              value: "/opt/py-inference-scheduler"
+            - name: RLS_DECISION_LOG
+              value: "1"
+            - name: RLLM_GATEWAY_NO_LOOPBACK_PIN
+              value: "1"
+            - name: RLLM_K8S_NAMESPACE
+              value: "default"
+            - name: RLLM_K8S_NODE_SELECTOR
+              value: "cloud.google.com/gke-nodepool=default-pool"
+            - name: RLLM_K8S_CPU_REQUEST
+              value: "50m"
+            - name: RLLM_K8S_MEMORY_REQUEST_MB
+              value: "256"
+            - name: PYTHONHASHSEED
+              value: "0"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            resources:
+              # r2egym builder materializes the full 4,578-row HF dataset in
+              # memory (~7GB) before subsetting.
+              requests:
+                cpu: "3"
+                memory: 16Gi
+              limits:
+                cpu: "3"
+                memory: 16Gi
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-tmp
+          - name: metrics-scraper
+            image: python:3.11-slim
+            command: ["python", "-u", "-c"]
+            args:
+              - |
+                import json, time, urllib.request
+                def get(url, timeout=4):
+                    with urllib.request.urlopen(url, timeout=timeout) as r:
+                        return r.read().decode()
+                while True:
+                    try:
+                        workers = json.loads(get("http://127.0.0.1:9090/admin/workers"))
+                        print("TS", int(time.time()), "workers:", len(workers), flush=True)
+                        for w in workers:
+                            try:
+                                text = get(w["url"] + "/metrics")
+                            except Exception as e:
+                                print("ERR", w["url"], e, flush=True)
+                                continue
+                            for line in text.splitlines():
+                                if line.startswith("#"):
+                                    continue
+                                if ("prefix_cache" in line or "num_preemptions" in line
+                                        or "kv_cache_usage" in line
+                                        or "prompt_tokens" in line
+                                        or "generation_tokens" in line):
+                                    print("URL", w["url"], line, flush=True)
+                    except Exception as e:
+                        print("NOGATEWAY", e, flush=True)
+                    time.sleep(30)
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+          volumes:
+          - name: ray-tmp
+            emptyDir: {}
+    workerGroupSpecs:
+    # Single 8-GPU pod: trainer PG + both TP=2 replicas pack here; all
+    # segments local, store pulls are NIC-loopback only.
+    - replicas: 1
+      minReplicas: 1
+      maxReplicas: 1
+      groupName: gpu-group
+      rayStartParams:
+        num-gpus: "8"
+      template:
+        spec:
+          serviceAccountName: rllm-sandbox-runner
+          nodeSelector:
+            cloud.google.com/gke-networking-dra-driver: "true"
+          tolerations:
+          - key: cloud.google.com/gke-queued
+            operator: Exists
+            effect: NoSchedule
+          - key: cloud.google.com/gke-spot
+            operator: Exists
+            effect: NoSchedule
+          - key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule
+          containers:
+          - name: ray-worker
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:dev
+            imagePullPolicy: Always
+            securityContext:
+              capabilities:
+                add: ["IPC_LOCK"]
+            env:
+            - name: RLS_SANDBOX_BACKEND
+              value: "kubernetes"
+            - name: RLS_SANDBOX_CONCURRENCY
+              value: "128"
+            - name: ROUTER_CONFIG_PATH
+              value: "/opt/py-inference-scheduler/integration/rllm/configs/scheduler.yaml"
+            # integration/ is repo-root code, not part of the installed
+            # py_inference_scheduler package - the gateway subprocess imports
+            # the policy by dotted path and needs the repo on sys.path.
+            - name: PYTHONPATH
+              value: "/opt/py-inference-scheduler"
+            - name: RLS_DECISION_LOG
+              value: "1"
+            - name: RLLM_GATEWAY_NO_LOOPBACK_PIN
+              value: "1"
+            - name: RLLM_K8S_NAMESPACE
+              value: "default"
+            - name: RLLM_K8S_NODE_SELECTOR
+              value: "cloud.google.com/gke-nodepool=default-pool"
+            - name: RLLM_K8S_CPU_REQUEST
+              value: "50m"
+            - name: RLLM_K8S_MEMORY_REQUEST_MB
+              value: "256"
+            - name: PYTHONHASHSEED
+              value: "0"
+            # Weight-sync NCCL must ride the pod network on every rank:
+            # rollout pods expose RoCE NICs (DRANET) but the trainer pod has
+            # none, and mixed IB/socket transport selection hangs the
+            # rendezvous. Mooncake is unaffected (own ibverbs engine).
+            - name: NCCL_IB_DISABLE
+              value: "1"
+            - name: NCCL_SOCKET_IFNAME
+              value: "eth0"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            - name: MOONCAKE_CONFIG_PATH
+              value: "/etc/mooncake/mooncake_config.json"
+            - name: MC_FORCE_HCA
+              value: "1"
+            - name: WITH_NVIDIA_PEERMEM
+              value: "0"
+            resources:
+              requests:
+                cpu: "100"
+                memory: 800Gi
+                nvidia.com/gpu: "8"
+              limits:
+                cpu: "100"
+                memory: 800Gi
+                nvidia.com/gpu: "8"
+              claims:
+              - name: rdma
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-tmp
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /etc/mooncake
+              name: mooncake-vol
+          # In-pod scraper: engines and gateway die with the job, so counters
+          # must be captured live; sidecar stdout is retrievable via
+          # `kubectl logs <pod> -c metrics-scraper` even after the run.
+          - name: metrics-scraper
+            image: python:3.11-slim
+            command: ["python", "-u", "-c"]
+            args:
+              - |
+                import json, time, urllib.request
+                def get(url, timeout=4):
+                    with urllib.request.urlopen(url, timeout=timeout) as r:
+                        return r.read().decode()
+                while True:
+                    try:
+                        workers = json.loads(get("http://127.0.0.1:9090/admin/workers"))
+                        print("TS", int(time.time()), "workers:", len(workers), flush=True)
+                        for w in workers:
+                            try:
+                                text = get(w["url"] + "/metrics")
+                            except Exception as e:
+                                print("ERR", w["url"], e, flush=True)
+                                continue
+                            for line in text.splitlines():
+                                if line.startswith("#"):
+                                    continue
+                                if ("prefix_cache" in line or "num_preemptions" in line
+                                        or "kv_cache_usage" in line
+                                        or "prompt_tokens" in line
+                                        or "generation_tokens" in line):
+                                    print("URL", w["url"], line, flush=True)
+                    except Exception as e:
+                        print("NOGATEWAY", e, flush=True)
+                    time.sleep(30)
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+          resourceClaims:
+          - name: rdma
+            resourceClaimTemplateName: mooncake-rdma-8
+          volumes:
+          - name: ray-tmp
+            emptyDir: {}
+          - name: dshm
+            emptyDir:
+              medium: Memory
+              sizeLimit: 64Gi
+          - name: mooncake-vol
+            configMap:
+              name: mooncake-config
