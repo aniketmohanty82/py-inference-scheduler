@@ -1,5 +1,32 @@
 # pb2: 2-node cross-node RDMA pullbench (store vs recompute)
 
+## RETRACTION (2026-08-31, same day): store-arm numbers below are INVALID
+
+The store run's full timeline (pb2_store_v1_raw.log, dumped per-snapshot)
+shows all engine counters FROZEN from +7.5 min after sampling start: gen
+and computed-prompt counters flat for 18 minutes, KV stuck at 0.79/0.93,
+and no drain to 0 (the healthy recompute run visibly drains). The engines
+wedged AGAIN - this time with ZERO master evictions and zero put failures,
+which debunks the store-full/eviction theory from attempt 1; the
+sending-thread failure correlates with preemptions under multi-replica
+load, not store capacity. The RayJob still reported SUCCEEDED because
+rllm.workflow.raise_on_error=false absorbs aborted trajectories and
+proceeds to training on the partial batch.
+
+Consequences:
+- The "store 20/21.5-min windows" are artifacts (window-end detection ran
+  into frozen gauges); the 1.8x same-work claim is WITHDRAWN.
+- Store hit rates / pulled-token counts below reflect only the first
+  ~7.5 min of genuine work and remain evidence that cross-node pulls
+  function (84%+ hit rate while alive), NOT a completed-workload result.
+- The recompute-arm numbers ARE valid: continuous counter progression,
+  proper drain to kv=0, 51.5 min measured sampling phase.
+- Next: re-run the store arm with live driver-log streaming and freeze
+  detection to capture the engine-side stack at wedge time.
+
+Everything below is preserved as originally written for audit; read it
+through the retraction above.
+
 2026-08-31, cluster rls-ab-west, branch rllm-convergence. Question: does the
 store's win survive when pulls actually cross the node fabric? The
 single-node pullbench (PULLBENCH.md) only exercised same-node loopback
