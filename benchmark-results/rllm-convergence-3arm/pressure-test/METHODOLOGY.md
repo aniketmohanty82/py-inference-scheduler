@@ -292,3 +292,15 @@ generation 6.6s mean. KV idle (tool gaps) ~40% of trajectory wall.
   policy): trajectories terminate via env_done/turn budget rather than
   success. Serving-side comparisons are unaffected; generalization to
   reward-bearing workloads assumes similar turn/length structure.
+- **T13 - single-node runs measure the host-DRAM tier only, not the
+  cross-node fabric**: with one TP=2 replica, both mounted segments live
+  in that replica's own worker processes, so every store pull is
+  same-node NIC loopback (host DRAM -> PCIe -> CX-7 hairpin -> PCIe ->
+  HBM; `WITH_NVIDIA_PEERMEM=0` also inserts a cudaMemcpy staging hop
+  through the 4 GB local buffer in each direction). These results are
+  therefore an upper bound for the store's *local* tier; they do not
+  exercise inter-node RDMA latency/bandwidth or fabric contention. The
+  earlier relocation A/B (07-21: 0-6% relocation tax at RDMA vs 26-32%
+  TCP) bounds the expected wire-hop cost; the pb2 2-node runs (one
+  replica per node, Mooncake master allocating puts across all 4
+  segments, ~half remote by construction) measure it directly.
