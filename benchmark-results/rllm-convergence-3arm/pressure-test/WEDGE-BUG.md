@@ -36,14 +36,41 @@ eviction-triggered. The same connector config ran clean 5/5 on
 single-node (2 store + 3 recompute runs, 64 rollouts, one replica); the
 wedge appears only in the 2-replica / 128-rollout / cross-node regime.
 
-## Candidate fault sites (from reading _handle_request)
+## Root cause (CONFIRMED 08-31, attempt 4: full traceback + py-spy stacks)
 
-- `req_meta.block_hashes[chunk_idx]` - chunk loop indexes request block
-  hashes by token-db chunk index.
-- `db.prepare_value(s, e, block_ids_per_group[g_idx])` - save uses block
-  ids captured at enqueue; a preemption frees/reshapes them before the
-  async save drains (both attempts wedge shortly after preemptions
-  begin).
+Traceback (exc_info image patch) lands on:
+
+```
+_handle_request
+  addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+    block_id = block_ids[start // self.block_size]
+IndexError: list index out of range
+```
+
+A request PREEMPTED while its async save is still queued has its physical
+KV blocks freed; the queued ReqMeta still describes the pre-preemption
+token range, so prepare_value indexes past the (now shorter) block_ids
+list. run()'s catch logged and continued WITHOUT the
+dec_stored_request/task_done completion that every other path (including
+tolerated put failures) performs - so the request never reports
+save-finished, vLLM holds it forever, held requests pin KV, and the
+engine stalls completely. py-spy confirms: sending threads idle on empty
+queues post-error; the engine simply waits on completions that will
+never arrive.
+
+Why only the pb2 regime: the race needs a preemption to land between
+save-enqueue and save-drain. 128-rollout queues are deeper and cross-node
+puts drain slower than single-node loopback, widening the window;
+single-node 64-rollout runs (5/5 clean) stayed ahead of it.
+
+## Fix (shipped in image 08-31; upstream to vLLM mooncake store connector)
+
+run()'s except now completes the failed request exactly like the skip
+paths: dec_stored_request (when present) + task_done, with its own
+guard. Semantics: the store is a cache - a failed save drops the blocks
+and releases the request; it must never wedge the engine. A follow-up
+upstream refinement can clamp the save range to the live block count and
+salvage the still-valid prefix chunks instead of dropping the batch.
 
 ## Instrumentation now in place (attempt 4, in flight)
 

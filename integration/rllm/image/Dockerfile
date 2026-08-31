@@ -80,15 +80,32 @@ RUN pip check | grep -v -E \
     > /tmp/pip-check-residue.txt || true; \
     if [ -s /tmp/pip-check-residue.txt ]; then cat /tmp/pip-check-residue.txt; exit 1; fi
 
-# Wedge diagnosis: the mooncake store transfer threads swallow exceptions as
-# one-line errors ("list index out of range"), which loses the failing line.
-# Log the full traceback so the next reproduction identifies the bug site.
+# Wedge fix (diagnosed 08-31 via traceback + py-spy): a request preempted
+# while its async store-save is still queued has fewer physical blocks than
+# the save expects; prepare_value then raises IndexError, run()'s catch
+# skipped the dec_stored_request/task_done completion, and the engine held
+# the request forever (both replicas deadlock). A failed save must complete
+# the request exactly like the skip paths do - the store is a cache.
+# Also log the full traceback. Upstream fix belongs in vLLM's mooncake
+# store connector; this patches our image until that lands.
 RUN python - << 'PYEOF'
 import pathlib, vllm
 p = pathlib.Path(vllm.__file__).parent / "distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py"
 src = p.read_text()
-old = 'logger.error("Error in %s: %s", self.name, e)'
-new = 'logger.exception("Error in %s: %s", self.name, e)'
+old = '''            except Exception as e:
+                logger.error("Error in %s: %s", self.name, e)'''
+new = '''            except Exception as e:
+                logger.exception("Error in %s: %s", self.name, e)
+                try:
+                    req_id = getattr(request_data, "req_id", None)
+                    if req_id is not None:
+                        if hasattr(self, "dec_stored_request"):
+                            self.dec_stored_request(req_id)
+                        self.request_queue.task_done()
+                except Exception:
+                    logger.exception(
+                        "Failed to release request after error in %s", self.name
+                    )'''
 assert old in src, "transfer-thread catch site not found - vllm layout changed"
 p.write_text(src.replace(old, new))
 print("patched", p)
