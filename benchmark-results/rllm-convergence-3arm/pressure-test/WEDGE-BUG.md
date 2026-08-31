@@ -25,16 +25,24 @@ workload; counter drain is.
 
 ## Reproductions
 
-| attempt | segments | onset | evictions at onset | evidence |
+| run | segments | onset | evictions at onset | evidence |
 |---|---|---|---|---|
-| 1 (08-31) | 4x32gb | ~20 min, after store filled | 13 sweeps, 81.1GB | error spam in driver log; counters froze; salvaged logs |
-| 2 | 4x96gb | ~7.5 min | ZERO | full timeline dump shows 18 min frozen, no drain |
-| 3 | 4x96gb | ~13 min | zero | 771 error lines across both replicas in streamed driver log |
+| single-node store #1 (08-28) | 2x32gb | ~4.5 min | n/a | timeline dump: gen pinned 115,981 / kv 0.98 for 24 min (found 08-31) |
+| single-node store #2 (08-28) | 2x32gb | ~6 min | n/a | timeline dump: gen pinned 126,334 for 23 min (found 08-31) |
+| pb2 attempt 1 (08-31) | 4x32gb | ~20 min | 13 sweeps, 81.1GB | error spam in driver log; counters froze |
+| pb2 attempt 2 | 4x96gb | ~7.5 min | ZERO | timeline dump: 18 min frozen, no drain |
+| pb2 attempt 3 | 4x96gb | ~13 min | zero | 771 error lines, both replicas, streamed driver log |
+| pb2 attempt 5 (FIXED image) | 4x96gb | no wedge | 25 sweeps in-run | completed + drained; thousands of recovered save failures |
 
-Attempt 2 kills the store-full theory: the wedge is not capacity- or
-eviction-triggered. The same connector config ran clean 5/5 on
-single-node (2 store + 3 recompute runs, 64 rollouts, one replica); the
-wedge appears only in the 2-replica / 128-rollout / cross-node regime.
+The wedge hit EVERY store-arm run ever launched, single-node included -
+onset tracks the first preemption burst (5-8 preemptions), not store
+capacity (attempt 2 wedged with zero evictions) and not cross-node
+topology (single-node runs wedged fastest). It went unnoticed on 08-28
+because the error is one log line in unstreamed engine logs, the frozen
+KV gauge reads as "stable high utilization", and the RayJob reports
+SUCCEEDED after raise_on_error absorbs the aborted trajectories. This
+retroactively invalidates the PULLBENCH.md store-arm results (see the
+retraction there).
 
 ## Root cause (CONFIRMED 08-31, attempt 4: full traceback + py-spy stacks)
 
@@ -58,10 +66,11 @@ engine stalls completely. py-spy confirms: sending threads idle on empty
 queues post-error; the engine simply waits on completions that will
 never arrive.
 
-Why only the pb2 regime: the race needs a preemption to land between
-save-enqueue and save-drain. 128-rollout queues are deeper and cross-node
-puts drain slower than single-node loopback, widening the window;
-single-node 64-rollout runs (5/5 clean) stayed ahead of it.
+Regime-dependence correction (08-31, after timeline dumps): the race is
+NOT pb2-specific - the single-node store runs wedged too (~4.5-6 min in,
+right after their first preemption burst). Any store-arm run that
+preempts while saves are queued hits it; only the recompute arms (no
+connector) were ever immune.
 
 ## Fix (shipped in image 08-31; upstream to vLLM mooncake store connector)
 

@@ -1,5 +1,30 @@
 # Pull-from-Mooncake vs straight recompute under sustained KV saturation
 
+## RETRACTION (2026-08-31): BOTH store-arm runs were wedged - the 2.6x
+## same-work claim is WITHDRAWN
+
+Per-snapshot timeline dumps of the store raw logs (dump via
+pb2_analyze/dump tooling) show both store runs' engine counters FROZEN
+minutes after saturation: store #1 pinned at gen=115,981 /
+computed=820,941 / kv=0.98 from +4.5 min to log end; store #2 pinned at
+gen=126,334 from +6 min. This is the engine deadlock documented in
+WEDGE-BUG.md (preemption race in the save path - present in EVERY store
+run since 08-28, silent because the catch logged one line and the RayJob
+still reported SUCCEEDED). The celebrated "stable 97-99% KV" WAS the
+deadlock. The store arms completed only a fraction of the 64-rollout
+workload; comparing their "windows" against fully-completed recompute
+runs was invalid.
+
+What remains valid in this file: the recompute-arm measurements (v4, v5,
+and the 08-28 measured rerun - continuous progression, full completion,
+collapse replicated 3x). The only valid store-vs-recompute comparison to
+date is the pb2 2-node pair with the FIXED connector (PB2.md), which at
+that pressure shows near-parity and a rescue-effectiveness pathology
+under investigation - not a 2.6x win.
+
+Original text preserved below for audit; read store-arm numbers as
+retracted.
+
 2026-08-28, cluster rls-ab-west, branch rllm-convergence. Question: in the
 preemption-heavy regime (single TP=2 replica, gmu 0.30, 64 concurrent
 trajectories, 32 distinct r2egym tasks x n=2, Qwen3-32B), does pulling
