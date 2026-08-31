@@ -245,11 +245,11 @@ spec:
             resources:
               requests:
                 cpu: "40"
-                memory: 300Gi
+                memory: 450Gi
                 nvidia.com/gpu: "2"
               limits:
                 cpu: "40"
-                memory: 300Gi
+                memory: 450Gi
                 nvidia.com/gpu: "2"
               claims:
               - name: rdma

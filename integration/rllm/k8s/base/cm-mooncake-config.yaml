@@ -7,11 +7,9 @@ data:
       "master_server_address": "mooncake-master.default.svc.cluster.local:50051",
       "protocol": "rdma",
       "device_name": "",
-      "global_segment_size": "32gb",
+      "global_segment_size": "96gb",
       "local_buffer_size": "4gb"
     }
 kind: ConfigMap
 metadata:
-  annotations:
-      {"apiVersion":"v1","data":{"mooncake_config.json":"{\n  \"mode\": \"embedded\",\n  \"metadata_server\": \"P2PHANDSHAKE\",\n  \"master_server_address\": \"mooncake-master.default.svc.cluster.local:50051\",\n  \"protocol\": \"rdma\",\n  \"device_name\": \"\",\n  \"global_segment_size\": \"32gb\",\n  \"local_buffer_size\": \"4gb\"\n}\n"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"mooncake-config","namespace":"default"}}
   name: mooncake-config
