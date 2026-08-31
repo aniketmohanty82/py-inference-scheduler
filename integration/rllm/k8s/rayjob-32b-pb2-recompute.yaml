@@ -1,20 +1,24 @@
-# 32B PRESSURE smoke: prefix-cache hit rate when aggregate KV demand far
-# exceeds the per-replica pool. Champion-profile scheduler, 4 replicas at
-# TP=2 with gpu_memory_utilization 0.40 (small KV pools, tau3-style), 64
-# concurrent trajectories (8 tasks x rollout.n=8, n_parallel_tasks=64),
-# contexts to 16k. Mooncake OFF - this measures the thrash overscheduling
-# is meant to relieve.
+# pb2 RECOMPUTE arm: 2-node baseline - the store manifest minus ONLY the
+# kv_transfer_config line (plus job/experiment names). Same preemption-heavy
+# regime (TP=2, gmu 0.30, 16k contexts), 64 tasks x n=2 = 128 rollouts,
+# one replica per H200 node; evicted KV is re-prefilled, no store.
 #
-# Task pods overcommit the CPU pool via RLLM_K8S_CPU_REQUEST/MEMORY
-# overrides - 64 concurrent sandboxes on 2 n2-standard-8 nodes.
+# Placement is forced at the k8s level, NOT trusted to Ray: verl's PGs are
+# STRICT_PACK per PG with no spread across PGs, so on 8-GPU pods both
+# replicas pack onto one node (observed 2026-08-31). Instead:
+#   - trainer pod: exactly 4 GPUs - the only ray node that fits the 4-GPU
+#     trainer PG, which fully_async_main allocates (blocking) BEFORE any
+#     rollout PG, so it can never be squatted on by a rollout replica.
+#   - 2x rollout pods: exactly 2 GPUs each + hostname anti-affinity - each
+#     fits exactly one TP=2 replica, on different physical nodes.
 #
-# Measure DURING the run (counters die with the engines): scrape each
-# replica's /metrics for vllm:*prefix_cache* counters, preemptions,
-# kv usage - see tmp/scrape_hitrate.sh in the job dir.
+# Measure DURING the run (counters die with the engines): metrics-scraper
+# sidecars ride every pod (gateway placement is actor-dependent); the one
+# that finds the gateway at 127.0.0.1:9090 captures both replicas' series.
 apiVersion: ray.io/v1
 kind: RayJob
 metadata:
-  name: rllm-32b-pb2-rc
+  name: rllm-32b-pb2-recompute
 spec:
   shutdownAfterJobFinishes: false
   # Task subset + registry are baked into the image at RLLM_HOME=/opt/rllm-home
@@ -111,21 +115,66 @@ spec:
             volumeMounts:
             - mountPath: /tmp/ray
               name: ray-tmp
+          - name: metrics-scraper
+            image: python:3.11-slim
+            command: ["python", "-u", "-c"]
+            args:
+              - |
+                import json, time, urllib.request
+                def get(url, timeout=4):
+                    with urllib.request.urlopen(url, timeout=timeout) as r:
+                        return r.read().decode()
+                while True:
+                    try:
+                        workers = json.loads(get("http://127.0.0.1:9090/admin/workers"))
+                        print("TS", int(time.time()), "workers:", len(workers), flush=True)
+                        for w in workers:
+                            try:
+                                text = get(w["url"] + "/metrics")
+                            except Exception as e:
+                                print("ERR", w["url"], e, flush=True)
+                                continue
+                            for line in text.splitlines():
+                                if line.startswith("#"):
+                                    continue
+                                if ("prefix_cache" in line or "num_preemptions" in line
+                                        or "kv_cache_usage" in line
+                                        or "prompt_tokens" in line
+                                        or "generation_tokens" in line):
+                                    print("URL", w["url"], line, flush=True)
+                    except Exception as e:
+                        print("NOGATEWAY", e, flush=True)
+                    time.sleep(30)
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
           volumes:
           - name: ray-tmp
             emptyDir: {}
     workerGroupSpecs:
+    # One TP=2 replica per pod; anti-affinity forces the two pods onto
+    # different physical nodes so segment traffic must cross the fabric.
     - replicas: 2
       minReplicas: 2
       maxReplicas: 2
-      groupName: gpu-group
+      groupName: rollout-group
       rayStartParams:
-        num-gpus: "8"
+        num-gpus: "2"
       template:
         spec:
           serviceAccountName: rllm-sandbox-runner
           nodeSelector:
             cloud.google.com/gke-networking-dra-driver: "true"
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchExpressions:
+                  - key: ray.io/group
+                    operator: In
+                    values: ["rollout-group"]
+                topologyKey: kubernetes.io/hostname
           tolerations:
           - key: cloud.google.com/gke-queued
             operator: Exists
@@ -187,13 +236,13 @@ spec:
               value: "0"
             resources:
               requests:
-                cpu: "100"
-                memory: 800Gi
-                nvidia.com/gpu: "8"
+                cpu: "40"
+                memory: 300Gi
+                nvidia.com/gpu: "2"
               limits:
-                cpu: "100"
-                memory: 800Gi
-                nvidia.com/gpu: "8"
+                cpu: "40"
+                memory: 300Gi
+                nvidia.com/gpu: "2"
               claims:
               - name: rdma
             volumeMounts:
@@ -249,7 +298,122 @@ spec:
           - name: dshm
             emptyDir:
               medium: Memory
-              sizeLimit: 128Gi
+              sizeLimit: 64Gi
           - name: mooncake-vol
             configMap:
               name: mooncake-config
+    # Trainer pod: exactly 4 GPUs so the trainer PG has exactly one home.
+    # No RDMA claim / mooncake env - the FSDP actors never touch the store.
+    - replicas: 1
+      minReplicas: 1
+      maxReplicas: 1
+      groupName: trainer-group
+      rayStartParams:
+        num-gpus: "4"
+      template:
+        spec:
+          serviceAccountName: rllm-sandbox-runner
+          nodeSelector:
+            cloud.google.com/gke-networking-dra-driver: "true"
+          tolerations:
+          - key: cloud.google.com/gke-queued
+            operator: Exists
+            effect: NoSchedule
+          - key: cloud.google.com/gke-spot
+            operator: Exists
+            effect: NoSchedule
+          - key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule
+          containers:
+          - name: ray-worker
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:dev
+            imagePullPolicy: Always
+            env:
+            - name: RLS_SANDBOX_BACKEND
+              value: "kubernetes"
+            - name: RLS_SANDBOX_CONCURRENCY
+              value: "128"
+            - name: ROUTER_CONFIG_PATH
+              value: "/opt/py-inference-scheduler/integration/rllm/configs/scheduler.yaml"
+            - name: PYTHONPATH
+              value: "/opt/py-inference-scheduler"
+            - name: RLS_DECISION_LOG
+              value: "1"
+            - name: RLLM_GATEWAY_NO_LOOPBACK_PIN
+              value: "1"
+            - name: RLLM_K8S_NAMESPACE
+              value: "default"
+            - name: RLLM_K8S_NODE_SELECTOR
+              value: "cloud.google.com/gke-nodepool=default-pool"
+            - name: RLLM_K8S_CPU_REQUEST
+              value: "50m"
+            - name: RLLM_K8S_MEMORY_REQUEST_MB
+              value: "256"
+            - name: PYTHONHASHSEED
+              value: "0"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            resources:
+              requests:
+                cpu: "40"
+                memory: 400Gi
+                nvidia.com/gpu: "4"
+              limits:
+                cpu: "40"
+                memory: 400Gi
+                nvidia.com/gpu: "4"
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-tmp
+            - mountPath: /dev/shm
+              name: dshm
+          - name: metrics-scraper
+            image: python:3.11-slim
+            command: ["python", "-u", "-c"]
+            args:
+              - |
+                import json, time, urllib.request
+                def get(url, timeout=4):
+                    with urllib.request.urlopen(url, timeout=timeout) as r:
+                        return r.read().decode()
+                while True:
+                    try:
+                        workers = json.loads(get("http://127.0.0.1:9090/admin/workers"))
+                        print("TS", int(time.time()), "workers:", len(workers), flush=True)
+                        for w in workers:
+                            try:
+                                text = get(w["url"] + "/metrics")
+                            except Exception as e:
+                                print("ERR", w["url"], e, flush=True)
+                                continue
+                            for line in text.splitlines():
+                                if line.startswith("#"):
+                                    continue
+                                if ("prefix_cache" in line or "num_preemptions" in line
+                                        or "kv_cache_usage" in line
+                                        or "prompt_tokens" in line
+                                        or "generation_tokens" in line):
+                                    print("URL", w["url"], line, flush=True)
+                    except Exception as e:
+                        print("NOGATEWAY", e, flush=True)
+                    time.sleep(30)
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+          volumes:
+          - name: ray-tmp
+            emptyDir: {}
+          - name: dshm
+            emptyDir:
+              medium: Memory
+              sizeLimit: 64Gi
