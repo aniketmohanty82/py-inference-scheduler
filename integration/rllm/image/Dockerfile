@@ -79,3 +79,17 @@ RUN pip check | grep -v -E \
     "opencv-python-headless .* numpy>=2|nixl .* nixl-cu12|python-discovery .* platformdirs" \
     > /tmp/pip-check-residue.txt || true; \
     if [ -s /tmp/pip-check-residue.txt ]; then cat /tmp/pip-check-residue.txt; exit 1; fi
+
+# Wedge diagnosis: the mooncake store transfer threads swallow exceptions as
+# one-line errors ("list index out of range"), which loses the failing line.
+# Log the full traceback so the next reproduction identifies the bug site.
+RUN python - << 'PYEOF'
+import pathlib, vllm
+p = pathlib.Path(vllm.__file__).parent / "distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py"
+src = p.read_text()
+old = 'logger.error("Error in %s: %s", self.name, e)'
+new = 'logger.exception("Error in %s: %s", self.name, e)'
+assert old in src, "transfer-thread catch site not found - vllm layout changed"
+p.write_text(src.replace(old, new))
+print("patched", p)
+PYEOF
