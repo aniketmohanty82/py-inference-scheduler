@@ -36,6 +36,11 @@ def main(config: DictConfig) -> None:
         # kubernetes = task pods on the cluster (vendored backend); use docker
         # for a workstation run with a local daemon.
         sandbox_backend=os.environ.get("RLS_SANDBOX_BACKEND", "kubernetes"),
+        # rllm caps sandboxed flows at 64 concurrent; pressure runs above 64
+        # rollouts need this raised to match n_parallel_tasks.
+        sandbox_concurrency=int(os.environ["RLS_SANDBOX_CONCURRENCY"])
+        if os.environ.get("RLS_SANDBOX_CONCURRENCY")
+        else None,
     )
     trainer.train()
 
