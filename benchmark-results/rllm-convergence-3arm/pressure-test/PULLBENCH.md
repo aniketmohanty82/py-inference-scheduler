@@ -18,9 +18,16 @@ runs was invalid.
 What remains valid in this file: the recompute-arm measurements (v4, v5,
 and the 08-28 measured rerun - continuous progression, full completion,
 collapse replicated 3x). The only valid store-vs-recompute comparison to
-date is the pb2 2-node pair with the FIXED connector (PB2.md), which at
-that pressure shows near-parity and a rescue-effectiveness pathology
-under investigation - not a 2.6x win.
+date is the pb2 2-node pair with the FIXED connector (PB2.md): wall-clock
+parity with 13.4x less true prefill compute (by_source-corrected
+semantics: store arm local_compute 1.83M vs recompute 24.6M prompt
+tokens; the store+cache served 94.4% of the store arm's prompt tokens).
+
+Counter-semantics correction that also affects numbers below: in this
+vLLM build `prompt_tokens_total` = local_compute + local_cache_hit +
+external_kv_transfer (verified: by_source labels sum exactly to it), so
+every "computed" figure in the original text is actually "processed";
+true compute is by_source{local_compute} only.
 
 Original text preserved below for audit; read store-arm numbers as
 retracted.
