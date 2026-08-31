@@ -72,6 +72,61 @@ them. All raw data referenced is committed alongside this file.
 
 ## 3. Workload
 
+### 3.0 Trajectory lifecycle (inception to completion)
+
+Every rollout in every run follows this path; the owning component is on
+the right. The two arms differ ONLY inside the serving box (step 5).
+
+```
+[rLLM DatasetRegistry]   R2E-Gym row: {id, docker_image, task_path}
+          |              e.g. orange3__2d9617bd0cb1
+          v
+[rLLM AgentWorkflowEngine, driver]
+          |  assigns task (x n generations), mints session UUID
+          v
+[our k8s sandbox backend]
+          |  creates sandbox pod from the task's OWN image
+          |  (RFC-1123-sanitized name, CPU pool, 50m/256Mi)
+          v
+[rLLM flow -> sandbox]   mini-swe-agent injected + started inside the pod
+          |
+          |   +=============== turn loop (repeats ~10s of times) ==========+
+          |   | 1 [agent, in sandbox] POST full history to                 |
+          |   |     gateway /v1/<session-id>/chat/completions              |
+          |   | 2 [our SchedulerRoutingPolicy, in gateway] select_worker:  |
+          |   |     saturation filter + prefix/kv/queue/sticky scorers     |
+          |   |     over live MetricsPoller stats                          |
+          |   | 3 [vLLM replica] prefill, reuse tiers:                     |
+          |   |     HBM prefix cache -> Mooncake store pull (store arm     |
+          |   |     only) -> recompute                                     |
+          |   | 4 [vLLM] decode reply; [our DecodeKVSavingConnector]       |
+          |   |     saves decode KV to master-chosen segments (store arm)  |
+          |   | 5 [rLLM gateway] records prompt/response token IDs +       |
+          |   |     logprobs to sqlite, keyed by session                   |
+          |   | 6 [agent, in sandbox] parses tool call, runs it in the     |
+          |   |     repo, appends output to history                        |
+          |   +--- under pressure: [vLLM] preempts request; on requeue     |
+          |   |     history reloads via the same tiers (the A/B lives      |
+          |   |     here)                                                  |
+          |   +=== exits when agent submits / env done / budget hit =======+
+          |
+          v
+[rLLM FromTaskEvaluation]  runs the task's tests/test.sh IN the sandbox
+          |                pass/fail -> reward; sandbox pod deleted
+          v
+[rLLM]    enrich trajectory with gateway token IDs; mask tool tokens
+          v
+[verl FullyAsyncTrainer]   GRPO advantage within the n-generation group;
+          |                policy update on the trainer GPUs
+          v
+[verl checkpoint engine]   weight broadcast to all vLLM replicas
+```
+
+The measured windows in these docs cover the turn-loop portion only
+(sampling); evaluation, enrichment, update, and sync are outside them.
+
+### 3.1 Run configuration
+
 DeepSWE-style RL sampling step via rllm AgentTrainer:
 
 | attribute | value |
