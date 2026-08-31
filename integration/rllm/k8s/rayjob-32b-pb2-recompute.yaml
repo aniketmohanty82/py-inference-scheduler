@@ -218,6 +218,14 @@ spec:
               value: "256"
             - name: PYTHONHASHSEED
               value: "0"
+            # Weight-sync NCCL must ride the pod network on every rank:
+            # rollout pods expose RoCE NICs (DRANET) but the trainer pod has
+            # none, and mixed IB/socket transport selection hangs the
+            # rendezvous. Mooncake is unaffected (own ibverbs engine).
+            - name: NCCL_IB_DISABLE
+              value: "1"
+            - name: NCCL_SOCKET_IFNAME
+              value: "eth0"
             - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -352,6 +360,14 @@ spec:
               value: "256"
             - name: PYTHONHASHSEED
               value: "0"
+            # Weight-sync NCCL must ride the pod network on every rank:
+            # rollout pods expose RoCE NICs (DRANET) but the trainer pod has
+            # none, and mixed IB/socket transport selection hangs the
+            # rendezvous. Mooncake is unaffected (own ibverbs engine).
+            - name: NCCL_IB_DISABLE
+              value: "1"
+            - name: NCCL_SOCKET_IFNAME
+              value: "eth0"
             - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
