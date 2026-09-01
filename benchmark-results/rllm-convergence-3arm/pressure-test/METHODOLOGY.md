@@ -102,8 +102,10 @@ the right. The two arms differ ONLY inside the serving box (step 5).
           |  assigns task (x n generations), mints session UUID
           v
 [our k8s sandbox backend]
-          |  creates sandbox pod from the task's OWN image
-          |  (RFC-1123-sanitized name, CPU pool, 50m/256Mi)
+          |  creates sandbox pod from a generic python:3.11-slim image
+          |  and UPLOADS the task's repo into it (chunked exec); the
+          |  per-task R2E docker images are NOT used on the k8s path
+          |  (RFC-1123-sanitized name, sandbox pool, 50m/256Mi)
           v
 [rLLM flow -> sandbox]   mini-swe-agent injected + started inside the pod
           |
