@@ -30,8 +30,8 @@ spec:
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.disable_log_stats=false
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config='{kv_connector: DecodeKVSavingConnector, kv_connector_module_path: py_inference_scheduler.datalayer.connectors.mooncake.decode_save, kv_role: kv_both, kv_connector_extra_config: {save_decode_kv: true}}'
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor
-    rllm.rollout.train.max_tokens=16384
-    rllm.rollout.val.max_tokens=16384
+    rllm.rollout.train.max_tokens=null
+    rllm.rollout.val.max_tokens=null
     actor_rollout_ref.rollout.tensor_model_parallel_size=2
     data.max_prompt_length=16384
     +rllm.gateway.routing_policy=integration.rllm.policy.SchedulerRoutingPolicy

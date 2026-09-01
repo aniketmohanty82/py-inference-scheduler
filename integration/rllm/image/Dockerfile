@@ -110,3 +110,24 @@ assert old in src, "transfer-thread catch site not found - vllm layout changed"
 p.write_text(src.replace(old, new))
 print("patched", p)
 PYEOF
+
+# No-artificial-cap mode: rllm's OpenAI chat path always sends max_tokens
+# and never clamps to the remaining context, so any flat value either
+# truncates turns or 400s deep prompts (prompt + max_tokens > window).
+# Teach it that max_tokens=None means "omit the field" - vLLM then fills
+# in exactly the remaining window per request. Enabled by setting
+# rllm.rollout.{train,val}.max_tokens=null in the job config.
+RUN python - << 'PYEOF'
+import pathlib, rllm
+p = pathlib.Path(rllm.__file__).parent / "engine/rollout/openai_engine.py"
+src = p.read_text()
+old = '''        max_tokens = sampling_params.pop("max_tokens", sampling_params.pop("max_new_tokens", self.max_response_length))
+'''
+new = '''        max_tokens = sampling_params.pop("max_tokens", sampling_params.pop("max_new_tokens", self.max_response_length))
+        if max_tokens is None:
+            return {}
+'''
+assert old in src, "max_tokens preparation site not found - rllm layout changed"
+p.write_text(src.replace(old, new))
+print("patched", p)
+PYEOF
