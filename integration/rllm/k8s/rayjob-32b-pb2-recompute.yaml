@@ -33,8 +33,8 @@ spec:
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.tool_call_parser=hermes
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.disable_log_stats=false
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor
-    rllm.rollout.train.max_tokens=4096
-    rllm.rollout.val.max_tokens=4096
+    rllm.rollout.train.max_tokens=16384
+    rllm.rollout.val.max_tokens=16384
     actor_rollout_ref.rollout.tensor_model_parallel_size=2
     data.max_prompt_length=16384
     +rllm.gateway.routing_policy=integration.rllm.policy.SchedulerRoutingPolicy
