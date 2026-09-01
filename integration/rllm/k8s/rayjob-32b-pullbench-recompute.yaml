@@ -42,7 +42,7 @@ spec:
     rllm.workflow.n_parallel_tasks=128
     rllm.trainer.total_batches=1
     rllm.async_training.enable=true
-    rllm.workflow.raise_on_error=false
+    rllm.workflow.raise_on_error=false +rllm.episode_logging.log_episodes=true +trainer.log_episodes=true
     actor_rollout_ref.hybrid_engine=False
     trainer.n_gpus_per_node=4
     rollout.nnodes=1
