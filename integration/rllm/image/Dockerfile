@@ -145,16 +145,20 @@ old = "import shlex\n"
 new = "import os\nimport shlex\n"
 assert old in src and "import os" not in src, "import site changed"
 src = src.replace(old, new, 1)
-old = '''            f"mini-swe-agent --yolo "
+old = '''            f"--exit-immediately "
+            f"2>&1 | tee {shlex.quote(self.stdout_log_path)}"
 '''
-new = '''            f"mini-swe-agent --yolo "
+new = '''            f"--exit-immediately "
             + (
                 f"-c mini.yaml -c agent.step_limit={int(os.environ['RLLM_MSWEA_STEP_LIMIT'])} "
                 if os.environ.get("RLLM_MSWEA_STEP_LIMIT")
                 else ""
             )
+            + f"2>&1 | tee {shlex.quote(self.stdout_log_path)}"
 '''
 assert old in src, "invocation site changed"
 p.write_text(src.replace(old, new))
-print("patched", p)
+import py_compile
+py_compile.compile(str(p), doraise=True)
+print("patched + compiled", p)
 PYEOF
