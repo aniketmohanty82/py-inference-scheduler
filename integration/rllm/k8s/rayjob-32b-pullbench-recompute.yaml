@@ -39,7 +39,7 @@ spec:
     data.train_batch_size=32
     data.val_batch_size=32
     actor_rollout_ref.actor.ppo_mini_batch_size=32
-    rllm.workflow.n_parallel_tasks=64
+    rllm.workflow.n_parallel_tasks=128
     rllm.trainer.total_batches=1
     rllm.async_training.enable=true
     rllm.workflow.raise_on_error=false
@@ -71,6 +71,10 @@ spec:
             env:
             - name: RLS_SANDBOX_BACKEND
               value: "kubernetes"
+            - name: RLS_SANDBOX_CONCURRENCY
+              value: "128"
+            - name: RLLM_MSWEA_STEP_LIMIT
+              value: "25"
             - name: ROUTER_CONFIG_PATH
               value: "/opt/py-inference-scheduler/integration/rllm/configs/scheduler.yaml"
             # integration/ is repo-root code, not part of the installed
@@ -144,6 +148,10 @@ spec:
             env:
             - name: RLS_SANDBOX_BACKEND
               value: "kubernetes"
+            - name: RLS_SANDBOX_CONCURRENCY
+              value: "128"
+            - name: RLLM_MSWEA_STEP_LIMIT
+              value: "25"
             - name: ROUTER_CONFIG_PATH
               value: "/opt/py-inference-scheduler/integration/rllm/configs/scheduler.yaml"
             # integration/ is repo-root code, not part of the installed

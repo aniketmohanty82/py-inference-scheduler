@@ -131,3 +131,30 @@ assert old in src, "max_tokens preparation site not found - rllm layout changed"
 p.write_text(src.replace(old, new))
 print("patched", p)
 PYEOF
+
+# Step-capped trajectories: without a step limit the only trajectory bound
+# is cli_harness's 1800s kill, so tail sessions cost 30 min in EVERY arm
+# and serving speed never reaches step wall-time. RLLM_MSWEA_STEP_LIMIT=N
+# appends '-c mini.yaml -c agent.step_limit=N' (multiple -c specs merge
+# recursively; including the default file avoids the replace-config trap).
+RUN python - << 'PYEOF'
+import pathlib, rllm
+p = pathlib.Path(rllm.__file__).parent / "harnesses/mini_swe_agent.py"
+src = p.read_text()
+old = "import shlex\n"
+new = "import os\nimport shlex\n"
+assert old in src and "import os" not in src, "import site changed"
+src = src.replace(old, new, 1)
+old = '''            f"mini-swe-agent --yolo "
+'''
+new = '''            f"mini-swe-agent --yolo "
+            + (
+                f"-c mini.yaml -c agent.step_limit={int(os.environ['RLLM_MSWEA_STEP_LIMIT'])} "
+                if os.environ.get("RLLM_MSWEA_STEP_LIMIT")
+                else ""
+            )
+'''
+assert old in src, "invocation site changed"
+p.write_text(src.replace(old, new))
+print("patched", p)
+PYEOF
