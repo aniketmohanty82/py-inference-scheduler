@@ -37,6 +37,8 @@ spec:
     ++actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor
     rllm.rollout.train.max_tokens=null
     rllm.rollout.val.max_tokens=null
+    ++actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1
+    ++actor_rollout_ref.model.enable_gradient_checkpointing=True
     actor_rollout_ref.rollout.tensor_model_parallel_size=2
     data.max_prompt_length=16384
     +rllm.gateway.routing_policy=integration.rllm.policy.SchedulerRoutingPolicy
