@@ -26,7 +26,7 @@ documented separately in WEDGE-BUG.md.
 | | single-node | pb2 |
 |---|---|---|
 | nodes / replicas | 1 node, 1x TP=2 | 2 nodes, 2x TP=2 (one per node, k8s-forced) |
-| workload | 32 tasks x n=2 = 64 rollouts | 64 tasks x n=2 = 128 rollouts |
+| workload | batch of 32 tasks x 2 generations = 64 trajectories | batch of 64 tasks x 2 generations = 128 trajectories |
 | concurrency | 64 | 128 |
 | mounted segments | 2 x 32gb (one node) | 4 x 96gb (2 per node) |
 | topology enforcement | n/a | 2-GPU rollout pods + hostname anti-affinity; 4-GPU trainer pod |

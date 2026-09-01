@@ -11,7 +11,7 @@ gen=126,334 from +6 min. This is the engine deadlock documented in
 WEDGE-BUG.md (preemption race in the save path - present in EVERY store
 run since 08-28, silent because the catch logged one line and the RayJob
 still reported SUCCEEDED). The celebrated "stable 97-99% KV" WAS the
-deadlock. The store arms completed only a fraction of the 64-rollout
+deadlock. The store arms completed only a fraction of the 64-trajectory
 workload; comparing their "windows" against fully-completed recompute
 runs was invalid.
 
@@ -49,7 +49,7 @@ Two runs per arm.
 
 | | recompute #1 (v4) | recompute #2 (v5) | store #1 | store #2 |
 |---|---|---|---|---|
-| saturated window (same 64-rollout workload) | 66 min | 70 min | **26 min** | **26 min** |
+| saturated window (same 64-trajectory workload) | 66 min | 70 min | **26 min** | **26 min** |
 | preemptions in window | 133 | 141 | **7** | **7** |
 | KV usage mean | 86.5% (osc. 28-100%) | 88.4% (osc. 53-100%) | 97.6% (stable 94-98) | 98.5% (stable 94-100) |
 | local prefix-cache lookup hit rate | 2.4% | 2.4% | 6.6% | 6.2% |
@@ -59,7 +59,7 @@ Two runs per arm.
 ## Read
 
 - **~2.6x same-work throughput with the store** (66/70 min -> 26/26 min for
-  the identical rollout workload), replicated exactly. Preemptions drop
+  the identical trajectory workload), replicated exactly. Preemptions drop
   19-20x (133/141 -> 7/7).
 - Mechanism: the store answers ~2/3 of external lookups, so evicted
   histories reload instead of re-prefilling; requests finish sooner; the
@@ -103,7 +103,7 @@ minus ONLY the kv_transfer_config line). Its saturated window, measured:
 
 | | store #1 | store #2 | recompute (measured) |
 |---|---|---|---|
-| window | 25.5 min (all 64 rollouts done) | 25.5 min (all 64) | 55.5 min (56/64 done, tail still crawling) |
+| window | 25.5 min (all 64 trajectories done) | 25.5 min (all 64) | 55.5 min (56/64 done, tail still crawling) |
 | computed prompt tokens | 245k | 269k | **19.8M** |
 | computed prompt tok/s | 160 | 176 | **5,956** |
 | generation tok/s | 25 | 35 | 318 |
@@ -121,9 +121,9 @@ redundant work. Same 64-trajectory workload:
 
 - recompute: **19.8M prompt tokens computed** (99.9% redundant re-prefill
   of evicted/preempted history), 5,956 tok/s of sustained wasted compute,
-  and still 8 rollouts unfinished at 55.5 min.
+  and still 8 trajectories unfinished at 55.5 min.
 - store: **~0.25M prompt tokens computed** (the store + cache supplied the
-  rest), all 64 rollouts done in 25.5 min.
+  rest), all 64 trajectories done in 25.5 min.
 
 => ~75-80x less prefill compute for the same delivered trajectories, which
 converts to >=2.2x faster same-work sampling in this measured pair (2.5-2.7x

@@ -72,9 +72,26 @@ them. All raw data referenced is committed alongside this file.
 
 ## 3. Workload
 
-### 3.0 Trajectory lifecycle (inception to completion)
+### 3.0 Terminology (canonical, used throughout these docs)
 
-Every rollout in every run follows this path; the owning component is on
+| term | meaning |
+|---|---|
+| step | one training step = sampling + training |
+| sampling | the within-step process of completing the set of trajectories to reward and train from |
+| rollout | the gathering of ALL trajectories during a single step - synonymous with the entire sampling phase |
+| batch | the set of unique tasks completed during sampling for a step |
+| generations | how many times each task is repeated for GRPO |
+| trajectory | one task attempt: multiple turns + tool calls (batch x generations = trajectory count) |
+| turn | a single step within a trajectory: one LLM call + tool execution |
+
+Upstream labels differ and are quoted as-is in raw logs: rllm's
+"Rollout completed" line marks a TRAJECTORY completion; mini-swe-agent's
+"step_limit" caps TURNS; verl config keys (actor_rollout_ref, rollout.*)
+keep their native names.
+
+### 3.1 Trajectory lifecycle (inception to completion)
+
+Every trajectory in every run follows this path; the owning component is on
 the right. The two arms differ ONLY inside the serving box (step 5).
 
 ```
@@ -125,7 +142,7 @@ the right. The two arms differ ONLY inside the serving box (step 5).
 The measured windows in these docs cover the turn-loop portion only
 (sampling); evaluation, enrichment, update, and sync are outside them.
 
-### 3.1 Run configuration
+### 3.2 Run configuration
 
 DeepSWE-style RL sampling step via rllm AgentTrainer:
 
@@ -133,8 +150,8 @@ DeepSWE-style RL sampling step via rllm AgentTrainer:
 |---|---|
 | framework path | rllm AgentTrainer, verl backend, fully-async, `raise_on_error=false`, ONE training batch |
 | task set | `r2egym_smoke` = first 64 rows of R2E-Gym/R2E-Gym-Subset (baked at image build; deterministic first-N; heavily orange3) |
-| batch shape | 32 tasks x GRPO n=2 = **64 rollouts/run**, `n_parallel_tasks=64` |
-| agent | mini-swe-agent, installed at rollout time inside each task container |
+| batch shape | batch of 32 tasks x 2 generations = **64 trajectories per rollout**, `n_parallel_tasks=64` |
+| agent | mini-swe-agent, installed at trajectory start inside each task container |
 | sandboxes | k8s pods on the CPU pool (vendored kubernetes backend); requests overridden to 50m/256Mi (CPU oversubscribed - T7) |
 | request path | agent (task pod) -> rllm Model Gateway (sqlite traces; injects logprobs + return_token_ids) -> SchedulerRoutingPolicy -> vLLM |
 | scheduler profile | champion: saturation filter (kv 0.95 / waiting 16), prefix_cache 4.0, waiting_queue 1.0, kv_cache 0.5, sticky_session 4.0 |
@@ -247,7 +264,7 @@ Collapse replicated 3x at identical config (2.4/2.4/2.3%), dose-responsive
 | metric (saturated window) | store#1 | store#2 | recompute-measured |
 |---|---|---|---|
 | window duration | 25.5 min | 25.5 min | 68.5 min (final; run SUCCEEDED) |
-| rollouts completed in window | 64/64 | 64/64 | 64/64 (final) |
+| trajectories completed in window | 64/64 | 64/64 | 64/64 (final) |
 | preemptions | 7 | 7 | 132 |
 | kv usage mean (behavior) | 97.6% (stable) | 98.5% (stable) | 89.2% (oscillating 59-100%) |
 | local lookup hit rate | 6.6% | 6.2% | 3.8% (final) |
@@ -305,12 +322,12 @@ generation 6.6s mean. KV idle (tool gaps) ~40% of trajectory wall.
 - **T2 - trajectory stochasticity**: temperature 0.6, no per-request
   seeds; each run samples different trajectories of the same 32 tasks.
   Token totals per run vary O(10%); "same work" means same task set and
-  rollout count, not identical tokens. Direction unaffected (2.2-2.7x
+  trajectory count, not identical tokens. Direction unaffected (2.2-2.7x
   across all pairings); exact multipliers carry this noise.
 - **T3 (resolved)**: the recompute run subsequently completed; final
-  window 68.5 min with all 64 rollouts, preemptions 132, computed prompt
+  window 68.5 min with all 64 trajectories, preemptions 132, computed prompt
   24.2M tokens. Tables above show FINAL values; the mid-run harvest
-  (55.5 min / 56 rollouts / 19.8M) is preserved in PULLBENCH.md history.
+  (55.5 min / 56 trajectories / 19.8M) is preserved in PULLBENCH.md history.
 - **T4 - scrape thinning under load**: the sidecar's 4s timeouts drop
   some 30s samples during peak thrash (recompute arms have coarser
   sampling). Cumulative counters are unaffected; window boundaries are
@@ -343,7 +360,7 @@ generation 6.6s mean. KV idle (tool gaps) ~40% of trajectory wall.
   saturated replica and the policy's least-loaded fallback routes anyway
   - identical both arms, but it means the filter's intended behavior is
   bypassed in the single-replica setting.
-- **T12 - reward signal ~0 for all rollouts** (tasks too hard for the
+- **T12 - reward signal ~0 for all trajectories** (tasks too hard for the
   policy): trajectories terminate via env_done/turn budget rather than
   success. Serving-side comparisons are unaffected; generalization to
   reward-bearing workloads assumes similar turn/length structure.

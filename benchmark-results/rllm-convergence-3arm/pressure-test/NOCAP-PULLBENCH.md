@@ -4,10 +4,10 @@
 
 KV rescue from the Mooncake store cuts true prefill compute ~13x in every
 configuration, and its wall-clock payoff scales with per-replica
-oversubscription. At 128 rollouts on ONE replica, the store wins every
+oversubscription. With 128 trajectories on ONE replica, the store wins every
 latency metric: per-turn fixed cost 35.2s vs 48.9s (-28%), median turn
 50.0s vs 63.5s (-21%), median trajectory 14.0 min vs 18.9 min (-26%),
-total sampling 1:10:54 vs 1:15:25 (-6%). At 128 rollouts spread over TWO
+total sampling 1:10:54 vs 1:15:25 (-6%). With 128 trajectories spread over TWO
 replicas the latency race is a wash (fixed cost 22.8s vs 20.3s; totals
 58:47 vs 54:54) while the compute savings persist (13.2x). This matters
 because trajectory latency is bounded by per-turn cost, and re-prefill
@@ -45,8 +45,8 @@ METHODOLOGY.md (sec. 3.0 for the lifecycle). Deltas for this matrix:
 | output cap | NONE (max_tokens=null -> vLLM fills the remaining 32,768-token window per request) |
 | observed prompts | p50 ~10k, p95 23-29k, max 32,766 (window edge) |
 | observed completions | p50 ~390-510, max 29,345 |
-| workload | 64 tasks x n=2 = 128 rollouts, n_parallel_tasks=128, every run |
-| topologies | 1 node: trainer(4 GPU)+1x TP=2 replica serving all 128; 2 nodes: 1x TP=2 replica per node (k8s-forced), 64 rollouts each |
+| workload | batch of 64 tasks x 2 generations = 128 trajectories per rollout, n_parallel_tasks=128, every run |
+| topologies | 1 node: trainer(4 GPU)+1x TP=2 replica serving all 128; 2 nodes: 1x TP=2 replica per node (k8s-forced), 64 trajectories each |
 | KV pool | gmu 0.30 (~15GB per replica) both topologies |
 | store | 96gb/worker segments (2 workers/replica); 1n = 192GB all-local; 2n = 384GB, ~half of puts/pulls remote by master allocation |
 
@@ -86,6 +86,13 @@ per-request seeds, so turn/token totals vary O(10%) between arms
 
 ## Run logs (nocap-raw/ unless noted)
 
+PRUNING NOTE (09-01): the 2-node cells' raw artifacts were removed from
+the repo - post-hoc audit found their trajectory losses (18/7 of 128) came
+from sandbox-pool scheduling failures (unreliable per the valid-runs
+policy); their table columns above are retained for the record but
+superseded by the clean-matrix reruns. The 1-node cells (3-4 losses,
+balanced) and their artifacts remain.
+
 | run | driver stream | classified errors | session logs | counters | trace DB (job tmp, ~0.5-0.8GB each) |
 |---|---|---|---|---|---|
 | 1n store | pullbench_nocap_driver.log.gz | errors_pullbench_nocap.log | pb1n_nocap_store_sessionlogs.tgz | ../pb1n_nocap_store_raw.log | pb1n_nocap_store_traces.db |
@@ -103,7 +110,7 @@ rayjob-32b-pb2-{store,recompute}.yaml (2n), image Dockerfile @ a706358.
 pressure-gated.** In all four cells the store+local cache served 94%+ of
 the store arms' prompt tokens (by_source), cutting true prefill compute
 9.4-13.2x. But wall-clock only follows when re-prefill work is dense
-enough to displace serving: at 128 rollouts per replica (1n) requeued
+enough to displace serving: at 128 trajectories per replica (1n) requeued
 10-27k-token histories re-prefill constantly and the store's fixed cost
 per turn is 13.7s lower; at 64 per replica (2n) both arms' fixed cost
 drops to ~20-23s and the difference is inside single-run noise.
@@ -131,7 +138,7 @@ cell's higher filtered-task count (14 vs 4-7 elsewhere) is unexplained
 by these logs and flagged rather than interpreted.
 
 (e) **Both arms completed every run** (counters drain to zero, 64/64
-tasks, 110-125/128 rollout completions) - the first store-vs-recompute
+tasks, 110-125/128 trajectory completions) - the first store-vs-recompute
 matrix in this project where that is true; all seven earlier store runs
 had wedged (WEDGE-BUG.md), which is why no prior store numbers appear
 here (valid-runs-only policy).
