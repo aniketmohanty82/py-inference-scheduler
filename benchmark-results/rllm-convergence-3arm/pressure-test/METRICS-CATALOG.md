@@ -58,6 +58,22 @@ Per-request RDMA wire bytes (DRANET exposes no IB port counters in-pod),
 scheduler-side per-decision latency, sandbox tool-execution timing
 (approximated as inter-turn gaps from the trace DB).
 
+## 8. verl step-boundary metrics (REQUIRED for multi-step runs)
+
+verl emits its metrics only at training-step boundaries:
+timing_s/{gen, old_log_prob, ref, adv, update_actor, update_weights,
+step}, actor losses (pg_loss/kl/entropy/grad_norm), perf/{throughput,
+time_per_step, total_num_tokens, mfu, memory}, response/prompt length
+stats - surfaced through rllm's per-step print_metrics_table + Tracking
+console logger into the driver stream. Single-step configs never crossed
+a boundary cleanly, so NO run to date has recorded them.
+
+**Acceptance criterion for every multi-step run**: the driver stream
+must show the step counter advancing AND per-step metric tables (batch/*,
+timing_s/*) for every step; a run where `step` stays 0 while groups are
+consumed (as observed in the metrics probe) is NOT a valid multi-step
+run - diagnose the fit-loop step gating before accepting results.
+
 ## Standing gaps worth closing next
 
 1. vLLM latency histograms (queue/prefill/decode/TTFT) - CLOSED as of
