@@ -1,0 +1,311 @@
+== 06:59:23 lines 0..57
+      2 Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
+      1 Traceback (most recent call last):
+      1 2026-08-31 23:57:21,666	INFO cli.py:89 -- Status message: Job entrypoint command failed with exit code 1, last available logs (truncated to 20,000 chars):
+      1 2026-08-31 23:57:21,665	ERR cli.py:75 -- [31mJob 'rllm-32b-pullbench-fpxtk' failed[39m
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 07:02:23 lines 57..1070
+      1 [36mm Warning: Failed to set NUMA affinity: libnuma.so: cannot open shared object file: No such file or directory[32m [repeated 3x across cluster][0m
+      1 [36mm Warning: Failed to set NUMA affinity: libnuma.so: cannot open shared object file: No such file or directory
+      1 [36mm WARNING:2026-09-01 00:00:35,525:Async training requires data.train_batch_size=1; overriding the configured value 32 -> 1.
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 07:05:24 lines 1070..1160
+      1 [36mm WARNING 09-01 00:02:54 [system_utils.py:157] We must use the `spawn` multiprocessing start method. Overriding VLLM_WORKER_MULTIPROC_METHOD to 'spawn'. See https://docs.vllm.ai/en/latest/usage/troubleshooting.html#python-multiprocessing for more information. Reasons: In a Ray actor and can only be spawned; CUDA is initialized
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 07:08:24 lines 1160..2337
+      2 [36mm WARNING: Logging before InitGoogleLogging() is written to STDERR
+      1 [36mm (Worker_TP1 pid=1518) WARNING 09-01 00:05:45 [rdma_utils.py:107] No RDMA devices specified for Mooncake backend (protocol=rdma). Set 'device_name' in mooncake_config.json to a single RNIC name or a comma-separated CSV indexed by physical GPU; falling back to Mooncake's built-in auto-selection, which may converge on the same NIC across all DP ranks and saturate bandwidth.
+      1 [36mm (Worker_TP1 pid=1518) WARNING 09-01 00:05:45 [base.py:190] Initializing KVConnectorBase_V1. This API is experimental and subject to change in the future as we iterate the design.
+      1 [36mm (Worker_TP0 pid=1517) WARNING 09-01 00:05:45 [rdma_utils.py:107] No RDMA devices specified for Mooncake backend (protocol=rdma). Set 'device_name' in mooncake_config.json to a single RNIC name or a comma-separated CSV indexed by physical GPU; falling back to Mooncake's built-in auto-selection, which may converge on the same NIC across all DP ranks and saturate bandwidth.
+      1 [36mm (Worker_TP0 pid=1517) WARNING 09-01 00:05:45 [base.py:190] Initializing KVConnectorBase_V1. This API is experimental and subject to change in the future as we iterate the design.
+      1 [36mm (EngineCore pid=1499) WARNING 09-01 00:06:12 [base.py:190] Initializing KVConnectorBase_V1. This API is experimental and subject to change in the future as we iterate the design.
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 07:11:25 lines 2337..25485
+    157 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393] Traceback (most recent call last):
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393]     self._handle_request(request_data)
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393] IndexError: list index out of range
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393]     block_id = block_ids[start // self.block_size]
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:13 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:10 [worker.py:393] Traceback (most recent call last):
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:10 [worker.py:393]     self._handle_request(request_data)
+     24 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:10:10 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 07:14:26 lines 25485..34328
+    202 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393] Traceback (most recent call last):
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393]     self._handle_request(request_data)
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393] IndexError: list index out of range
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393]     block_id = block_ids[start // self.block_size]
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:12:18 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:11:55 [worker.py:393] Traceback (most recent call last):
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:11:55 [worker.py:393]     self._handle_request(request_data)
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:11:55 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 07:17:27 lines 34328..39308
+    146 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393] Traceback (most recent call last):
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393]     self._handle_request(request_data)
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393] IndexError: list index out of range
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393]     block_id = block_ids[start // self.block_size]
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:14:28 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      8 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:14:28 [worker.py:393] Traceback (most recent call last):
+      8 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:14:28 [worker.py:393]     self._handle_request(request_data)
+      8 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:14:28 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 07:20:27 lines 39308..47300
+    100 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393] Traceback (most recent call last):
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393]     self._handle_request(request_data)
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393] IndexError: list index out of range
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393]     block_id = block_ids[start // self.block_size]
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:17:41 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:17:41 [worker.py:393] Traceback (most recent call last):
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:17:41 [worker.py:393]     self._handle_request(request_data)
+      8 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:17:41 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 120
+master_attempted_evictions_total 120
+master_evicted_key_count 797484
+master_evicted_size_bytes 1672445165568
+== 07:23:28 lines 47300..52231
+    112 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393] Traceback (most recent call last):
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393]     self._handle_request(request_data)
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393] IndexError: list index out of range
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393]     block_id = block_ids[start // self.block_size]
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+      6 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:21:27 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      6 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:21:27 [worker.py:393] Traceback (most recent call last):
+      6 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:21:27 [worker.py:393]     self._handle_request(request_data)
+      6 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:21:27 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 125
+master_attempted_evictions_total 125
+master_evicted_key_count 821952
+master_evicted_size_bytes 1723758280704
+== 07:26:29 lines 52231..58569
+    127 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393] Traceback (most recent call last):
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393]     self._handle_request(request_data)
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393] IndexError: list index out of range
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393]     block_id = block_ids[start // self.block_size]
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:26:15 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     10 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:26:15 [worker.py:393] Traceback (most recent call last):
+     10 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:26:15 [worker.py:393]     self._handle_request(request_data)
+     10 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:26:15 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 130
+master_attempted_evictions_total 130
+master_evicted_key_count 845694
+master_evicted_size_bytes 1773548863488
+== 07:29:29 lines 58569..65017
+    150 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393] Traceback (most recent call last):
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393]     self._handle_request(request_data)
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393] IndexError: list index out of range
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393]     block_id = block_ids[start // self.block_size]
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:34 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:33 [worker.py:393] Traceback (most recent call last):
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:33 [worker.py:393]     self._handle_request(request_data)
+     10 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:27:33 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 136
+master_attempted_evictions_total 136
+master_evicted_key_count 874419
+master_evicted_size_bytes 1833789554688
+== 07:32:30 lines 65017..71668
+    142 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393] Traceback (most recent call last):
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393]     self._handle_request(request_data)
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393] IndexError: list index out of range
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393]     block_id = block_ids[start // self.block_size]
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:29:53 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     12 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:29:53 [worker.py:393] Traceback (most recent call last):
+     12 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:29:53 [worker.py:393]     self._handle_request(request_data)
+     12 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:29:53 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 141
+master_attempted_evictions_total 141
+master_evicted_key_count 898621
+master_evicted_size_bytes 1884544827392
+== 07:35:31 lines 71668..75388
+    139 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393] Traceback (most recent call last):
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393]     self._handle_request(request_data)
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393] IndexError: list index out of range
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393]     block_id = block_ids[start // self.block_size]
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+      7 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:34:09 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      7 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:34:09 [worker.py:393] Traceback (most recent call last):
+      7 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:34:09 [worker.py:393]     self._handle_request(request_data)
+      7 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:34:09 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 145
+master_attempted_evictions_total 145
+master_evicted_key_count 917729
+master_evicted_size_bytes 1924617207808
+== 07:38:31 lines 75388..80749
+    127 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393] Traceback (most recent call last):
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393]     self._handle_request(request_data)
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393] IndexError: list index out of range
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393]     block_id = block_ids[start // self.block_size]
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:32 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:31 [worker.py:393] Traceback (most recent call last):
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:31 [worker.py:393]     self._handle_request(request_data)
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:37:31 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 149
+master_attempted_evictions_total 149
+master_evicted_key_count 936757
+master_evicted_size_bytes 1964521816064
+== 07:41:32 lines 80749..90808
+    151 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393] Traceback (most recent call last):
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393]     self._handle_request(request_data)
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393] IndexError: list index out of range
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393]     block_id = block_ids[start // self.block_size]
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+     12 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:40:16 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     12 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:40:16 [worker.py:393] Traceback (most recent call last):
+     12 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:40:16 [worker.py:393]     self._handle_request(request_data)
+     12 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:40:16 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 153
+master_attempted_evictions_total 153
+master_evicted_key_count 956424
+master_evicted_size_bytes 2005766504448
+== 07:44:33 lines 90808..95749
+     49 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 1 endpoints saturated: filter disabled for this decision
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393] Traceback (most recent call last):
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393]     self._handle_request(request_data)
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393] IndexError: list index out of range
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393]     block_id = block_ids[start // self.block_size]
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+      9 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:41:54 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:41:54 [worker.py:393] Traceback (most recent call last):
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:41:54 [worker.py:393]     self._handle_request(request_data)
+      9 [36mm (Worker_TP0 pid=1517) ERROR 09-01 00:41:54 [worker.py:393] IndexError: list index out of range
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 158
+master_attempted_evictions_total 158
+master_evicted_key_count 980145
+master_evicted_size_bytes 2055513047040
+== 07:47:33 lines 95749..97311
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393] Traceback (most recent call last):
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393]     self._handle_request(request_data)
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393] IndexError: list index out of range
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 391, in run
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py", line 109, in prepare_value
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393] Error in KVCacheStoreSendingThread: list index out of range
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393]     block_id = block_ids[start // self.block_size]
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393]     addr, size, _ = db.prepare_value(s, e, block_ids_per_group[g_idx])
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393]                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:58 [worker.py:393]                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:57 [worker.py:393] Traceback (most recent call last):
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:57 [worker.py:393]     self._handle_request(request_data)
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:57 [worker.py:393] IndexError: list index out of range
+      5 [36mm (Worker_TP1 pid=1518) ERROR 09-01 00:44:57 [worker.py:393]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py", line 619, in _handle_request
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 159
+master_attempted_evictions_total 159
+master_evicted_key_count 984815
+master_evicted_size_bytes 2065306746880
