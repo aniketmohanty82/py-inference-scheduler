@@ -43,7 +43,7 @@ RUN uv pip install --system --no-cache \
 # task dirs must exist at the same absolute path cluster-wide.
 COPY integration/rllm/smoke/prepare_r2egym_subset.py /tmp/prepare_r2egym_subset.py
 ENV RLLM_HOME=/opt/rllm-home
-RUN python /tmp/prepare_r2egym_subset.py --limit 64 --out-dir /opt/rllm-home/tasks/r2egym_smoke \
+RUN python /tmp/prepare_r2egym_subset.py --limit 128 --out-dir /opt/rllm-home/tasks/r2egym_smoke \
     && chmod -R a+rwX /opt/rllm-home
 
 COPY . /opt/py-inference-scheduler
