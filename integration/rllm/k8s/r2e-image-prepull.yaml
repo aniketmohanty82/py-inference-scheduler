@@ -1,0 +1,215 @@
+# Warm every sandbox node's containerd cache with the frozen r2egym_smoke
+# subset's 64 mirrored task images (S3c: identical caches on all sandbox
+# nodes before any measured run). Init containers pull sequentially; the
+# main container parks so the DaemonSet reads Ready when a node is warm.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: r2e-image-prepull
+spec:
+  selector:
+    matchLabels:
+      app: r2e-image-prepull
+  template:
+    metadata:
+      labels:
+        app: r2e-image-prepull
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: sandbox-pool
+      initContainers:
+      - name: pull-00
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:2d9617bd0cb1f0ba61771258410ab8fae8e7e24d
+        command: ["true"]
+      - name: pull-01
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:a95245e37f35446f9870feb68f5ebb97d1c279ce
+        command: ["true"]
+      - name: pull-02
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:9764be4fa30b1ae85db3b875039f0a2983531a9d
+        command: ["true"]
+      - name: pull-03
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:ef8363b650134f6415704b064573707a6d304ca3
+        command: ["true"]
+      - name: pull-04
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:e48a32f29bd3736e53efb7290cae64d5688357d6
+        command: ["true"]
+      - name: pull-05
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:74ffccc1d4a1dbb877490c9d6b59e6f501d5e438
+        command: ["true"]
+      - name: pull-06
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:269e2a176b9b2b8e00be46f5a59e840625879bf9
+        command: ["true"]
+      - name: pull-07
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:9b5494e26f407b75e79699c9d40be6df1d80a040
+        command: ["true"]
+      - name: pull-08
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:70a4df334835bcb9ea7c6b0eb11b4f5f7e117f36
+        command: ["true"]
+      - name: pull-09
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:d61803f7181e7ad525d4bb1dd71ca500bb41617e
+        command: ["true"]
+      - name: pull-10
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:df34d9081e1fbe25466980b17a082ce210e821b5
+        command: ["true"]
+      - name: pull-11
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:f5b986b11e518191441420df8f8b84154c92e81c
+        command: ["true"]
+      - name: pull-12
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:3758d8594d8738e51b3a738e06858ae7fc3cbdf1
+        command: ["true"]
+      - name: pull-13
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:4651e73c8ea9a502d4fd6ee25f33ece07b693b37
+        command: ["true"]
+      - name: pull-14
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:7f5c9dace89a846e6fb7aed86e4ff7eb05e01dc0
+        command: ["true"]
+      - name: pull-15
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:aae8c47f823197a04010a74570793464eb7352fe
+        command: ["true"]
+      - name: pull-16
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:b983e25212aa3c006c37089ef970688e3c01c369
+        command: ["true"]
+      - name: pull-17
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:7c9de553a279791535aa8ec927bef47801b819f1
+        command: ["true"]
+      - name: pull-18
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:ea8c3b0ce9ff87f849b1462aab0b34bd3e35d4ed
+        command: ["true"]
+      - name: pull-19
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:ad202ae0d526f208bfde4ed9ef47190f078be7de
+        command: ["true"]
+      - name: pull-20
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:c56fafab522f12165258439d7bd133a6c5d4cc12
+        command: ["true"]
+      - name: pull-21
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:395a391215a694594f13339a724745aff983ad38
+        command: ["true"]
+      - name: pull-22
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:14c32060dfeb30ed0c16ffb17794a39ee0f93706
+        command: ["true"]
+      - name: pull-23
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:c51009e4b80ea52a187e6891c964218d0cbf09b7
+        command: ["true"]
+      - name: pull-24
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:f0523b5c8016924830317fb8897d115d17e28f4d
+        command: ["true"]
+      - name: pull-25
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:2067f4e3a905600cbdc4b5d13d5a3ef2063be2fa
+        command: ["true"]
+      - name: pull-26
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:0a6539921793c2a83e18c70e888b5fd6635357ba
+        command: ["true"]
+      - name: pull-27
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:06794a7a3101f33e93d21b0773a6585164cfaab3
+        command: ["true"]
+      - name: pull-28
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:4583cc6cd7f24066cf6b0043f76bc8baa492428b
+        command: ["true"]
+      - name: pull-29
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:271eeedf4d663e0d5c7f216d0e68f5d49838f228
+        command: ["true"]
+      - name: pull-30
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:0336aa7c1db58c78c735f4143738193634a9e8b7
+        command: ["true"]
+      - name: pull-31
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:8826e2e4a3e3a6c81b51f56115264a0141036c34
+        command: ["true"]
+      - name: pull-32
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:91ad02f1eed16fcc6d445cb1013a5832a8a9a907
+        command: ["true"]
+      - name: pull-33
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:a410361107724d878c254d350715351c058050a5
+        command: ["true"]
+      - name: pull-34
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:56706b60e10e65481d206b5b6f7be5f84b66e4e0
+        command: ["true"]
+      - name: pull-35
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:cbe18566e0554244e6b237116e3da6ee61b28def
+        command: ["true"]
+      - name: pull-36
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:67bd87ac746e8ebc6f22043155cfb8a6d5111ff0
+        command: ["true"]
+      - name: pull-37
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:6f25bda8b12b96cee12c6d485a8967e91df61676
+        command: ["true"]
+      - name: pull-38
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:7ed8c4f21f672008a8f0c0b9bafc00b368b36e31
+        command: ["true"]
+      - name: pull-39
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:3781811839a66a39aca21ab85207902bc4005863
+        command: ["true"]
+      - name: pull-40
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:fcf24c6b45b9042cb1cbb00419bc71383b714ea5
+        command: ["true"]
+      - name: pull-41
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:93036825bae2e056304e50a452448efe2898bd24
+        command: ["true"]
+      - name: pull-42
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:9afaa96d86be534dcb13de9075e02dc215db0047
+        command: ["true"]
+      - name: pull-43
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:41e015e4bc1bd1c2c65955d53150c4128979275b
+        command: ["true"]
+      - name: pull-44
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:1d5c28890a282f962a1ba22b7ff2450d2388b7a6
+        command: ["true"]
+      - name: pull-45
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:32b2bd473dc9e4583bd64f3e21502189917ee135
+        command: ["true"]
+      - name: pull-46
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:ef789ee61de847e26e297fae3d926f0867914e82
+        command: ["true"]
+      - name: pull-47
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:ce169d7770c4cb7b8ad717461229b251c36a6a45
+        command: ["true"]
+      - name: pull-48
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:4467fb9e92458535134d55c593f698dfff2fadfd
+        command: ["true"]
+      - name: pull-49
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:0a6165d66f8af425dbe6121676e8686d39c39dbf
+        command: ["true"]
+      - name: pull-50
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:8a6c0525e64ea4c3eed74dea981891028dbc2061
+        command: ["true"]
+      - name: pull-51
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:5c66345b3c2179163ab1da154cd8a4f5c188fd27
+        command: ["true"]
+      - name: pull-52
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:aa84e6d207ff462c699d194436214886bee21bed
+        command: ["true"]
+      - name: pull-53
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:3516fc30c8e226983a562e7b17d005dd9ac86185
+        command: ["true"]
+      - name: pull-54
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:94fa21a7b9ffb979dd534ece1f9fc2bf5f5a4470
+        command: ["true"]
+      - name: pull-55
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:62e2f3413b7790ce2154b377509b676bf3e7e972
+        command: ["true"]
+      - name: pull-56
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:68aa64457e0c4b85d80ce1d948acdc424475fa07
+        command: ["true"]
+      - name: pull-57
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:41bb6d7be53e61c299ccc892d003388b74969568
+        command: ["true"]
+      - name: pull-58
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:cb3ff1430780d82864cd7afec27114eabf398ee9
+        command: ["true"]
+      - name: pull-59
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:ad56f9f765ef4a49b7327a8c0430e8e30934ad77
+        command: ["true"]
+      - name: pull-60
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:8d9988d7ced95454dee34235c1ede142c8de9bff
+        command: ["true"]
+      - name: pull-61
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:1069c4f2dd4f7e9a34f6be9002c72ff56380ee35
+        command: ["true"]
+      - name: pull-62
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:efd8e00095e8af065248c9182022c1cd5f2ee489
+        command: ["true"]
+      - name: pull-63
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/orange3_final:55d77e04ff6567f96576fc433d52e00c64027a65
+        command: ["true"]
+      containers:
+      - name: park
+        image: registry.k8s.io/pause:3.9
