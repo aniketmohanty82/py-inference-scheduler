@@ -1,0 +1,337 @@
+== 04:39:24 lines 0..1009
+      1 [36mm Warning: Failed to set NUMA affinity: libnuma.so: cannot open shared object file: No such file or directory[32m [repeated 3x across cluster][0m
+      1 [36mm Warning: Failed to set NUMA affinity: libnuma.so: cannot open shared object file: No such file or directory
+      1 [36mm WARNING:2026-08-31 21:38:00,136:Async training requires data.train_batch_size=1; overriding the configured value 64 -> 1.
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 04:42:25 lines 1009..1087
+      1 [36mm WARNING 08-31 21:40:23 [system_utils.py:157] We must use the `spawn` multiprocessing start method. Overriding VLLM_WORKER_MULTIPROC_METHOD to 'spawn'. See https://docs.vllm.ai/en/latest/usage/troubleshooting.html#python-multiprocessing for more information. Reasons: In a Ray actor and can only be spawned; CUDA is initialized
+      1 [36mm WARNING 08-31 21:40:18 [system_utils.py:157] We must use the `spawn` multiprocessing start method. Overriding VLLM_WORKER_MULTIPROC_METHOD to 'spawn'. See https://docs.vllm.ai/en/latest/usage/troubleshooting.html#python-multiprocessing for more information. Reasons: In a Ray actor and can only be spawned; CUDA is initialized
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 04:45:25 lines 1087..2244
+      1 [36mm (EngineCore pid=739) WARNING 08-31 21:44:35 [scheduler.py:1948] reset_connector called but no KV connector is configured.
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 04:48:26 lines 2244..3392
+      1 [36mm (Worker_TP0 pid=786) WARNING 08-31 21:46:55 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _topk_log_softmax_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+      1 [36mm (Worker_TP0 pid=753) WARNING 08-31 21:46:09 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _topk_log_softmax_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+      1 [36mm ERROR 08-31 21:48:21 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 21:48:21 [hermes_tool_parser.py:116]     name=function_call["name"],
+      1 [36mm ERROR 08-31 21:48:21 [hermes_tool_parser.py:116] KeyError: 'name'
+      1 [36mm ERROR 08-31 21:48:21 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 98, in extract_tool_calls
+      1 [36mm ERROR 08-31 21:48:21 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 21:48:21 [hermes_tool_parser.py:116]          ~~~~~~~~~~~~~^^^^^^^^
+      1 [36mm ERROR 08-31 21:48:12 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 21:48:12 [hermes_tool_parser.py:116]     name=function_call["name"],
+      1 [36mm ERROR 08-31 21:48:12 [hermes_tool_parser.py:116] KeyError: 'name'
+      1 [36mm ERROR 08-31 21:48:12 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 98, in extract_tool_calls
+      1 [36mm ERROR 08-31 21:48:12 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 21:48:12 [hermes_tool_parser.py:116]          ~~~~~~~~~~~~~^^^^^^^^
+      1 [36mm ERROR 08-31 21:48:05 [hermes_tool_parser.py:116] Traceback (most recent call last):
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 04:51:27 lines 3392..6188
+     51 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]     return _default_decoder.decode(s)
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]     obj, end = self.scan_once(s, idx)
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]     json.loads(match[0] if match[0] else match[1])
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116] json.decoder.JSONDecodeError: Invalid \escape: line 2 column 161 (char 161)
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 91, in extract_tool_calls
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/__init__.py", line 346, in loads
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 354, in raw_decode
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 338, in decode
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      1 [36mm ERROR 08-31 21:50:58 [hermes_tool_parser.py:116]                ^^^^^^^^^^^^^^^^^^^^^^
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 04:54:27 lines 6188..7624
+     14 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 [36mm ERROR 08-31 21:53:56 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 21:53:56 [hermes_tool_parser.py:116]     name=function_call["name"],
+      1 [36mm ERROR 08-31 21:53:56 [hermes_tool_parser.py:116] KeyError: 'name'
+      1 [36mm ERROR 08-31 21:53:56 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 98, in extract_tool_calls
+      1 [36mm ERROR 08-31 21:53:56 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 21:53:56 [hermes_tool_parser.py:116]          ~~~~~~~~~~~~~^^^^^^^^
+      1 [36mm ERROR 08-31 21:53:33 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 21:53:33 [hermes_tool_parser.py:116]     name=function_call["name"],
+      1 [36mm ERROR 08-31 21:53:33 [hermes_tool_parser.py:116] KeyError: 'name'
+      1 [36mm ERROR 08-31 21:53:33 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 98, in extract_tool_calls
+      1 [36mm ERROR 08-31 21:53:33 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 21:53:33 [hermes_tool_parser.py:116]          ~~~~~~~~~~~~~^^^^^^^^
+      1 [36mm ERROR 08-31 21:52:01 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 21:52:01 [hermes_tool_parser.py:116]     name=function_call["name"],
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 04:57:28 lines 7624..8968
+     76 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 Tasks:  12%|█▎        | 8/64 [11:31<35:27, 37.99s/task, consumed=7, filtered=0, queued=1, step=0]WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 [36mm ERROR:2026-08-31 21:54:46,365:[uuid-*:1] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:46,360:[uuid-*:1] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:46,354:[uuid-*:1] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:46,208:[uuid-*:0] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:46,099:[uuid-*:0] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:46,095:[uuid-*:1] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:46,072:[uuid-*:0] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:45,947:[uuid-*:0] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:45,919:[uuid-*:0] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:45,899:[uuid-*:0] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:45,869:[uuid-*:0] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:45,827:[uuid-*:0] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 21:54:45,826:[uuid-*:0] Attempt 1/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:00:28 lines 8968..10717
+     27 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]     return _default_decoder.decode(s)
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]     obj, end = self.scan_once(s, idx)
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]     json.loads(match[0] if match[0] else match[1])
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116] json.decoder.JSONDecodeError: Invalid \escape: line 2 column 266 (char 266)
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 91, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/__init__.py", line 346, in loads
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 354, in raw_decode
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 338, in decode
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      1 [36mm ERROR 08-31 22:00:08 [hermes_tool_parser.py:116]                ^^^^^^^^^^^^^^^^^^^^^^
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:03:29 lines 10717..12388
+     29 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 [36mm Traceback (most recent call last):
+      1 [36mm ERROR:    Exception in ASGI application
+      1 [36mm ERROR:2026-08-31 22:02:59,561:[uuid-*:1] Attempt 1/3 failed: EnrichMismatchError('[uuid-*:1] enrich mismatch: traces=21 agent_steps=0 empty_prompt_ids=1 empty_completion_ids=1') (type=EnrichMismatchError)
+      1 [36mm ERROR 08-31 22:02:17 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:02:17 [hermes_tool_parser.py:116]     name=function_call["name"],
+      1 [36mm ERROR 08-31 22:02:17 [hermes_tool_parser.py:116] KeyError: 'name'
+      1 [36mm ERROR 08-31 22:02:17 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 98, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:02:17 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 22:02:17 [hermes_tool_parser.py:116]          ~~~~~~~~~~~~~^^^^^^^^
+      1 [36mm ERROR 08-31 22:02:16 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:02:16 [hermes_tool_parser.py:116]     name=function_call["name"],
+      1 [36mm ERROR 08-31 22:02:16 [hermes_tool_parser.py:116] KeyError: 'name'
+      1 [36mm ERROR 08-31 22:02:16 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 98, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:02:16 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:06:29 lines 12388..14544
+     23 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      2 [36mm Traceback (most recent call last):
+      2 [36mm ERROR:    Exception in ASGI application
+      1 [36mm ERROR:2026-08-31 22:04:47,676:[uuid-*:0] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:47,661:[uuid-*:1] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:47,647:[uuid-*:1] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:47,633:[uuid-*:1] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:47,577:[uuid-*:0] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:47,517:[uuid-*:1] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:47,073:[uuid-*:0] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:47,071:[uuid-*:0] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:47,033:[uuid-*:0] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:46,974:[uuid-*:0] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:46,971:[uuid-*:1] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:04:46,966:[uuid-*:0] Attempt 2/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:09:30 lines 14544..16545
+     32 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 [36mm Traceback (most recent call last):
+      1 [36mm ERROR:    Exception in ASGI application
+      1 [36mm ERROR:2026-08-31 22:08:33,706:[uuid-*:0] Attempt 1/3 failed: EnrichMismatchError('[uuid-*:0] enrich mismatch: traces=23 agent_steps=0 empty_prompt_ids=1 empty_completion_ids=1') (type=EnrichMismatchError)
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:12:31 lines 16545..18465
+     31 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 [36mm Traceback (most recent call last):
+      1 [36mm ERROR:    Exception in ASGI application
+      1 [36mm ERROR:2026-08-31 22:10:44,489:[uuid-*:0] Attempt 1/3 failed: EnrichMismatchError('[uuid-*:0] enrich mismatch: traces=20 agent_steps=0 empty_prompt_ids=1 empty_completion_ids=1') (type=EnrichMismatchError)
+      1 [36mm ERROR 08-31 22:12:27 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:12:27 [hermes_tool_parser.py:116]     name=function_call["name"],
+      1 [36mm ERROR 08-31 22:12:27 [hermes_tool_parser.py:116] KeyError: 'name'
+      1 [36mm ERROR 08-31 22:12:27 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 98, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:12:27 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 22:12:27 [hermes_tool_parser.py:116]          ~~~~~~~~~~~~~^^^^^^^^
+      1 [36mm ERROR 08-31 22:10:55 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:10:55 [hermes_tool_parser.py:116]     name=function_call["name"],
+      1 [36mm ERROR 08-31 22:10:55 [hermes_tool_parser.py:116] KeyError: 'name'
+      1 [36mm ERROR 08-31 22:10:55 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 98, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:10:55 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:15:31 lines 18465..20041
+     37 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 Tasks:  47%|████▋     | 30/64 [30:13<34:21, 60.62s/task, consumed=29, filtered=1, queued=0, step=0]ERROR:2026-08-31 22:14:49,788:[uuid-*:1] Attempt 3/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:14:49,790:[uuid-*:1] Attempt 3/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+      1 [36mm ERROR:2026-08-31 22:14:49,777:[uuid-*:0] Attempt 3/3 failed: RuntimeError('pod rllm-sandbox-rllm-uuid-* not Running after 600.0s (phase=Pending)') (type=RuntimeError)
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:18:32 lines 20041..21609
+      4 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      2 [36mm Traceback (most recent call last):
+      2 [36mm ERROR:    Exception in ASGI application
+      1 [36mm ERROR:2026-08-31 22:17:15,216:[uuid-*:0] Attempt 2/3 failed: EnrichMismatchError('[uuid-*:0] enrich mismatch: traces=22 agent_steps=0 empty_prompt_ids=1 empty_completion_ids=1') (type=EnrichMismatchError)
+      1 [36mm ERROR:2026-08-31 22:16:23,732:[uuid-*:1] Attempt 1/3 failed: EnrichMismatchError('[uuid-*:1] enrich mismatch: traces=60 agent_steps=0 empty_prompt_ids=1 empty_completion_ids=1') (type=EnrichMismatchError)
+      1 [36mm ERROR 08-31 22:18:01 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:18:01 [hermes_tool_parser.py:116]     name=function_call["name"],
+      1 [36mm ERROR 08-31 22:18:01 [hermes_tool_parser.py:116] KeyError: 'name'
+      1 [36mm ERROR 08-31 22:18:01 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 98, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:18:01 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 22:18:01 [hermes_tool_parser.py:116]          ~~~~~~~~~~~~~^^^^^^^^
+      1 [36mm ERROR 08-31 22:17:24 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:17:24 [hermes_tool_parser.py:116]     return _default_decoder.decode(s)
+      1 [36mm ERROR 08-31 22:17:24 [hermes_tool_parser.py:116]     obj, end = self.scan_once(s, idx)
+      1 [36mm ERROR 08-31 22:17:24 [hermes_tool_parser.py:116]     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:21:32 lines 21609..22806
+      1 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+      1 [36mm Traceback (most recent call last):
+      1 [36mm ERROR:    Exception in ASGI application
+      1 [36mm ERROR:2026-08-31 22:21:00,310:[uuid-*:0] Attempt 3/3 failed: EnrichMismatchError('[uuid-*:0] enrich mismatch: traces=9 agent_steps=0 empty_prompt_ids=1 empty_completion_ids=1') (type=EnrichMismatchError)
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116]     return _default_decoder.decode(s)
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116]     obj, end = self.scan_once(s, idx)
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116]     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116]     json.loads(match[0] if match[0] else match[1])
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116] json.decoder.JSONDecodeError: Invalid control character at: line 2 column 72 (char 72)
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 91, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/__init__.py", line 346, in loads
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 354, in raw_decode
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 338, in decode
+      1 [36mm ERROR 08-31 22:20:43 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:24:33 lines 22806..23795
+      1 [36mm WARNING:py_inference_scheduler.plugins.filters.saturation:all 2 endpoints saturated: filter disabled for this decision
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:27:33 lines 23795..24796
+      2 [36mm Traceback (most recent call last):
+      2 [36mm ERROR:    Exception in ASGI application
+      1 [36mm ERROR:2026-08-31 22:27:13,567:[uuid-*:0] Attempt 3/3 failed: EnrichMismatchError('[uuid-*:0] enrich mismatch: traces=36 agent_steps=0 empty_prompt_ids=1 empty_completion_ids=1') (type=EnrichMismatchError)
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:30:34 lines 24796..25876
+      1 [36mm Traceback (most recent call last):
+      1 [36mm ERROR:    Exception in ASGI application
+      1 [36mm ERROR:2026-08-31 22:30:02,227:[uuid-*:0] Attempt 3/3 failed: EnrichMismatchError('[uuid-*:0] enrich mismatch: traces=38 agent_steps=0 empty_prompt_ids=1 empty_completion_ids=1') (type=EnrichMismatchError)
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116]     return _default_decoder.decode(s)
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116]     obj, end = self.scan_once(s, idx)
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116]     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116]     json.loads(match[0] if match[0] else match[1])
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116] json.decoder.JSONDecodeError: Unterminated string starting at: line 2 column 43 (char 43)
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 91, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/__init__.py", line 346, in loads
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 354, in raw_decode
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 338, in decode
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 22:30:08 [hermes_tool_parser.py:116]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:33:34 lines 25876..26518
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:36:35 lines 26518..27075
+      1 [36mm Traceback (most recent call last):
+      1 [36mm ERROR:    Exception in ASGI application
+      1 [36mm ERROR:2026-08-31 22:35:54,761:[uuid-*:1] Attempt 3/3 failed: EnrichMismatchError('[uuid-*:1] enrich mismatch: traces=122 agent_steps=0 empty_prompt_ids=1 empty_completion_ids=1') (type=EnrichMismatchError)
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116]     return _default_decoder.decode(s)
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116]     obj, end = self.scan_once(s, idx)
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116]     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116]     json.loads(match[0] if match[0] else match[1])
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116] json.decoder.JSONDecodeError: Invalid \escape: line 2 column 296 (char 296)
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 91, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/__init__.py", line 346, in loads
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 354, in raw_decode
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 338, in decode
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 22:34:33 [hermes_tool_parser.py:116]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
+== 05:39:36 lines 27075..27461
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116] Traceback (most recent call last):
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]     return _default_decoder.decode(s)
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]     raise JSONDecodeError("Expecting value", s, err.value) from None
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]     json.loads(match[0] if match[0] else match[1])
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116] json.decoder.JSONDecodeError: Expecting value: line 2 column 30 (char 30)
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/site-packages/vllm/tool_parsers/hermes_tool_parser.py", line 91, in extract_tool_calls
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/__init__.py", line 346, in loads
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 356, in raw_decode
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]   File "/home/ray/anaconda3/lib/python3.12/json/decoder.py", line 338, in decode
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116] Error in extracting tool call from response.
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+      1 [36mm ERROR 08-31 22:39:03 [hermes_tool_parser.py:116]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+master_batch_put_start_failures_total 6
+master_successful_evictions_total 115
+master_attempted_evictions_total 115
+master_evicted_key_count 773739
+master_evicted_size_bytes 1622648291328
