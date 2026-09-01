@@ -235,12 +235,7 @@ spec:
                                 print("ERR", w["url"], e, flush=True)
                                 continue
                             for line in text.splitlines():
-                                if line.startswith("#"):
-                                    continue
-                                if ("prefix_cache" in line or "num_preemptions" in line
-                                        or "kv_cache_usage" in line
-                                        or "prompt_tokens" in line
-                                        or "generation_tokens" in line):
+                                if not line.startswith("#"):
                                     print("URL", w["url"], line, flush=True)
                     except Exception as e:
                         print("NOGATEWAY", e, flush=True)
