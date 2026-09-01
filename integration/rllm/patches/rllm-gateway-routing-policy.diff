@@ -258,10 +258,10 @@ index 39a0bb13..c5785721 100644
          OmegaConf.create({"rllm": {"gateway": {"host": "127.0.0.1"}}}),
 diff --git a/rllm/sandbox/backends/kubernetes_backend.py b/rllm/sandbox/backends/kubernetes_backend.py
 new file mode 100644
-index 00000000..13f4d75c
+index 00000000..648451ff
 --- /dev/null
 +++ b/rllm/sandbox/backends/kubernetes_backend.py
-@@ -0,0 +1,240 @@
+@@ -0,0 +1,250 @@
 +"""Kubernetes sandbox backend: one pod per task, exec-based I/O.
 +
 +Shaped after the Modal backend: non-interactive exec, base64-chunked file
@@ -280,6 +280,11 @@ index 00000000..13f4d75c
 +                                overcommit the CPU pool instead
 +    RLLM_K8S_MEMORY_REQUEST_MB  override memory request (int MiB); the
 +                                task.toml value stays as the LIMIT
++    RLLM_K8S_IMAGE_PREFIX_MAP   "src=dst[,src=dst]" image-ref prefix rewrite,
++                                e.g. "namanjain12/=REGION-docker.pkg.dev/...
++                                /r2e/namanjain12/" - task metadata keeps the
++                                canonical Docker Hub refs while pods pull from
++                                an in-region mirror (Hub rate limits)
 +"""
 +
 +import atexit
@@ -337,6 +342,11 @@ index 00000000..13f4d75c
 +
 +        self._core = client.CoreV1Api()
 +        self._namespace = os.environ.get("RLLM_K8S_NAMESPACE", "default")
++        for pair in filter(None, os.environ.get("RLLM_K8S_IMAGE_PREFIX_MAP", "").split(",")):
++            src, sep, dst = pair.partition("=")
++            if sep and image.startswith(src):
++                image = dst + image[len(src):]
++                break
 +        # Task ids (e.g. "orange3__abc") are not valid RFC-1123 pod names;
 +        # sanitize and always suffix a nonce so retries never collide with a
 +        # terminating pod of the same task.
