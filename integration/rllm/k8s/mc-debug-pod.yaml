@@ -1,0 +1,26 @@
+# Throwaway mooncake-client debug pod (CPU pool): tests master reachability,
+# segment mount, and put/get from inside the cluster without GPUs.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mc-debug
+spec:
+  restartPolicy: Never
+  containers:
+  - name: mc-debug
+    image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:dev
+    command: ["sleep", "7200"]
+    env:
+    - name: MOONCAKE_CONFIG_PATH
+      value: "/etc/mooncake/mooncake_config.json"
+    resources:
+      requests:
+        cpu: 250m
+        memory: 2Gi
+    volumeMounts:
+    - name: mc
+      mountPath: /etc/mooncake
+  volumes:
+  - name: mc
+    configMap:
+      name: mooncake-config
