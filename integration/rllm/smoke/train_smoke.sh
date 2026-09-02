@@ -41,6 +41,8 @@ python -u "$SMOKE_DIR/train_smoke.py" \
     actor_rollout_ref.model.lora_rank=32 \
     actor_rollout_ref.model.lora_alpha=32 \
     actor_rollout_ref.model.lora.merge=true \
+    actor_rollout_ref.actor.strategy=fsdp2 \
+    actor_rollout_ref.ref.strategy=fsdp2 \
     actor_rollout_ref.hybrid_engine=True \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.actor.ppo_mini_batch_size=8 \
