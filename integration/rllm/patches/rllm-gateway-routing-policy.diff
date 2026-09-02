@@ -151,6 +151,32 @@ index e5290a64..e53bd152 100644
      )
  
  
+diff --git a/rllm/engine/agentflow_engine.py b/rllm/engine/agentflow_engine.py
+index 75aa7dc2..7cf8b163 100644
+--- a/rllm/engine/agentflow_engine.py
++++ b/rllm/engine/agentflow_engine.py
+@@ -167,6 +167,21 @@ def enrich_episode_with_traces(
+                 n_agent_steps,
+             )
+             training_steps = training_steps[:n_agent_steps]
++    elif not agent_populates_steps and training_steps:
++        # Harness flows (CLI agent runs inside the sandbox) record no agent
++        # Steps, so the trailing-empty-body case above cannot be caught by
++        # step-count parity - a final call that bounced off max_model_len
++        # leaves one empty trace and would condemn the whole rollout to a
++        # re-roll. Same remedy as above, restricted to a single final trace;
++        # malformed traces anywhere else still raise.
++        last = training_steps[-1]
++        if not last.model_output.prompt_ids or not last.model_output.completion_ids:
++            logger.warning(
++                "[%s] dropping trailing malformed trace (harness flow); keeping %d",
++                uid,
++                len(training_steps) - 1,
++            )
++            training_steps = training_steps[:-1]
+ 
+     empty_prompt = sum(1 for s in training_steps if not s.model_output.prompt_ids)
+     empty_compl = sum(1 for s in training_steps if not s.model_output.completion_ids)
 diff --git a/rllm/eval/_resolution.py b/rllm/eval/_resolution.py
 index f4131748..21df0497 100644
 --- a/rllm/eval/_resolution.py
