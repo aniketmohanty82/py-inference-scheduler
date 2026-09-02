@@ -64,6 +64,9 @@ run it on **node 0 (the head)**; `--host 0.0.0.0` makes it reachable from worker
 python -m integration.vime --host 0.0.0.0 --port 8000
 ```
 
+With a `flow_control` plugin configured (see `docs/simple_backpressure.md`), `--flow-poll-interval-s`
+(default 0.1) sets how often queued requests re-check engine metrics for re-admission.
+
 Then point vime at it — the **only** change to vime's launch is two flags added to `VLLM_ARGS` in the run
 script:
 

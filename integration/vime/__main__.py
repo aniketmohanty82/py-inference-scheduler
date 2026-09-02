@@ -18,17 +18,22 @@ import argparse
 
 from fastapi import FastAPI
 
-from integration.slime.__main__ import run
+from integration.slime.__main__ import add_flow_control_args, run
 from integration.vime.server import create_app
 from py_inference_scheduler import Scheduler
 
 
 def _app(scheduler: Scheduler, args: argparse.Namespace) -> FastAPI:
-    return create_app(scheduler)
+    return create_app(scheduler, flow_poll_interval_s=args.flow_poll_interval_s)
 
 
 def main() -> None:
-    run(_app, description="sampling scheduler for vime", framework="vime")
+    run(
+        _app,
+        description="sampling scheduler for vime",
+        framework="vime",
+        add_args=add_flow_control_args,
+    )
 
 
 if __name__ == "__main__":

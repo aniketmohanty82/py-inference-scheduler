@@ -57,11 +57,11 @@ profiles:
       type: <picker_type_name>
       # (Picker-specific parameters)
       
-    # (Optional) Flow control plugins to budget resources and prevent saturation.
-    # Omit if you do not want flow-control/preemption gating.
-    flow_controls:
-      - type: <flow_control_type_name>
-        # (Flow-control-specific parameters)
+    # (Optional) Flow control plugin to budget resources and prevent saturation.
+    # One per profile; omit if you do not want flow-control/preemption gating.
+    flow_control:
+      type: <flow_control_type_name>
+      # (Flow-control-specific parameters)
 ```
 
 ---
@@ -115,6 +115,10 @@ Flow control plugins prevent replica overload and mid-decoding preemptions by co
     *   `drip_interval_s` (float, default: `2.0`): Minimum time between drip admissions.
     *   `default_osl` (int, default: `1024`): Default output sequence length estimate used before stats are learned.
     *   *More Info*: For a detailed deep-dive into how KV saturation budgeting works and its mathematical model, see the [KV Saturation Guide](./kv_saturation.md).
+*   **`simple_backpressure`**: Metric-driven admission gate. Passes through only replicas below the saturation thresholds; when every replica is saturated, requests queue scheduler-side until live metrics show capacity again (AIMD-paced drain).
+    *   `kv_threshold` (float, default: `0.95`): Saturated at or above this KV-cache utilization.
+    *   `waiting_threshold` (int, default: `6`): Saturated at or above this many waiting requests.
+    *   *More Info*: See the [Simple Backpressure Guide](./simple_backpressure.md).
 
 ---
 
@@ -141,10 +145,10 @@ profiles:
         weight: 1.0
     picker:
       type: max_score
-    flow_controls:
+    flow_control:
       # Protect against KV saturation and preemption storms
-      - type: kv_saturation
-        enable_drip: true
-        drip_threshold_kv: 0.15
-        default_osl: 512
+      type: kv_saturation
+      enable_drip: true
+      drip_threshold_kv: 0.15
+      default_osl: 512
 ```
