@@ -17,8 +17,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 import aiohttp
@@ -27,6 +28,7 @@ from fastapi.responses import JSONResponse
 
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
+from py_inference_scheduler.datalayer.metrics.poller import FetchMetrics, MetricsPoller
 from py_inference_scheduler.datalayer.metrics.slime.sglang import fetch_worker_metrics
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
@@ -34,9 +36,8 @@ logger = logging.getLogger(__name__)
 
 # Headers that must not be forwarded verbatim when proxying to a worker.
 _HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection"}
+_METRIC_STALENESS_CADENCE = 10
 
-# populates ep.attributes from the worker's /metrics.
-FetchMetrics = Callable[[Endpoint, InflightStore, aiohttp.ClientSession], Awaitable[None]]
 # Returns the prompt the scheduler routes on
 RoutingBody = Callable[[dict], object]
 
@@ -87,7 +88,12 @@ def _safe_json(raw: bytes) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Shared aiohttp session: unbounded connections + no per-request timeout."""
+    """Shared aiohttp session: unbounded connections + no per-request timeout.
+
+    vime uses this directly as its app lifespan; slime wraps it (create_app's
+    _lifespan) to add the MetricsPoller start/stop around it.
+    The latter will be vime's default mode in the future.
+    """
     # limit=0 removes aiohttp's default 100-connection cap so requests fan out across engines.
     connector = aiohttp.TCPConnector(limit=0)
     # total=None lifts aiohttp's default 300s cap per generation
@@ -104,11 +110,17 @@ async def schedule_and_proxy(  # noqa: PLR0913
     inflight: InflightStore,
     scheduling_lock: asyncio.Lock,
     scheduler: Scheduler,
-    fetch_metrics: FetchMetrics,
+    fetch_metrics: FetchMetrics | None,
     routing_body: RoutingBody,
     generate_path: str,
 ) -> Response:
-    """Scrape metrics under a lock, pick a worker, and proxy the request to it."""
+    """Pick a worker under the scheduling lock and proxy the request to it.
+
+    If fetch_metrics is given, every endpoint's metrics are scraped inside this
+    request before scheduling (vime's mode). If it is None, scheduling reads
+    the routing_stats a background MetricsPoller keeps fresh (slime's mode).
+    Vime will be changed to follow slime's request path soon.
+    """
     raw = await request.body()
     llm_req = LLMRequest(request_id=uuid.uuid4().hex, body=routing_body(_safe_json(raw)))
 
@@ -118,10 +130,9 @@ async def schedule_and_proxy(  # noqa: PLR0913
 
     session: aiohttp.ClientSession = request.app.state.http
 
-    # Metrics scrape + scheduling happen ON the request path under a lock
-    # [check verl_hook.py:L90-95 for why they happen in the same task]
     async with scheduling_lock:
-        await asyncio.gather(*[fetch_metrics(ep, inflight, session) for ep in endpoints])
+        if fetch_metrics is not None:
+            await asyncio.gather(*[fetch_metrics(ep, inflight, session) for ep in endpoints])
         selected = scheduler.run(llm_req, candidates=endpoints)
         if not selected:
             return JSONResponse(status_code=503, content={"error": "no worker selected"})
@@ -169,13 +180,29 @@ def register_worker_routes(app: FastAPI, registry: WorkerRegistry) -> None:
         return JSONResponse(content={"workers": registry.list_workers_as_dicts()})
 
 
-def create_app(scheduler: Scheduler) -> FastAPI:
+def create_app(scheduler: Scheduler, metrics_refresh_ms: int = 100) -> FastAPI:
     """Build the slime router FastAPI app around a configured Scheduler."""
     registry = WorkerRegistry()
     inflight = InflightStore()
     scheduling_lock = asyncio.Lock()
+    poller = MetricsPoller(
+        registry.endpoints, inflight, fetch_worker_metrics, interval_ms=metrics_refresh_ms
+    )
 
-    app = FastAPI(title="slime sampling router", lifespan=lifespan)
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+        """Run the poller for the app's lifetime, around the shared-session lifespan."""
+        poller.start()
+        try:
+            async with lifespan(app):
+                yield
+        finally:
+            poller.stop()
+
+    app = FastAPI(title="slime sampling router", lifespan=_lifespan)
+    app.state.poller = poller
+    app.state.last_stale_warn = 0.0
+    stale_after = max(0.5, 5 * metrics_refresh_ms / 1000.0)
 
     register_worker_routes(app, registry)
 
@@ -188,13 +215,19 @@ def create_app(scheduler: Scheduler) -> FastAPI:
 
     @app.post("/generate")
     async def generate(request: Request) -> Response:
+        staleness = poller.staleness()
+        if staleness > stale_after:
+            now = time.monotonic()
+            if now - app.state.last_stale_warn > _METRIC_STALENESS_CADENCE * stale_after:
+                logger.warning("routing on stale metrics: snapshot %.2fs old", staleness)
+                app.state.last_stale_warn = now
         return await schedule_and_proxy(
             request,
             registry=registry,
             inflight=inflight,
             scheduling_lock=scheduling_lock,
             scheduler=scheduler,
-            fetch_metrics=fetch_worker_metrics,
+            fetch_metrics=None,
             routing_body=_routing_body,
             generate_path="/generate",
         )
