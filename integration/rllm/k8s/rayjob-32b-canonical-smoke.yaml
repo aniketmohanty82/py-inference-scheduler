@@ -25,6 +25,8 @@ spec:
     rllm.rollout.train.max_tokens=null
     rllm.rollout.val.max_tokens=null
     ++actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1
+    ++actor_rollout_ref.actor.ulysses_sequence_parallel_size=4
+    ++actor_rollout_ref.actor.entropy_from_logits_with_chunking=true
     ++actor_rollout_ref.model.enable_gradient_checkpointing=True
     actor_rollout_ref.rollout.tensor_model_parallel_size=2
     data.max_prompt_length=16384
@@ -57,7 +59,7 @@ spec:
           serviceAccountName: rllm-sandbox-runner
           containers:
           - name: ray-head
-            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:s1
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:smoke8
             imagePullPolicy: Always
             ports:
             - containerPort: 6379
@@ -142,7 +144,7 @@ spec:
             effect: NoSchedule
           containers:
           - name: ray-worker
-            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:s1
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:smoke8
             imagePullPolicy: Always
             securityContext:
               capabilities:

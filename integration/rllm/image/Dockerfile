@@ -38,12 +38,16 @@ RUN uv pip install --system --no-cache \
     kubernetes \
     cupy-cuda12x
 
-# Bake the frozen 8-task r2egym subset + registry into the image: the trainer
-# actor resolves verifiers from task_path on WHATEVER pod it lands on, so the
-# task dirs must exist at the same absolute path cluster-wide.
+# Bake the frozen r2egym subset + registry into the image: the trainer actor
+# resolves verifiers from task_path on WHATEVER pod it lands on, so the task
+# dirs must exist at the same absolute path cluster-wide. TASK_LIMIT sets the
+# subset size - sampling enumerates the WHOLE registered dataset regardless of
+# train_batch_size, so this build arg is the only knob that sets a run's task
+# count (128 = pressure cells, 8 = cheap smoke).
+ARG TASK_LIMIT=128
 COPY integration/rllm/smoke/prepare_r2egym_subset.py /tmp/prepare_r2egym_subset.py
 ENV RLLM_HOME=/opt/rllm-home
-RUN python /tmp/prepare_r2egym_subset.py --limit 128 --out-dir /opt/rllm-home/tasks/r2egym_smoke \
+RUN python /tmp/prepare_r2egym_subset.py --limit ${TASK_LIMIT} --out-dir /opt/rllm-home/tasks/r2egym_smoke \
     && chmod -R a+rwX /opt/rllm-home
 
 COPY . /opt/py-inference-scheduler
