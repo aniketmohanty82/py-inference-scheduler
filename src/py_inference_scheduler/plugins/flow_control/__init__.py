@@ -15,3 +15,4 @@
 """Flow control plugins."""
 
 from .kv_saturation import KVSaturationPlugin as KVSaturationPlugin
+from .simple_backpressure import SimpleBackpressurePlugin as SimpleBackpressurePlugin
