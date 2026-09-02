@@ -32,6 +32,8 @@ spec:
     rllm.rollout.train.max_tokens=null
     rllm.rollout.val.max_tokens=null
     ++actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1
+    ++actor_rollout_ref.actor.ulysses_sequence_parallel_size=4
+    ++actor_rollout_ref.actor.entropy_from_logits_with_chunking=true
     ++actor_rollout_ref.model.enable_gradient_checkpointing=True
     actor_rollout_ref.rollout.tensor_model_parallel_size=2
     data.max_prompt_length=16384
@@ -43,8 +45,9 @@ spec:
     actor_rollout_ref.actor.ppo_mini_batch_size=32
     rllm.workflow.n_parallel_tasks=128
     rllm.trainer.total_batches=1
+    ++rllm.episode_logging.log_episodes=true
     rllm.async_training.enable=true
-    rllm.workflow.raise_on_error=false +rllm.episode_logging.log_episodes=true +trainer.log_episodes=true
+    rllm.workflow.raise_on_error=false
     actor_rollout_ref.hybrid_engine=False
     trainer.n_gpus_per_node=4
     rollout.nnodes=1
@@ -63,7 +66,7 @@ spec:
           serviceAccountName: rllm-sandbox-runner
           containers:
           - name: ray-head
-            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:dev
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:s3
             imagePullPolicy: Always
             ports:
             - containerPort: 6379
@@ -93,9 +96,13 @@ spec:
             - name: RLLM_K8S_NODE_SELECTOR
               value: "cloud.google.com/gke-nodepool=sandbox-pool"
             - name: RLLM_K8S_CPU_REQUEST
-              value: "50m"
+              value: "500m"
             - name: RLLM_K8S_MEMORY_REQUEST_MB
-              value: "256"
+              value: "1024"
+            - name: RLLM_K8S_IMAGE_PREFIX_MAP
+              value: "namanjain12/=us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/"
+            - name: RLLM_K8S_STORAGE_REQUEST_MB
+              value: "2048"
             - name: RLLM_K8S_POD_TIMEOUT
               value: "1500"
             - name: PYTHONHASHSEED
@@ -144,7 +151,7 @@ spec:
             effect: NoSchedule
           containers:
           - name: ray-worker
-            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:dev
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:s3
             imagePullPolicy: Always
             securityContext:
               capabilities:
@@ -172,9 +179,13 @@ spec:
             - name: RLLM_K8S_NODE_SELECTOR
               value: "cloud.google.com/gke-nodepool=sandbox-pool"
             - name: RLLM_K8S_CPU_REQUEST
-              value: "50m"
+              value: "500m"
             - name: RLLM_K8S_MEMORY_REQUEST_MB
-              value: "256"
+              value: "1024"
+            - name: RLLM_K8S_IMAGE_PREFIX_MAP
+              value: "namanjain12/=us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/r2e/namanjain12/"
+            - name: RLLM_K8S_STORAGE_REQUEST_MB
+              value: "2048"
             - name: RLLM_K8S_POD_TIMEOUT
               value: "1500"
             - name: PYTHONHASHSEED
@@ -198,11 +209,11 @@ spec:
             resources:
               requests:
                 cpu: "100"
-                memory: 800Gi
+                memory: 2200Gi
                 nvidia.com/gpu: "8"
               limits:
                 cpu: "100"
-                memory: 800Gi
+                memory: 2200Gi
                 nvidia.com/gpu: "8"
               claims:
               - name: rdma
