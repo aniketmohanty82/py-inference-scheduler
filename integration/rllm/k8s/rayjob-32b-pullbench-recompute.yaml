@@ -203,7 +203,7 @@ spec:
             - name: MOONCAKE_CONFIG_PATH
               value: "/etc/mooncake/mooncake_config.json"
             - name: PYTORCH_CUDA_ALLOC_CONF
-              value: "expandable_segments:True"
+              value: "max_split_size_mb:512"
             - name: MC_FORCE_HCA
               value: "1"
             - name: WITH_NVIDIA_PEERMEM
