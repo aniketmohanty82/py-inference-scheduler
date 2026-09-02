@@ -7,7 +7,7 @@ data:
       "master_server_address": "mooncake-master.default.svc.cluster.local:50051",
       "protocol": "rdma",
       "device_name": "",
-      "global_segment_size": "96gb",
+      "global_segment_size": "512gb",
       "local_buffer_size": "4gb"
     }
 kind: ConfigMap
