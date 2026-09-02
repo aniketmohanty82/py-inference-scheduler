@@ -38,8 +38,8 @@ python -u "$SMOKE_DIR/train_smoke.py" \
     data.max_response_length=16384 \
     +model.name="$MODEL_PATH" \
     actor_rollout_ref.model.path="$MODEL_PATH" \
-    actor_rollout_ref.model.lora.rank=32 \
-    actor_rollout_ref.model.lora.alpha=32 \
+    actor_rollout_ref.model.lora_rank=32 \
+    actor_rollout_ref.model.lora_alpha=32 \
     actor_rollout_ref.model.lora.merge=true \
     actor_rollout_ref.hybrid_engine=True \
     actor_rollout_ref.actor.optim.lr=1e-6 \
