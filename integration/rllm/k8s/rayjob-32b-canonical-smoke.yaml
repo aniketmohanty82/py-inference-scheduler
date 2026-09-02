@@ -202,11 +202,11 @@ spec:
             resources:
               requests:
                 cpu: "100"
-                memory: 800Gi
+                memory: 2200Gi
                 nvidia.com/gpu: "8"
               limits:
                 cpu: "100"
-                memory: 800Gi
+                memory: 2200Gi
                 nvidia.com/gpu: "8"
               claims:
               - name: rdma
