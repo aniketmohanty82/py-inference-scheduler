@@ -34,6 +34,10 @@ spec:
     ++actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1
     ++actor_rollout_ref.actor.ulysses_sequence_parallel_size=4
     ++actor_rollout_ref.actor.entropy_from_logits_with_chunking=true
+    ++actor_rollout_ref.model.use_fused_kernels=True
+    ++actor_rollout_ref.actor.fsdp_config.offload_policy=True
+    ++actor_rollout_ref.ref.ulysses_sequence_parallel_size=4
+    ++actor_rollout_ref.ref.entropy_from_logits_with_chunking=true
     ++actor_rollout_ref.model.enable_gradient_checkpointing=True
     actor_rollout_ref.rollout.tensor_model_parallel_size=2
     data.max_prompt_length=16384
@@ -202,6 +206,8 @@ spec:
                   key: hf_api_token
             - name: MOONCAKE_CONFIG_PATH
               value: "/etc/mooncake/mooncake_config.json"
+            - name: PYTORCH_CUDA_ALLOC_CONF
+              value: "expandable_segments:True"
             - name: MC_FORCE_HCA
               value: "1"
             - name: WITH_NVIDIA_PEERMEM
