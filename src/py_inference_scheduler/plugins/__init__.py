@@ -17,6 +17,7 @@
 # Re-export plugins from sub-packages to maintain backward compatibility
 from .filters import SaturationFilter as SaturationFilter
 from .flow_control import KVSaturationPlugin as KVSaturationPlugin
+from .flow_control import SimpleBackpressurePlugin as SimpleBackpressurePlugin
 from .handlers import SimpleFilter as SimpleFilter
 from .handlers import SingleProfileHandler as SingleProfileHandler
 from .pickers import MaxScorePicker as MaxScorePicker
