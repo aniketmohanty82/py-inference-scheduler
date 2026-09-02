@@ -45,6 +45,7 @@ from ray.serve.request_router import (
     RunningReplica,
 )
 
+from py_inference_scheduler.core.flow_control import FlowControlManager
 from py_inference_scheduler.core.scheduler import Scheduler
 from py_inference_scheduler.datalayer.connectors.mooncake.kv import (
     mooncake_enabled,
@@ -63,67 +64,12 @@ from py_inference_scheduler.datalayer.rayserve.relocation import (
 )
 from py_inference_scheduler.framework import (
     Endpoint,
-    FlowControlPlugin,
     LLMRequest,
 )
 
 
-class FlowControlManager:
-    def __init__(self, router: IGWRouter) -> None:
-        self.router = router
-        self.scheduler = router.scheduler
-        self.admission_queue: list[asyncio.Future] = []
-        self.loop: asyncio.AbstractEventLoop | None = None
-
-    def _get_plugins(self) -> list[FlowControlPlugin]:
-        return self.scheduler.get_flow_control_plugins()
-
-    async def admit(
-        self,
-        request: LLMRequest,
-        endpoints: Sequence[Endpoint],
-        candidate_replicas: list[RunningReplica],
-        pending_request: PendingRequest,
-    ) -> tuple[list[RunningReplica], Sequence[Endpoint]]:
-        if self.loop is None:
-            self.loop = asyncio.get_event_loop()
-
-        plugins = self._get_plugins()
-        if not plugins:
-            return candidate_replicas, endpoints
-
-        while True:
-            allowed_eps: Sequence[Endpoint] = endpoints
-            for plugin in plugins:
-                allowed_eps = plugin.get_allowed_candidates(request, allowed_eps)
-
-            if allowed_eps:
-                allowed_names = {e.name for e in allowed_eps}
-                allowed_replicas = [
-                    r for r in candidate_replicas if str(r.replica_id) in allowed_names
-                ]
-                return allowed_replicas, allowed_eps
-
-            fut = self.loop.create_future()
-            self.admission_queue.append(fut)
-            await fut
-
-            # Refetch stats because we blocked and conditions changed
-            endpoints = await self.router.build_endpoints(candidate_replicas, pending_request)
-
-    def commit(self, request: LLMRequest, selected: Endpoint) -> None:
-        for plugin in self._get_plugins():
-            plugin.reserve(request, selected)
-
-    def release(self, request: LLMRequest, replica_id: str) -> None:
-        plugins = self._get_plugins()
-        for plugin in plugins:
-            plugin.release(request, replica_id)
-
-        if plugins and self.admission_queue:
-            waiter = self.admission_queue.pop(0)
-            if not waiter.done():
-                waiter.set_result(True)
+class RayServeFlowControlManager(FlowControlManager):
+    """Generic manager plus kv_saturation's Ray-only usage-learning hook."""
 
     def attach_learning_callback(
         self,
@@ -131,12 +77,15 @@ class FlowControlManager:
         result: ReplicaResult,
         is_streaming: bool,  # noqa: FBT001
     ) -> None:
-        plugins = self._get_plugins()
+        plugins = list(self._plugins())
         if not plugins:
             return
 
         # we only have one flow control plugin right now
         plugin = plugins[0]
+        # Only kv_saturation learns from responses; metric-driven plugins don't.
+        if not hasattr(plugin, "update_learned_stats"):
+            return
         rollout_request_id, _ = plugin._get_rollout_request_id(request.body)  # type: ignore[attr-defined]
 
         if not is_streaming:
@@ -196,13 +145,25 @@ class IGWRouter(RequestRouter):
         )
         self.scheduler = Scheduler()
         self.deployment_name = deployment_id.name
-        self.fc_manager = FlowControlManager(self)
+        self.fc_manager = RayServeFlowControlManager(
+            self.scheduler.get_flow_control_plugins,
+            self._flow_control_endpoints,
+            poll_interval_s=float(os.environ.get("FLOW_CONTROL_POLL_S", "0.1")),
+        )
+        # Watcher poll source: the replica set of the most recent scheduling decision.
+        self._watch_replicas: list[RunningReplica] = []
+        self._watch_request: PendingRequest | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._relocation_on = relocation_enabled()
         self._request_replica: OrderedDict[str, str] = OrderedDict()
         self._request_replica_cap = int(
             os.environ.get("MOONCAKE_RELOCATION_REGISTRY_CAP", "4096")
         )
+
+    async def _flow_control_endpoints(self) -> Sequence[Endpoint]:
+        if not self._watch_replicas or self._watch_request is None:
+            return []
+        return await self.build_endpoints(self._watch_replicas, self._watch_request)
 
     async def _get_routing_stats(
         self, replicas: list[RunningReplica], pending_request: PendingRequest
@@ -329,9 +290,16 @@ class IGWRouter(RequestRouter):
 
         try:
             if self.scheduler.has_flow_control():
-                candidate_replicas, endpoints = await self.fc_manager.admit(
-                    llm_req, endpoints, candidate_replicas, pending_request
-                )
+                self._watch_replicas = candidate_replicas
+                self._watch_request = pending_request
+                allowed_eps = await self.fc_manager.admit(llm_req, endpoints)
+                allowed_names = {e.name for e in allowed_eps}
+                allowed_replicas = [
+                    r for r in candidate_replicas if str(r.replica_id) in allowed_names
+                ]
+                if allowed_replicas:
+                    candidate_replicas = allowed_replicas
+                    endpoints = allowed_eps
         except Exception as e:  # noqa: BLE001
             print(
                 f"[ROUTER ERROR] Flow control admission failed: {e!r}. "
