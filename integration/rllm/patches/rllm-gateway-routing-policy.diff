@@ -258,10 +258,10 @@ index 39a0bb13..c5785721 100644
          OmegaConf.create({"rllm": {"gateway": {"host": "127.0.0.1"}}}),
 diff --git a/rllm/sandbox/backends/kubernetes_backend.py b/rllm/sandbox/backends/kubernetes_backend.py
 new file mode 100644
-index 00000000..648451ff
+index 00000000..34936604
 --- /dev/null
 +++ b/rllm/sandbox/backends/kubernetes_backend.py
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,260 @@
 +"""Kubernetes sandbox backend: one pod per task, exec-based I/O.
 +
 +Shaped after the Modal backend: non-interactive exec, base64-chunked file
@@ -280,6 +280,11 @@ index 00000000..648451ff
 +                                overcommit the CPU pool instead
 +    RLLM_K8S_MEMORY_REQUEST_MB  override memory request (int MiB); the
 +                                task.toml value stays as the LIMIT
++    RLLM_K8S_STORAGE_REQUEST_MB override ephemeral-storage request (int MiB).
++                                R2E task.toml declares 30720 (a whole
++                                dedicated disk); at that request only ~5 pods
++                                fit per node and the rest stay Pending with
++                                "Insufficient ephemeral-storage"
 +    RLLM_K8S_IMAGE_PREFIX_MAP   "src=dst[,src=dst]" image-ref prefix rewrite,
 +                                e.g. "namanjain12/=REGION-docker.pkg.dev/...
 +                                /r2e/namanjain12/" - task metadata keeps the
@@ -366,7 +371,12 @@ index 00000000..648451ff
 +        elif memory_mb:
 +            resources["requests"]["memory"] = f"{int(memory_mb)}Mi"
 +            resources["limits"]["memory"] = f"{int(memory_mb)}Mi"
-+        if storage_mb:
++        storage_request = os.environ.get("RLLM_K8S_STORAGE_REQUEST_MB")
++        if storage_request:
++            resources["requests"]["ephemeral-storage"] = f"{int(storage_request)}Mi"
++            if storage_mb:
++                resources["limits"]["ephemeral-storage"] = f"{int(storage_mb)}Mi"
++        elif storage_mb:
 +            resources["requests"]["ephemeral-storage"] = f"{int(storage_mb)}Mi"
 +
 +        node_selector = {}
