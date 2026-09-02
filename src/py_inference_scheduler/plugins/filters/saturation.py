@@ -24,6 +24,11 @@ from py_inference_scheduler.framework import (
     LLMRequest,
     register_filter,
 )
+from py_inference_scheduler.plugins.common import (
+    endpoint_load,
+    saturation_reason,
+    validate_saturation_thresholds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +38,7 @@ class SaturationFilter(FilterPlugin):
     """Drops saturated endpoints that are >= saturation threshold."""
 
     def __init__(self, kv_threshold: float = 0.95, waiting_threshold: int = 16) -> None:
-        if not 0.0 < kv_threshold <= 1.0:
-            raise ValueError("kv_threshold must be in (0, 1].")
-        if waiting_threshold <= 0:
-            raise ValueError("waiting_threshold must be positive.")
+        validate_saturation_thresholds(kv_threshold, waiting_threshold)
         self.kv_threshold = kv_threshold
         self.waiting_threshold = waiting_threshold
 
@@ -49,13 +51,8 @@ class SaturationFilter(FilterPlugin):
         eligible: dict[str, Endpoint] = {}
         dropped: list[str] = []
         for name, ep in pods.items():
-            stats = ep.attributes.get("routing_stats", {})
-            if not isinstance(stats, dict):
-                stats = {}
-            reason = self._saturation_reason(
-                kv=float(stats.get("kv", 0.0)),
-                waiting=int(stats.get("num_waiting_reqs", 0)),
-            )
+            kv, waiting = endpoint_load(ep)
+            reason = self._saturation_reason(kv=kv, waiting=waiting)
             if reason:
                 dropped.append(f"{name}({reason})")
             else:
@@ -73,9 +70,9 @@ class SaturationFilter(FilterPlugin):
 
     def _saturation_reason(self, *, kv: float, waiting: int) -> str | None:
         """Which threshold(s) fired, or None if the endpoint is healthy."""
-        reasons = []
-        if kv >= self.kv_threshold:
-            reasons.append(f"kv={kv:.2f}")
-        if waiting >= self.waiting_threshold:
-            reasons.append(f"waiting={waiting}")
-        return ",".join(reasons) if reasons else None
+        return saturation_reason(
+            kv=kv,
+            waiting=waiting,
+            kv_threshold=self.kv_threshold,
+            waiting_threshold=self.waiting_threshold,
+        )
