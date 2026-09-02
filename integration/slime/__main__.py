@@ -87,6 +87,15 @@ def run(
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
 
 
+def add_flow_control_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--flow-poll-interval-s",
+        type=float,
+        default=0.1,
+        help="metrics-watcher tick for flow-control re-admission of queued requests",
+    )
+
+
 def _add_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--metrics-refresh-ms",
@@ -94,10 +103,15 @@ def _add_args(parser: argparse.ArgumentParser) -> None:
         default=100,
         help="worker /metrics polling interval for the MetricsPoller",
     )
+    add_flow_control_args(parser)
 
 
 def _app(scheduler: Scheduler, args: argparse.Namespace) -> FastAPI:
-    return create_app(scheduler, metrics_refresh_ms=args.metrics_refresh_ms)
+    return create_app(
+        scheduler,
+        metrics_refresh_ms=args.metrics_refresh_ms,
+        flow_poll_interval_s=args.flow_poll_interval_s,
+    )
 
 
 def main() -> None:

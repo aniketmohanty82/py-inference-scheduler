@@ -2,6 +2,12 @@ profile_handler:
   type: single_profile
 profiles:
   backpressure:
+    # Uncomment to queue requests scheduler-side while every worker is
+    # saturated (see docs/simple_backpressure.md).
+    # flow_control:
+    #   type: simple_backpressure
+    #   kv_threshold: 0.95
+    #   waiting_threshold: 6
     scorers:
       - type: waiting_queue
         weight: 5.0

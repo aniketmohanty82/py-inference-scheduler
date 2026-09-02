@@ -20,13 +20,14 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 import aiohttp
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from py_inference_scheduler import Scheduler
+from py_inference_scheduler.core.flow_control import FlowControlClosedError, FlowControlManager
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.datalayer.metrics.poller import FetchMetrics, MetricsPoller
 from py_inference_scheduler.datalayer.metrics.slime.sglang import fetch_worker_metrics
@@ -113,6 +114,7 @@ async def schedule_and_proxy(  # noqa: PLR0913
     fetch_metrics: FetchMetrics | None,
     routing_body: RoutingBody,
     generate_path: str,
+    flow_control: FlowControlManager | None = None,
 ) -> Response:
     """Pick a worker under the scheduling lock and proxy the request to it.
 
@@ -120,6 +122,10 @@ async def schedule_and_proxy(  # noqa: PLR0913
     request before scheduling (vime's mode). If it is None, scheduling reads
     the routing_stats a background MetricsPoller keeps fresh (slime's mode).
     Vime will be changed to follow slime's request path soon.
+
+    With flow_control configured, requests park OUTSIDE the scheduling lock
+    while every worker is saturated, until the manager's metrics watcher
+    re-admits them.
     """
     raw = await request.body()
     llm_req = LLMRequest(request_id=uuid.uuid4().hex, body=routing_body(_safe_json(raw)))
@@ -130,6 +136,15 @@ async def schedule_and_proxy(  # noqa: PLR0913
 
     session: aiohttp.ClientSession = request.app.state.http
 
+    if flow_control is not None and flow_control.has_plugins():
+        if fetch_metrics is not None:
+            # Gate on this request's stats, not the previous request's.
+            await asyncio.gather(*[fetch_metrics(ep, inflight, session) for ep in endpoints])
+        try:
+            endpoints = await flow_control.admit(llm_req, endpoints)
+        except FlowControlClosedError:
+            return JSONResponse(status_code=503, content={"error": "scheduler shutting down"})
+
     async with scheduling_lock:
         if fetch_metrics is not None:
             await asyncio.gather(*[fetch_metrics(ep, inflight, session) for ep in endpoints])
@@ -138,6 +153,8 @@ async def schedule_and_proxy(  # noqa: PLR0913
             return JSONResponse(status_code=503, content={"error": "no worker selected"})
         winner = selected[0].endpoint
         inflight.increment(winner.name)
+        if flow_control is not None:
+            flow_control.commit(llm_req, winner)
 
     worker_url = str(winner.attributes["url"])
     # Forward client headers to the worker, minus hop-by-hop ones aiohttp resets itself.
@@ -154,6 +171,9 @@ async def schedule_and_proxy(  # noqa: PLR0913
         return JSONResponse(status_code=502, content={"error": "worker request failed"})
     finally:
         inflight.decrement(winner.name)
+        if flow_control is not None:
+            # Bookkeeping only: re-admission is driven by the metrics watcher.
+            flow_control.release(llm_req, winner.name)
 
 
 def _routing_body(body: dict) -> object:
@@ -180,7 +200,30 @@ def register_worker_routes(app: FastAPI, registry: WorkerRegistry) -> None:
         return JSONResponse(content={"workers": registry.list_workers_as_dicts()})
 
 
-def create_app(scheduler: Scheduler, metrics_refresh_ms: int = 100) -> FastAPI:
+def make_lifespan(
+    flow_control: FlowControlManager, poller: MetricsPoller | None = None
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+    """Lifespan that runs the poller (if any) and closes flow control on shutdown."""
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if poller is not None:
+            poller.start()
+        try:
+            async with lifespan(app):
+                yield
+        finally:
+            # Turn parked requests into 503s instead of hanging shutdown.
+            await flow_control.close()
+            if poller is not None:
+                poller.stop()
+
+    return _lifespan
+
+
+def create_app(
+    scheduler: Scheduler, metrics_refresh_ms: int = 100, flow_poll_interval_s: float = 0.1
+) -> FastAPI:
     """Build the slime router FastAPI app around a configured Scheduler."""
     registry = WorkerRegistry()
     inflight = InflightStore()
@@ -189,17 +232,18 @@ def create_app(scheduler: Scheduler, metrics_refresh_ms: int = 100) -> FastAPI:
         registry.endpoints, inflight, fetch_worker_metrics, interval_ms=metrics_refresh_ms
     )
 
-    @asynccontextmanager
-    async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-        """Run the poller for the app's lifetime, around the shared-session lifespan."""
-        poller.start()
-        try:
-            async with lifespan(app):
-                yield
-        finally:
-            poller.stop()
+    async def _live_endpoints() -> list[Endpoint]:  # noqa: RUF029  (GetEndpoints is async)
+        # The MetricsPoller refreshes routing_stats in place on these objects.
+        return registry.endpoints()
 
-    app = FastAPI(title="slime sampling router", lifespan=_lifespan)
+    flow_control = FlowControlManager(
+        scheduler.get_flow_control_plugins,
+        _live_endpoints,
+        poll_interval_s=flow_poll_interval_s,
+    )
+
+    app = FastAPI(title="slime sampling router", lifespan=make_lifespan(flow_control, poller))
+    app.state.flow_control = flow_control
     app.state.poller = poller
     app.state.last_stale_warn = 0.0
     stale_after = max(0.5, 5 * metrics_refresh_ms / 1000.0)
@@ -230,6 +274,7 @@ def create_app(scheduler: Scheduler, metrics_refresh_ms: int = 100) -> FastAPI:
             fetch_metrics=None,
             routing_body=_routing_body,
             generate_path="/generate",
+            flow_control=flow_control,
         )
 
     return app

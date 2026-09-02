@@ -23,13 +23,15 @@ from fastapi.responses import JSONResponse
 
 from integration.slime.server import (
     WorkerRegistry,
-    lifespan,
+    make_lifespan,
     register_worker_routes,
     schedule_and_proxy,
 )
 from py_inference_scheduler import Scheduler
+from py_inference_scheduler.core.flow_control import FlowControlManager
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.datalayer.metrics.vime.vllm import fetch_worker_metrics
+from py_inference_scheduler.framework import Endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -62,13 +64,30 @@ def _routing_body(body: dict) -> object:
     return body.get("token_ids", [])
 
 
-def create_app(scheduler: Scheduler) -> FastAPI:
+def create_app(scheduler: Scheduler, flow_poll_interval_s: float = 0.1) -> FastAPI:
     """Build the vime router FastAPI app around a configured Scheduler."""
     registry = VimeWorkerRegistry()
     inflight = InflightStore()
     scheduling_lock = asyncio.Lock()
 
-    app = FastAPI(title="vime sampling router", lifespan=lifespan)
+    async def _scraped_endpoints() -> list[Endpoint]:
+        # vime has no background poller: the flow-control watcher scrapes itself.
+        endpoints = registry.endpoints()
+        if endpoints:
+            session = app.state.http
+            await asyncio.gather(
+                *[fetch_worker_metrics(ep, inflight, session) for ep in endpoints]
+            )
+        return endpoints
+
+    flow_control = FlowControlManager(
+        scheduler.get_flow_control_plugins,
+        _scraped_endpoints,
+        poll_interval_s=flow_poll_interval_s,
+    )
+
+    app = FastAPI(title="vime sampling router", lifespan=make_lifespan(flow_control))
+    app.state.flow_control = flow_control
 
     # adds /workers endpoints
     register_worker_routes(app, registry)
@@ -98,6 +117,7 @@ def create_app(scheduler: Scheduler) -> FastAPI:
             fetch_metrics=fetch_worker_metrics,
             routing_body=_routing_body,
             generate_path="/inference/v1/generate",
+            flow_control=flow_control,
         )
 
     return app

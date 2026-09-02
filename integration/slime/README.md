@@ -72,6 +72,8 @@ python -m integration.slime --host 0.0.0.0 --port 8000 --metrics-refresh-ms 100
 
 It uses the bundled `examples/scheduler.yaml` by default; pass `--config /path/to/your.yaml` to
 override with a custom policy. The poll intervals for metrics is set by `--metrics-refresh-ms`(default is 100ms).
+With a `flow_control` plugin configured (see `docs/simple_backpressure.md`), `--flow-poll-interval-s`
+(default 0.1) sets how often queued requests re-check worker metrics for re-admission.
 
 Then point slime at it — the **only** change to slime's launch is two flags:
 
