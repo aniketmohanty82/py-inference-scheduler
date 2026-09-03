@@ -79,6 +79,8 @@ spec:
               value: "kubernetes"
             - name: RLS_SANDBOX_CONCURRENCY
               value: "128"
+            - name: RLLM_HARNESS_RUN_TIMEOUT_S
+              value: "7200"
             - name: RLLM_MSWEA_STEP_LIMIT
               value: "25"
             - name: ROUTER_CONFIG_PATH
@@ -162,6 +164,8 @@ spec:
               value: "kubernetes"
             - name: RLS_SANDBOX_CONCURRENCY
               value: "128"
+            - name: RLLM_HARNESS_RUN_TIMEOUT_S
+              value: "7200"
             - name: RLLM_MSWEA_STEP_LIMIT
               value: "25"
             - name: ROUTER_CONFIG_PATH
