@@ -66,7 +66,7 @@ spec:
           serviceAccountName: rllm-sandbox-runner
           containers:
           - name: ray-head
-            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:6e9365e9967a997f4e6d9670d7d94d42c15de7f951987f5a5d267a35d881ff55
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:0266993e90f84845b2891b87ac3a21c4faa024f7bd597b722084cc1ac358c6b0
             imagePullPolicy: Always
             ports:
             - containerPort: 6379
@@ -151,7 +151,7 @@ spec:
             effect: NoSchedule
           containers:
           - name: ray-worker
-            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:6e9365e9967a997f4e6d9670d7d94d42c15de7f951987f5a5d267a35d881ff55
+            image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:0266993e90f84845b2891b87ac3a21c4faa024f7bd597b722084cc1ac358c6b0
             imagePullPolicy: Always
             securityContext:
               capabilities:
