@@ -41,6 +41,15 @@ echo "deleted $COUNT orphan sandbox pods"
 
 echo "== 3/4 store registry reset (S3a) =="
 k delete pod -l app=mooncake-master --wait=false
+# Wait for the REPLACEMENT pod to be Ready before verifying: polling the
+# deployment too early answers from the old terminating pod, and a
+# replacement scheduled onto a cold node pulls the 18GB image for many
+# minutes - engines that start meanwhile fail MooncakeDistributedStore init
+# (lost the race by seconds on 09-02).
+if ! k rollout status deploy/mooncake-master --timeout=900s > /dev/null 2>&1; then
+  echo "FAIL: mooncake-master rollout not Ready within 15min"
+  exit 1
+fi
 CAP=unknown
 for _ in $(seq 1 30); do
   sleep 5
