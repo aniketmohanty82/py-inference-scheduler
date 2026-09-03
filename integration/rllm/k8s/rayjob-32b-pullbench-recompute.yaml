@@ -35,6 +35,7 @@ spec:
     ++actor_rollout_ref.actor.ulysses_sequence_parallel_size=4
     ++actor_rollout_ref.actor.entropy_from_logits_with_chunking=true
     ++actor_rollout_ref.actor.entropy_checkpointing=true
+    ++actor_rollout_ref.actor.fsdp_config.offload_policy=True
     ++actor_rollout_ref.model.enable_gradient_checkpointing=True
     actor_rollout_ref.rollout.tensor_model_parallel_size=2
     data.max_prompt_length=16384
