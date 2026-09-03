@@ -260,6 +260,26 @@ index faf97e79..986a3c1f 100644
  
  
  def is_local_sandbox_backend(name: str | None) -> bool:
+diff --git a/rllm/harnesses/cli_harness.py b/rllm/harnesses/cli_harness.py
+index a837c2bd..d0992895 100644
+--- a/rllm/harnesses/cli_harness.py
++++ b/rllm/harnesses/cli_harness.py
+@@ -287,7 +287,14 @@ class BaseCliHarness(SandboxedAgentFlow):
+         self.write_configs(sandbox, task, config, env_vars)
+ 
+         instruction = str(task.instruction).strip()
+-        timeout = float(task.metadata.get("agent_timeout", self.run_timeout))
++        # An explicitly-set operator env overrides the task's baked default:
++        # r2egym task.toml ships [agent] timeout_sec=1800, so once task.toml
++        # metadata merging landed, every trajectory was silently capped at
++        # 30min and RLLM_HARNESS_RUN_TIMEOUT_S became dead interface.
++        if env_int("RLLM_HARNESS_RUN_TIMEOUT_S", 0):
++            timeout = float(self.run_timeout)
++        else:
++            timeout = float(task.metadata.get("agent_timeout", self.run_timeout))
+         cmd = self.build_invocation(instruction, task, config)
+ 
+         try:
 diff --git a/rllm/hooks.py b/rllm/hooks.py
 index 39a0bb13..c5785721 100644
 --- a/rllm/hooks.py
