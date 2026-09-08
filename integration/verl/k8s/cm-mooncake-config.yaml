@@ -1,10 +1,18 @@
 # Overrides the shared mooncake-config for the verl SWE A/B cluster.
+#
 # Every vLLM TP-rank process mounts its own global segment as pinned host
-# memory - verl's 4 engines at tp=2 mean 8 mounts on the 8-GPU worker.
-# 512gb x 8 OOMKilled the ray-worker container (2026-09-08T10:01Z, exit 137);
-# 256gb x 8 = 2TiB tripped Ray's 95% memory monitor (10:35Z, 22 workers
-# killed, 8 x ~262GB VLLM::Worker_TP RSS recorded in the kill report).
-# 128gb x 8 = 1TiB total store, matching the rllm rig's capacity gate.
+# memory - verl's 4 engines at tp=2 mean 8 mounts on the 8-GPU worker. Sizing
+# history, all recorded:
+#   512gb x 8 = 4TiB   -> ray-worker OOMKilled (exit 137, 2026-09-08T10:01Z)
+#   256gb x 8 = 2TiB   -> Ray memory monitor killed 22 workers (95% threshold)
+#   128gb x 8 = 1TiB   -> ran, but the GPU node died at every store teardown
+#                         (5 of 5; kernel logs lost to the reboot each time)
+#   32gb  x 8 = 256GiB -> current
+#
+# 256GiB is still ~6x one step's logical KV (64 trajectories x ~12k tokens x
+# 56KiB/token for Qwen2.5-7B GQA), so the store is not the binding constraint;
+# it just stops pinning a quarter of host RAM per rank. If it fills, mooncake
+# evicts, which is the realistic regime anyway.
 apiVersion: v1
 data:
   mooncake_config.json: |
@@ -14,7 +22,7 @@ data:
       "master_server_address": "mooncake-master.default.svc.cluster.local:50051",
       "protocol": "rdma",
       "device_name": "",
-      "global_segment_size": "128gb",
+      "global_segment_size": "32gb",
       "local_buffer_size": "4gb"
     }
 kind: ConfigMap
