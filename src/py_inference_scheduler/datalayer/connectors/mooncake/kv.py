@@ -1,0 +1,114 @@
+# Copyright 2026 llm-d
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import annotations
+
+import os
+
+ENABLE_ENV = "ENABLE_MOONCAKE_KV"
+OVERSCHEDULING_ENABLE_ENV = "ENABLE_MOONCAKE_OVERSCHEDULING"
+
+# Leading blocks the overscheduling scheduler never evicts (the shared
+# system-prompt prefix). Required when overscheduling is enabled.
+PRESERVE_PREFIX_ENV = "MOONCAKE_OVERSCHEDULING_PRESERVE_PREFIX_BLOCKS"
+
+# KV usage below which finished turns keep their blocks; 0 always offloads.
+MIN_KV_USAGE_ENV = "MOONCAKE_OVERSCHEDULING_MIN_KV_USAGE"
+
+# vLLM workers import the connector from this path.
+_CONNECTOR_MODULE = "py_inference_scheduler.datalayer.connectors.mooncake.decode_save"
+
+# vLLM resolves the scheduler subclass from this path inside engine workers.
+_OVERSCHEDULING_SCHEDULER_CLS = (
+    "py_inference_scheduler.datalayer.connectors.mooncake.overschedule"
+    ".OverschedulingScheduler"
+)
+
+# Default when MOONCAKE_CONFIG_PATH is not set
+_DEFAULT_CONFIG_PATH = "/etc/mooncake/mooncake_config.json"
+
+
+def mooncake_enabled() -> bool:
+    return os.environ.get(ENABLE_ENV) == "1"
+
+
+def overscheduling_enabled() -> bool:
+    """Raises rather than returning False when the store flag is missing."""
+    if os.environ.get(OVERSCHEDULING_ENABLE_ENV) != "1":
+        return False
+    if not mooncake_enabled():
+        # Evicting KV without a store copy discards it; refuse to run half-on.
+        raise RuntimeError(
+            f"{OVERSCHEDULING_ENABLE_ENV}=1 requires {ENABLE_ENV}=1"
+        )
+    return True
+
+
+def _preserve_prefix_blocks() -> int:
+    raw = os.environ.get(PRESERVE_PREFIX_ENV)
+    if raw is None or not raw.isdigit():
+        raise RuntimeError(
+            f"{PRESERVE_PREFIX_ENV} must be a non-negative integer when"
+            f" {OVERSCHEDULING_ENABLE_ENV}=1"
+        )
+    return int(raw)
+
+
+def _min_kv_usage() -> float:
+    raw = os.environ.get(MIN_KV_USAGE_ENV)
+    try:
+        usage = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        usage = -1.0
+    if not 0.0 <= usage <= 1.0:
+        raise RuntimeError(
+            f"{MIN_KV_USAGE_ENV} must be a float in [0, 1] when"
+            f" {OVERSCHEDULING_ENABLE_ENV}=1"
+        )
+    return usage
+
+
+def mooncake_engine_kwargs() -> dict:
+    # sha256_cbor is stable across Python versions and sha isn't.
+    extra_config: dict = {"save_decode_kv": True}
+    kwargs: dict = {
+        "kv_transfer_config": {
+            "kv_connector": "DecodeKVSavingConnector",
+            "kv_connector_module_path": _CONNECTOR_MODULE,
+            "kv_role": "kv_both",
+            "kv_connector_extra_config": extra_config,
+        },
+        "prefix_caching_hash_algo": "sha256_cbor",
+    }
+    if overscheduling_enabled():
+        extra_config["preserve_prefix_blocks"] = _preserve_prefix_blocks()
+        extra_config["min_kv_usage"] = _min_kv_usage()
+        kwargs["scheduler_cls"] = _OVERSCHEDULING_SCHEDULER_CLS
+    return kwargs
+
+
+def mooncake_env_vars() -> dict:
+    return {
+        # Seeds vLLM's block-hash chain; must match on every replica.
+        "PYTHONHASHSEED": "0",
+        "MOONCAKE_CONFIG_PATH": os.environ.get(
+            "MOONCAKE_CONFIG_PATH", _DEFAULT_CONFIG_PATH
+        ),
+        # Error out if no RDMA verbs device exists instead of silent TCP.
+        "MC_FORCE_HCA": "1",
+        # GKE COS nodes have no nvidia-peermem module that I found; GPU KV registration
+        # must go through the dmabuf path (ibv_reg_dmabuf_mr).
+        # removable for non GKE COS nodes that have peermem.
+        "WITH_NVIDIA_PEERMEM": "0",
+    }
