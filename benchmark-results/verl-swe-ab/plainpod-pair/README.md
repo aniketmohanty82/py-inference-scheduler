@@ -38,8 +38,12 @@ init) are noted as a possible related signal.
 Consequence: step-1-only may be compared across arms; steps 2-12 of the
 store arm measure a corrupted serving path, and every store-favorable
 aggregate (gen time -24%, tool time -35%) is confounded by degenerate
-trajectories. Diagnosis (flush-between-steps isolation, TCP-vs-RDMA) is the
-gate for the next pair.
+trajectories.
+
+RESOLVED - see `../entropy-diagnosis/`: isolation runs exonerated the node
+and the external-load path and convicted vLLM sleep mode's page remapping
+under the connector's one-time RDMA registration of the KV pool. The next
+pair runs `free_cache_engine=False` in both arms.
 
 ## Not recorded
 
