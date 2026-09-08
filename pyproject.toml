@@ -68,6 +68,7 @@ module = [
     "transformers.*",
     "verl.*",
     "wandb.*",
+    "vllm.*"
 ]
 ignore_missing_imports = true
 
