@@ -1,0 +1,26 @@
+# Mid-run engine-counter observations, store arm, 2026-09-08 (UTC).
+# Recorded live via /metrics scrapes from inside ray-worker during the run;
+# the FINAL totals are lost - the GPU node rebooted at trainer teardown
+# (k8s event "Node ... has been rebooted", worker pod replaced) and took
+# /tmp/store_bysource.log with it. These are the scrape lines captured in
+# the operator session before the loss; engine attribution as shown.
+#
+# ~18:57Z, engine on port 34629:
+vllm:mooncake_store_operation_total{operation="save_exists",status="ok"} 184550.0
+vllm:mooncake_store_operation_total{operation="save_put",status="ok"} 184367.0
+vllm:mooncake_store_operation_total{operation="load_get",status="ok"} 98.0
+vllm:mooncake_store_operation_keys_total{operation="save_exists",status="ok"} 1.47392913e+08
+vllm:mooncake_store_operation_keys_total{operation="save_put",status="ok"} 206603.0
+vllm:mooncake_store_operation_keys_total{operation="load_get",status="ok"} 1442.0
+vllm:mooncake_store_operation_failed_keys_total{operation="save_exists",status="ok"} 0.0
+vllm:mooncake_store_operation_failed_keys_total{operation="save_put",status="ok"} 0.0
+vllm:mooncake_store_operation_failed_keys_total{operation="load_get",status="ok"} 0.0
+#
+# ~19:03Z, engine="0":
+vllm:prompt_tokens_by_source_total{source="local_compute"} 240360.0
+vllm:prompt_tokens_by_source_total{source="local_cache_hit"} 1.3542992e+07
+vllm:prompt_tokens_by_source_total{source="external_kv_transfer"} 12768.0
+#
+# ~17:50Z, mooncake master (run start, after engines mounted):
+master_total_capacity_bytes 1099511627776
+master_allocated_bytes 619315200
