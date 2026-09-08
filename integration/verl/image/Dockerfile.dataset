@@ -1,0 +1,21 @@
+# Bakes the prepared SWE parquets into the A/B image.
+#
+# The dataset must exist on the Ray WORKER (verl loads it in an actor there),
+# but the swe-data PVC is RWO so only the head can mount it. Copying into the
+# worker's /tmp worked until the worker pod was replaced - which happened five
+# times, each time silently costing a run. 2 MB baked into the image is immune
+# to pod replacement, and it pins the exact dataset a result set was produced
+# from.
+#
+# Regenerate with k8s/swe-dataset-prep-job.yaml, then rebuild this layer.
+ARG BASE=us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe1
+FROM ${BASE}
+
+COPY integration/verl/image/dataset/train.parquet /opt/swe-data/train.parquet
+COPY integration/verl/image/dataset/test.parquet /opt/swe-data/test.parquet
+
+RUN python3 -c "\
+import pyarrow.parquet as pq; \
+t = pq.read_table('/opt/swe-data/train.parquet'); \
+e = pq.read_table('/opt/swe-data/test.parquet'); \
+print('DATASET GATE OK train=%d eval=%d' % (t.num_rows, e.num_rows))"

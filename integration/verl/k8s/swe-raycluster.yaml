@@ -21,7 +21,7 @@ spec:
         serviceAccountName: rllm-sandbox-runner
         containers:
         - name: ray-head
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe1
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe2
           imagePullPolicy: Always
           ports:
           - containerPort: 6379
@@ -81,7 +81,7 @@ spec:
           effect: NoSchedule
         containers:
         - name: ray-worker
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe1
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe2
           imagePullPolicy: Always
           securityContext:
             capabilities:
@@ -133,19 +133,27 @@ spec:
           - mountPath: /etc/mooncake
             name: mooncake-vol
         # Archival counter scrape: engines die with the job, so
-        # prompt_tokens_by_source must be captured live. Unfiltered, straight
-        # off each engine's /metrics, recoverable via `kubectl logs -c
-        # metrics-scraper` or Cloud Logging.
+        # prompt_tokens_by_source must be captured live. Output goes to this
+        # container's log, hence to Cloud Logging - the only sink that has
+        # survived the GPU node dying at store teardown.
         - name: metrics-scraper
           image: python:3.11-slim
           command: ["python", "-u", "-c"]
+          env:
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
           args:
             - |
-              import time, urllib.request
-              # verl's vLLM server actors bind ephemeral ports, and there is
-              # no gateway to enumerate them (unlike the rllm rig), so find
-              # listeners from /proc/net/tcp and keep the ones that answer
-              # /metrics with vllm: series.
+              import os, time, urllib.request
+              # verl's run_uvicorn binds each vLLM server to the POD IP on an
+              # ephemeral port, never to loopback - probing 127.0.0.1 is why
+              # this sidecar recorded nothing for the first two pairs. Pod
+              # containers share a netns, so /proc/net/tcp here does list the
+              # engines' listeners.
+              HOST = os.environ["POD_IP"]
+
               def listening_ports():
                   ports = set()
                   for path in ("/proc/net/tcp", "/proc/net/tcp6"):
@@ -156,7 +164,7 @@ spec:
                       for ln in lines:
                           f = ln.split()
                           if len(f) > 3 and f[3] == "0A":  # LISTEN
-                              ports.add(int(f[1].split(":")[1], 16))
+                              ports.add(int(f[1].rsplit(":", 1)[1], 16))
                   return sorted(p for p in ports if 1024 < p < 65535)
 
               known: set[int] = set()
@@ -164,7 +172,7 @@ spec:
                   for port in listening_ports():
                       try:
                           with urllib.request.urlopen(
-                              f"http://127.0.0.1:{port}/metrics", timeout=4
+                              f"http://{HOST}:{port}/metrics", timeout=4
                           ) as r:
                               text = r.read().decode()
                       except Exception:
