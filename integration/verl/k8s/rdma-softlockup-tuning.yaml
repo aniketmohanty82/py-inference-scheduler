@@ -1,0 +1,64 @@
+# Stops the GPU nodes from panicking when a process holding large RDMA
+# memory registrations exits.
+#
+# Recorded root cause (GCE serial console, node ...-b41j, two separate
+# panics at 128gb and 32gb segments - identical stack):
+#
+#   watchdog: BUG: soft lockup - CPU#N stuck for 22s! [VLLM::Worker_TP]
+#     __folio_put
+#     unpin_user_page_range_dirty_lock
+#     __ib_umem_release        [ib_uverbs]
+#     ib_dereg_mr_user         [ib_core]
+#     uverbs_destroy_ufile_hw  [ib_uverbs]
+#     ib_uverbs_close -> __fput -> do_exit
+#   Kernel panic - not syncing: softlockup: hung tasks
+#
+# On engine exit the kernel unpins every page of the registered segment in
+# one long loop. That work is legitimate, not a hang - but COS ships
+# kernel.softlockup_panic=1 with watchdog_thresh=10 (soft lockup declared at
+# ~2x thresh), so the kernel kills the node instead of waiting. Shrinking the
+# segment does NOT avoid it: 32gb panicked the same way as 128gb.
+#
+# Fix the policy, not the memory budget - capping host DRAM would defeat the
+# point of a host-memory KV tier:
+#   watchdog_thresh 10 -> 60   soft lockup only after ~120s
+#   softlockup_panic 1 -> 0    a soft lockup logs a warning instead of panicking
+#
+# Tradeoff: a genuinely wedged CPU no longer force-reboots these nodes; it is
+# logged and the pod-level watchdogs catch it. Scoped to the RDMA GPU pool.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: rdma-softlockup-tuning
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: rdma-softlockup-tuning
+  template:
+    metadata:
+      labels:
+        app: rdma-softlockup-tuning
+    spec:
+      hostPID: true
+      nodeSelector:
+        cloud.google.com/gke-networking-dra-driver: "true"
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: sysctl
+        image: gcr.io/google-containers/startup-script:v2
+        securityContext:
+          privileged: true
+        env:
+        - name: STARTUP_SCRIPT
+          value: |
+            #!/bin/bash
+            set -euo pipefail
+            sysctl -w kernel.watchdog_thresh=60
+            sysctl -w kernel.softlockup_panic=0
+            echo "rdma-softlockup-tuning applied: $(sysctl kernel.watchdog_thresh kernel.softlockup_panic)"
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
