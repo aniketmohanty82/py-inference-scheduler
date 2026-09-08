@@ -8,6 +8,10 @@
 # experiment name); everything else is shared, which is the invariant the
 # whole comparison rests on - see benchmark-results/.../METHODOLOGY.md.
 #
+# Sleep is disabled in BOTH arms (free_cache_engine=False): vLLM sleep-mode
+# page remapping corrupts the engine under the connector's one-time pinned
+# RDMA registration - see benchmark-results/verl-swe-ab/entropy-diagnosis.
+#
 # Routing is held constant: the scheduler hook is deliberately NOT installed
 # in either arm, so this measures KV offload alone and avoids PR #62's
 # "verl 0.8.x untested" hook caveat.
@@ -61,6 +65,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.mode=async \
     actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
     actor_rollout_ref.rollout.gpu_memory_utilization="$GMU" \
+    actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.n="$GROUP_N" \
     actor_rollout_ref.rollout.multi_turn.max_assistant_turns=25 \
