@@ -57,9 +57,19 @@ disallow_untyped_defs = false
 module = ["pytest.*", "ray.*"]
 follow_imports = "skip"
 
-# vllm is an engine-runtime dependency, never installed in the typecheck env.
+# Runtime-only deps of the verl integration: installed on the cluster, not in this env.
 [[tool.mypy.overrides]]
-module = ["vllm.*"]
+module = [
+    "datasets.*",
+    "omegaconf.*",
+    "pandas.*",
+    "safetensors.*",
+    "torch.*",
+    "transformers.*",
+    "verl.*",
+    "wandb.*",
+    "vllm.*"
+]
 ignore_missing_imports = true
 
 [tool.ruff]

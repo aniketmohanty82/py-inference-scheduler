@@ -19,16 +19,24 @@ import argparse
 from fastapi import FastAPI
 
 from integration.slime.__main__ import run
-from integration.vime.server import create_app
+from integration.tunix.server import create_app
 from py_inference_scheduler import Scheduler
+
+_DEFAULT_CONFIG = "integration/tunix/examples/scheduler.yaml"
 
 
 def _app(scheduler: Scheduler, args: argparse.Namespace) -> FastAPI:
+    del args  # decision service has no extra knobs
     return create_app(scheduler)
 
 
 def main() -> None:
-    run(_app, description="sampling scheduler for vime", framework="vime")
+    run(
+        _app,
+        description="rollout decision scheduler for tunix",
+        framework="tunix",
+        default_config=_DEFAULT_CONFIG,
+    )
 
 
 if __name__ == "__main__":

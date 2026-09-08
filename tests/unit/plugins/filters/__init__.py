@@ -11,25 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import annotations
-
-import argparse
-
-from fastapi import FastAPI
-
-from integration.slime.__main__ import run
-from integration.vime.server import create_app
-from py_inference_scheduler import Scheduler
-
-
-def _app(scheduler: Scheduler, args: argparse.Namespace) -> FastAPI:
-    return create_app(scheduler)
-
-
-def main() -> None:
-    run(_app, description="sampling scheduler for vime", framework="vime")
-
-
-if __name__ == "__main__":
-    main()
