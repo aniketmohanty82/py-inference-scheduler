@@ -1,0 +1,57 @@
+# Build the SWE parquets in-cluster (the image already carries datasets/
+# pandas/pyarrow) and drop them on a PVC every Ray pod can read.
+#
+# Image refs are rewritten to our in-region AR mirror at prep time, so the
+# sandbox pods never pull from Docker Hub during a measured run.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: swe-dataset-prep2
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        cloud.google.com/gke-nodepool: bench-pool-64
+      containers:
+        - name: prep
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe0
+          workingDir: /opt/py-inference-scheduler
+          command: ["python3", "integration/verl/helpers/prepare_swe_dataset.py"]
+          args:
+            - --local_save_dir=/data/swe
+            - --max_train=256
+            - --max_eval=16
+            - --registry_rewrite
+            - namanjain12/=us-south1-docker.pkg.dev/aniket-gke-dev/swe-mirror/namanjain12/
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            - name: HF_HOME
+              value: /data/hf
+          resources:
+            requests:
+              cpu: "2"
+              memory: 16Gi
+          volumeMounts:
+            - name: swe-data
+              mountPath: /data
+      volumes:
+        - name: swe-data
+          persistentVolumeClaim:
+            claimName: swe-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: swe-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard-rwo

@@ -1,0 +1,201 @@
+# RayCluster for the verl-native SWE store-vs-recompute A/B.
+#
+# One cluster hosts BOTH arms (submitted sequentially via `ray job submit`),
+# which is what makes the pairing honest: same node, same engines' hardware,
+# same sandbox pool. Mooncake wiring is present in the cluster for both arms;
+# the store is only *used* by the arm that passes kv_transfer_config, so the
+# recompute arm is unaffected by its presence.
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: swe-ab
+spec:
+  rayVersion: "2.56.0"
+  headGroupSpec:
+    rayStartParams:
+      num-cpus: "0"
+      num-gpus: "0"
+      dashboard-host: "0.0.0.0"
+    template:
+      spec:
+        serviceAccountName: rllm-sandbox-runner
+        containers:
+        - name: ray-head
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe0
+          imagePullPolicy: Always
+          ports:
+          - containerPort: 6379
+            name: gcs
+          - containerPort: 8265
+            name: dashboard
+          env:
+          - name: PYTHONPATH
+            value: "/opt/py-inference-scheduler"
+          - name: PYTHONHASHSEED
+            value: "0"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          resources:
+            requests:
+              cpu: "3"
+              memory: 16Gi
+            limits:
+              cpu: "3"
+              memory: 16Gi
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+          - mountPath: /home/ray/data
+            name: swe-data
+        volumes:
+        - name: ray-tmp
+          emptyDir: {}
+        - name: swe-data
+          persistentVolumeClaim:
+            claimName: swe-data
+            readOnly: true
+  workerGroupSpecs:
+  - replicas: 1
+    minReplicas: 1
+    maxReplicas: 1
+    groupName: gpu-group
+    rayStartParams:
+      num-gpus: "8"
+    template:
+      spec:
+        serviceAccountName: rllm-sandbox-runner
+        nodeSelector:
+          cloud.google.com/gke-networking-dra-driver: "true"
+        tolerations:
+        - key: cloud.google.com/gke-queued
+          operator: Exists
+          effect: NoSchedule
+        - key: cloud.google.com/gke-spot
+          operator: Exists
+          effect: NoSchedule
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        containers:
+        - name: ray-worker
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe0
+          imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add: ["IPC_LOCK"]
+          env:
+          - name: PYTHONPATH
+            value: "/opt/py-inference-scheduler"
+          # Hash stability across processes - store keys are content hashes.
+          - name: PYTHONHASHSEED
+            value: "0"
+          - name: SWE_CMD_TIMEOUT_S
+            value: "60"
+          - name: MOONCAKE_CONFIG_PATH
+            value: "/etc/mooncake/mooncake_config.json"
+          - name: MC_FORCE_HCA
+            value: "1"
+          - name: WITH_NVIDIA_PEERMEM
+            value: "0"
+          # Fragmentation remedy; expandable_segments is BANNED here - it is
+          # IPC-incompatible with the checkpoint-engine weight sync.
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: "max_split_size_mb:512"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          - name: HUGGING_FACE_HUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          resources:
+            requests:
+              cpu: "100"
+              memory: 2200Gi
+              nvidia.com/gpu: "8"
+            limits:
+              cpu: "100"
+              memory: 2200Gi
+              nvidia.com/gpu: "8"
+            claims:
+            - name: rdma
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+          - mountPath: /dev/shm
+            name: dshm
+          - mountPath: /etc/mooncake
+            name: mooncake-vol
+        # Archival counter scrape: engines die with the job, so
+        # prompt_tokens_by_source must be captured live. Unfiltered, straight
+        # off each engine's /metrics, recoverable via `kubectl logs -c
+        # metrics-scraper` or Cloud Logging.
+        - name: metrics-scraper
+          image: python:3.11-slim
+          command: ["python", "-u", "-c"]
+          args:
+            - |
+              import time, urllib.request
+              # verl's vLLM server actors bind ephemeral ports, and there is
+              # no gateway to enumerate them (unlike the rllm rig), so find
+              # listeners from /proc/net/tcp and keep the ones that answer
+              # /metrics with vllm: series.
+              def listening_ports():
+                  ports = set()
+                  for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+                      try:
+                          lines = open(path).read().splitlines()[1:]
+                      except OSError:
+                          continue
+                      for ln in lines:
+                          f = ln.split()
+                          if len(f) > 3 and f[3] == "0A":  # LISTEN
+                              ports.add(int(f[1].split(":")[1], 16))
+                  return sorted(p for p in ports if 1024 < p < 65535)
+
+              known: set[int] = set()
+              while True:
+                  for port in listening_ports():
+                      try:
+                          with urllib.request.urlopen(
+                              f"http://127.0.0.1:{port}/metrics", timeout=4
+                          ) as r:
+                              text = r.read().decode()
+                      except Exception:
+                          continue
+                      if "vllm:" not in text:
+                          continue
+                      if port not in known:
+                          known.add(port)
+                          print("ENGINE", port, flush=True)
+                      print("TS", int(time.time()), "PORT", port, flush=True)
+                      for line in text.splitlines():
+                          if not line.startswith("#"):
+                              print("M", port, line, flush=True)
+                  time.sleep(30)
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+        resourceClaims:
+        - name: rdma
+          resourceClaimTemplateName: mooncake-rdma-8
+        volumes:
+        - name: ray-tmp
+          emptyDir: {}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Gi
+        - name: mooncake-vol
+          configMap:
+            name: mooncake-config
