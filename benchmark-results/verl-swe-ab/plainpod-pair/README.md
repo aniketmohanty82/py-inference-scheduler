@@ -18,7 +18,28 @@ gVisor/agent-sandbox setup; the gVisor pair is a separate regime (S7).
 Both arms: zero `rollout-error` rewards. Rewards are ~all zero (recompute
 step 2 mean 0.015625 = exactly one solved trajectory, proving the grading
 path); Qwen2.5-7B rarely solves these tasks, so GRPO advantages are ~0 and
-policy drift across steps is negligible in both arms.
+weights are ~static across steps in both arms.
+
+## VALIDITY: store arm NOT comparable beyond step 1
+
+Recorded `actor/entropy` per step: recompute 0.24-0.30 for all 12 steps;
+store 0.287 at step 1, then 3.7-4.3 for steps 2-12. In the same window the
+store arm's `response_length/clip_ratio` jumps from 0.016 (step 1, matching
+recompute) to 0.19-0.44, per-trajectory LLM time triples, and total tokens
+inflate ~25%. Step 1 is the only step with an empty external store (nothing
+to load); external loads begin at step 2 after verl's per-step
+`reset_prefix_cache(reset_connector=True)`. With weights ~static (zero
+advantages), stale KV cannot explain this; the evidence points at the
+cross-step external-load path serving wrong KV while reporting success
+(`load_get` failed_keys=0). The mooncake transfer-engine P2P handshake
+errors in the store driver log ("malformed json ... length: 0", engine
+init) are noted as a possible related signal.
+
+Consequence: step-1-only may be compared across arms; steps 2-12 of the
+store arm measure a corrupted serving path, and every store-favorable
+aggregate (gen time -24%, tool time -35%) is confounded by degenerate
+trajectories. Diagnosis (flush-between-steps isolation, TCP-vs-RDMA) is the
+gate for the next pair.
 
 ## Not recorded
 
