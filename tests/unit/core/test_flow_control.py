@@ -211,59 +211,83 @@ def test_invalid_config_rejected():
         FlowControlManager(list, get_endpoints, max_admissions_per_tick=-1)
 
 
-class TestAimdWindow:
-    """Drive _drain_tick directly: deterministic AIMD arithmetic, no timers."""
+class BudgetGatePlugin(GatePlugin):
+    """Gate that opens for a set number of evaluations, then shuts again."""
 
-    def setup_method(self) -> None:
-        self.plugin = GatePlugin(open_=True)
+    def __init__(self) -> None:
+        super().__init__()
+        self.opens_remaining = 0
 
-        async def get_endpoints() -> Sequence[Endpoint]:
-            return []
+    def get_allowed_candidates(
+        self, request: LLMRequest, candidates: Sequence[Endpoint]
+    ) -> Sequence[Endpoint]:
+        if self.opens_remaining > 0:
+            self.opens_remaining -= 1
+            return list(candidates)
+        return []
 
-        self.manager = FlowControlManager(
-            lambda: [self.plugin], get_endpoints, poll_interval_s=0.02
-        )
 
-    def _park(self, n: int) -> list[asyncio.Future]:
-        loop = asyncio.get_event_loop()
-        futs = []
-        for i in range(n):
-            fut: asyncio.Future = loop.create_future()
-            self.manager._waiters.append((_req(f"r{i}"), fut))
-            futs.append(fut)
-        return futs
+async def _drain(manager: FlowControlManager, tasks: list[asyncio.Task], timeout=3.0) -> None:
+    await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
 
-    def _admitted(self, futs: list[asyncio.Future]) -> int:
-        return sum(1 for f in futs if f.done())
 
-    async def test_window_seeds_from_admissible_count_and_ramps(self):
-        futs = self._park(9)
-        window = self.manager._drain_tick([self.plugin], _eps(2), 0)
-        assert self._admitted(futs) == 2  # seeded from 2 admissible endpoints
-        assert window == 3  # +1 additive increase
-        window = self.manager._drain_tick([self.plugin], _eps(2), window)
-        assert self._admitted(futs) == 5
-        assert window == 4
+async def test_each_admission_is_regated_on_fresh_stats():
+    """The polls just before/after one admission inform the next one."""
+    plugin = BudgetGatePlugin()
+    manager, refreshes = _manager(plugin, _eps(1))
+    tasks = [asyncio.ensure_future(manager.admit(_req(rid), _eps())) for rid in ("a", "b")]
+    await asyncio.sleep(0.05)
+    assert manager.queue_depth() == 2
 
-    async def test_window_halves_when_gate_shuts_mid_episode(self):
-        self._park(3)
-        self.plugin.open = False
-        assert self.manager._drain_tick([self.plugin], _eps(2), 8) == 4
-        assert self.manager._drain_tick([self.plugin], _eps(2), 1) == 1  # floor at 1
+    plugin.opens_remaining = 1  # capacity for exactly one gate evaluation
+    await asyncio.sleep(0.08)
+    assert manager.queue_depth() == 1  # one admitted, second re-gated and re-parked
+    refreshes_after_first = len(refreshes)
 
-    async def test_window_resets_after_queue_drains(self):
-        futs = self._park(2)
-        window = self.manager._drain_tick([self.plugin], _eps(4), 0)
-        assert self._admitted(futs) == 2
-        assert window == 0  # reseeded on the next parked episode
+    plugin.opens_remaining = 1
+    await _drain(manager, tasks)
+    # The second admission required its own endpoint refresh, not a shared snapshot.
+    assert len(refreshes) > refreshes_after_first
 
-    async def test_max_admissions_per_tick_caps_the_window(self):
-        self.manager._max_admissions_per_tick = 1
-        futs = self._park(5)
-        window = self.manager._drain_tick([self.plugin], _eps(4), 0)
-        assert self._admitted(futs) == 1
-        assert window == 2  # capped to 1 this tick, still grows additively
 
-    async def test_no_endpoints_counts_as_shut_gate(self):
-        self._park(1)
-        assert self.manager._drain_tick([self.plugin], [], 6) == 3
+async def test_window_seeds_from_admissible_count_and_ramps():
+    plugin = GatePlugin()
+    manager, _ = _manager(plugin, _eps(3))
+    tasks = [asyncio.ensure_future(manager.admit(_req(f"r{i}"), _eps())) for i in range(5)]
+    await asyncio.sleep(0.05)
+    plugin.open = True
+    await _drain(manager, tasks)
+    # Seeded at 3 admissible endpoints; after a 3-admission streak it grew to 4.
+    assert manager._window == 4
+    assert manager._streak == 2
+
+
+async def test_window_decays_while_gate_stays_shut():
+    plugin = BudgetGatePlugin()
+    manager, _ = _manager(plugin, _eps(4))
+    tasks = [asyncio.ensure_future(manager.admit(_req(f"r{i}"), _eps())) for i in range(2)]
+    await asyncio.sleep(0.05)
+    plugin.opens_remaining = 1
+    await asyncio.sleep(0.08)
+    assert manager.queue_depth() == 1  # window seeded at 4 by the single admission
+    for _ in range(40):
+        if manager._window == 1:
+            break
+        await asyncio.sleep(0.02)
+    assert manager._window == 1  # closed evaluations halved it down to the floor
+    plugin.opens_remaining = 100
+    await _drain(manager, tasks)
+
+
+async def test_max_admissions_per_tick_caps_rate_and_paces_admissions():
+    plugin = GatePlugin()
+    manager, _ = _manager(plugin, _eps(4), max_admissions_per_tick=1)
+    tasks = [asyncio.ensure_future(manager.admit(_req(f"r{i}"), _eps())) for i in range(3)]
+    await asyncio.sleep(0.05)
+    plugin.open = True
+    t0 = asyncio.get_event_loop().time()
+    await _drain(manager, tasks)
+    elapsed = asyncio.get_event_loop().time() - t0
+    assert manager._window == 1  # cap held despite ramp attempts
+    # Rate 1 per 0.02s poll interval: 3 paced admissions cannot be instantaneous.
+    assert elapsed >= 0.03
