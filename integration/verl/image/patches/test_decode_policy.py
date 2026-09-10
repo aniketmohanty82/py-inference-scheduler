@@ -155,11 +155,14 @@ class FakeWorker:
 
 
 class FakeStore:
-    def __init__(self, rc=0):
-        self.rc, self.calls = rc, 0
+    """remove_all(force=bool) -> int count of keys removed (verified in-pod)."""
 
-    def remove_all(self):
+    def __init__(self, rc=0):
+        self.rc, self.calls, self.forced = rc, 0, None
+
+    def remove_all(self, force=False):
         self.calls += 1
+        self.forced = force
         return self.rc
 
 
@@ -189,6 +192,15 @@ def test_only_tp_rank_zero_issues_remove_all():
                "MooncakeStoreConnector.bind_connector_metadata"):
         c.bind_connector_metadata(types.SimpleNamespace(rls_flush_generation=1))
     assert w.store.calls == 0, "remove_all is global; one rank must issue it"
+
+
+def test_worker_flush_forces_past_leases():
+    w = FakeWorker(rc=25)
+    c = mk_flusher(worker=w)
+    with patch("py_inference_scheduler.datalayer.connectors.mooncake.decode_save."
+               "MooncakeStoreConnector.bind_connector_metadata"):
+        c.bind_connector_metadata(types.SimpleNamespace(rls_flush_generation=1))
+    assert w.store.forced is True, "leased keys survive a non-forced wipe"
 
 
 def test_worker_flush_survives_store_error():

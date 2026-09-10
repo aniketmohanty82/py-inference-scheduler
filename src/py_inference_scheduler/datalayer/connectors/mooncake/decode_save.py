@@ -165,15 +165,19 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
             self._flush_generation_seen = generation
             if worker.tp_rank == 0:
                 try:
-                    rc = worker.store.remove_all()
-                    if rc is not None and rc < 0:
-                        logger.warning("External KV flush failed (rc=%s)", rc)
-                    else:
-                        logger.warning(
-                            "Flushed external KV store on weight-update reset "
-                            "(generation %d)",
-                            generation,
-                        )
+                    # force=True skips the master's lease checks. Without it a
+                    # wipe removes only keys idle for the full 60s lease TTL,
+                    # so a boundary that follows recent reads silently clears
+                    # nothing (measured: 0 removed leased vs 25 with force).
+                    # Safe here: at a weight-update reset the engines are idle.
+                    # The return is a COUNT of keys removed, not a status.
+                    removed = worker.store.remove_all(force=True)
+                    logger.warning(
+                        "Flushed external KV store on weight-update reset "
+                        "(generation %d): removed %s keys",
+                        generation,
+                        removed,
+                    )
                 except Exception:
                     logger.exception("External KV flush raised")
         super().bind_connector_metadata(connector_metadata)
