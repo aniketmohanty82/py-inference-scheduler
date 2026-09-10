@@ -59,12 +59,45 @@ over the run (tier turns over at this scale) with no failures.
 |---|---|---|---|---|
 | timing_s/agent_loop/generate_sequences/mean | 197.22s | 82.45s | **-58.2%** | 3/4 |
 | timing_s/agent_loop/generate_sequences/max | 669.80s | 439.93s | -34.3% | 4/4 |
+| timing_s/agent_loop/slowest/generate_sequences | 308.56s | 60.86s | **-80.3%** | 2/4 |
+| timing_s/agent_loop/slowest/tool_calls | 862.91s | 1045.34s | +21.1% | 1/4 |
 | timing_s/gen | 1177.37s | 1111.65s | -5.6% | 2/4 |
 | timing_s/step | 1477.37s | 1409.26s | -4.6% | 2/4 |
 | timing_s/agent_loop/tool_calls/mean | 131.75s | 138.58s | +5.2% | 2/4 |
 | response_length/mean | 11,067 | 10,999 | -0.6% | 2/4 |
 | num_turns/mean | 47.59 | 47.13 | -1.0% | 4/4 |
 | critic/score/mean | 0.0508 | 0.0430 | -4.3% | 2/4 |
+| perf/throughput (NOT interpretable - see below) | 251.4 | 262.5 | +4.4% | - |
+| actor/perf/cpu_memory_used_gb | 157.6 | 1218.7 | +673% | - |
+| actor/grad_norm | 0.0022 | 0.0088 | +301% | - |
+
+The `slowest/*` pair is the clearest mechanical result in the table: on the
+critical-path trajectory, generation time fell 80.3% while that same
+trajectory's TOOL time rose 21.1%. The store did not shorten the makespan,
+it moved the bottleneck - the slowest trajectory stopped being LLM-limited
+and became purely sandbox-limited. That is why timing_s/gen barely moves.
+
+NOTE (perf/throughput is reported but must NOT be read as a serving
+result): verl computes it as `total_num_tokens / (timing_raw["step"] *
+n_gpus)` (`compute_throughout_metrics`, verl/trainer/ppo/metric_utils.py -
+note the upstream typo in the name). Both terms defeat it here. The
+numerator is tokens IN THE BATCH, identical across arms by construction
+(-0.6%), so the store's 3.97x reduction in tokens actually COMPUTED is
+invisible to it. The denominator is the full step wall clock, which this
+workload spends mostly idle waiting on gVisor sandboxes - engines were
+measured idle in 66% of samples in the low-pressure pair. The result is
+~251 vs ~262 tok/s/GPU for a 32B model on H200s, which is a sandbox
+measurement, not a serving one; excluding training only moves it to 315 vs
+332. verl emits no sampling-only throughput (`perf/*` is just throughput,
+time_per_step, total_num_tokens; `perf/mfu/actor_infer` is set from
+`old_log_prob_mfu`, a training-side pass). The rate that does discriminate
+is prompt tokens COMPUTED per sampling second: 1,541 vs 411 per GPU
+(DERIVED) - the same 3.8x as the by_source split.
+
+`actor/perf/cpu_memory_used_gb` records the store's host-memory cost: the
+8 x 128GB mooncake segments. `actor/grad_norm` rising 301% is a
+training-signal difference that moves with the entropy drift below; with
+N=4 it is reported, not explained.
 
 NOTE (read the -58.2% per step, not as a mean): step N draws the same 64
 tasks in both arms (seed 42), so per-step pairs are apples-to-apples, but
@@ -140,6 +173,25 @@ deadlocked; no in-flight cap can fix a pool below one working set. gmu 0.45
 gives 11,645 blocks = 186k tokens (~6-7 contexts) and the deadlock
 disappears while preemption pressure remains (KV peaks 0.995, 30-57
 preemptions).
+
+## Metric coverage and a parser defect
+
+The driver logs record **82 step metrics per arm**; this README discusses
+roughly 20. The omissions were audited after the fact rather than chosen:
+`slowest/*`, `perf/throughput`, `cpu_memory_used_gb` and `grad_norm` were
+recorded all along and are now included above. The full set is in the
+gzipped driver logs - `zgrep -a "step:[0-9]* - " <arm>_driver.log.gz`.
+
+One defect worth carrying forward, because it silently shrinks tables:
+`perf/throughput` is the LAST field on the step line, and Ray sometimes
+interleaves another actor's output onto that line, gluing an ANSI escape
+directly to the value (`246.019...\x1b[36m(TaskRunner`). A parser that
+anchors a field as `value(?= - |$)` then drops it - which is exactly what
+happened in store step 3, surfacing as a `KeyError` that was worked around
+by deleting the metric instead of fixing the parse. Any trailing metric can
+vanish this way. Parsers over these logs must strip ANSI first, tolerate
+trailing junk after the number, and assert that every step yields the same
+key set rather than silently intersecting them.
 
 ## Measurement caveats
 
