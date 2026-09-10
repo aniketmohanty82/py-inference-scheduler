@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 import uuid
 from typing import Callable, Sequence
@@ -206,7 +207,7 @@ class IGWRouter(RequestRouter):
 
         return LLMRequest(request_id=req_id, body=body, target_model=target_model)
 
-    async def choose_replicas(
+    async def choose_replicas(  # noqa: PLR0912
         self,
         candidate_replicas: list[RunningReplica],
         pending_request: PendingRequest | None = None,
