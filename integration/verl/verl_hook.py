@@ -31,7 +31,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
+from typing import Sequence
 
 import ray
 from omegaconf import DictConfig  # type: ignore[import-not-found]
@@ -60,6 +62,7 @@ except ImportError:  # modern layout (verl v0.9.x)
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
 from py_inference_scheduler import Scheduler
+from py_inference_scheduler.core.flow_control import FlowControlClosedError, FlowControlManager
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.datalayer.metrics.verl.fetch_metrics import fetch_worker_metrics
 from py_inference_scheduler.framework import Endpoint, LLMRequest
@@ -88,28 +91,56 @@ class _SchedulerCore:
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
+        self.flow_control = FlowControlManager(
+            self.scheduler.get_flow_control_plugins,
+            self._refresh_endpoints,
+            poll_interval_s=float(os.environ.get("FLOW_CONTROL_POLL_S", "0.1")),
+        )
 
-    async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
-        """Refresh metrics and pick an endpoint; None means fall back to verl's LB.
-
-        The lock makes metric refresh part of the scheduling task itself:
-        verl composes the whole batch before any task runs, so an independent
-        poller task would never be interleaved by the FIFO event loop.
-        """
+    async def _refresh_endpoints(self) -> Sequence[Endpoint]:
+        """Scrape every engine and republish inflight counts (flow-control poll source)."""
         async with self.lock:
             await asyncio.gather(
                 *(fetch_worker_metrics(ep, self.inflight_store) for ep in self.endpoints)
             )
             for ep in self.endpoints:
                 ep.attributes["queue_len"] = self.inflight_store.get(ep.name)
+        return self.endpoints
 
-            request = LLMRequest(request_id=request_id, body=prompt_ids)
-            selected = self.scheduler.run(request, candidates=self.endpoints)
+    async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
+        """Refresh metrics and pick an endpoint; None means fall back to verl's LB.
+
+        Metric refresh is part of the scheduling task itself: verl composes the
+        whole batch before any task runs, so an independent poller task would
+        never be interleaved by the FIFO event loop.
+        """
+        request = LLMRequest(request_id=request_id, body=prompt_ids)
+        candidates: Sequence[Endpoint] = await self._refresh_endpoints()
+
+        if candidates and self.flow_control.has_plugins():
+            # Park OUTSIDE self.lock: the flow-control watcher refreshes through
+            # the same lock, so holding it while parked would deadlock. Parking
+            # also yields the loop, which is what lets the watcher run at all
+            # under verl's compose-then-run batch pattern.
+            try:
+                candidates = await self.flow_control.admit(request, candidates)
+            except FlowControlClosedError:
+                return None
+            if not candidates:
+                return None
+
+        async with self.lock:
+            selected = self.scheduler.run(request, candidates=candidates)
             if not selected:
                 return None
             winner: Endpoint = selected[0].endpoint
             self.inflight_store.increment(winner.name)
+            self.flow_control.commit(request, winner)
             return winner
+
+    def release(self, server_id: str, request_id: str | None = None) -> None:
+        self.inflight_store.decrement(server_id)
+        self.flow_control.release(LLMRequest(request_id=request_id or "", body=None), server_id)
 
 
 if _VERL_LAYOUT == "legacy":
@@ -150,7 +181,7 @@ if _VERL_LAYOUT == "legacy":
             return winner.name, winner.attributes["replica_obj"]
 
         def _release_server(self, server_id: str, request_id: str | None = None) -> None:
-            self.core.inflight_store.decrement(server_id)
+            self.core.release(server_id, request_id)
             if request_id and request_id in self.core.lb_acquired_requests:
                 super()._release_server(server_id)
                 self.core.lb_acquired_requests.remove(request_id)
@@ -266,7 +297,7 @@ else:  # modern layout
             return winner.name, winner.attributes["replica_obj"]
 
         def _release_server(self, server_id: str, request_id: str | None = None) -> None:
-            self.core.inflight_store.decrement(server_id)
+            self.core.release(server_id, request_id)
             if request_id and request_id in self.core.lb_acquired_requests:
                 super()._release_server(server_id)
                 self.core.lb_acquired_requests.remove(request_id)
