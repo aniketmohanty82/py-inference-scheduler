@@ -21,7 +21,7 @@ spec:
         serviceAccountName: rllm-sandbox-runner
         containers:
         - name: ray-head
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe2
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe8
           imagePullPolicy: Always
           ports:
           - containerPort: 6379
@@ -81,7 +81,7 @@ spec:
           effect: NoSchedule
         containers:
         - name: ray-worker
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe2
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe8
           imagePullPolicy: Always
           securityContext:
             capabilities:
@@ -94,6 +94,25 @@ spec:
             value: "0"
           - name: SWE_CMD_TIMEOUT_S
             value: "60"
+          # Upstream-matched regime (pair 3): fatter tool observations
+          # lengthen contexts toward the response cap.
+          - name: SWE_OBS_MAX_CHARS
+            value: "20000"
+          # Decode-save aggregation + minimum-pull threshold (see
+          # src/.../mooncake/decode_save.py; both arms identical).
+          - name: RLS_DECODE_SAVE_MIN_BLOCKS
+            value: "8"
+          - name: RLS_MIN_PULL_TOKENS
+            value: "1024"
+          # Load/done-signal ledger (bug-hunt diagnostics; unset to silence).
+          - name: RLS_KV_LEDGER
+            value: "1"
+          # Cap concurrent async pulls: a load-waiter pre-allocates its full
+          # context, so unbounded admission deadlocked all 4 engines
+          # (running=0, KV 91-97%) at 256-wide. 6 x ~8k tokens leaves the
+          # 34k-token pool headroom to actually run requests.
+          - name: RLS_MAX_INFLIGHT_LOADS
+            value: "2"
           - name: MOONCAKE_CONFIG_PATH
             value: "/etc/mooncake/mooncake_config.json"
           - name: MC_FORCE_HCA

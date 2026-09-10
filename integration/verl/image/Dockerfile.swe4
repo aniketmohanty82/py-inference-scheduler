@@ -1,0 +1,15 @@
+# swe4 = swe3 + connector fix v2:
+#  - tolerant done-signal handling in vLLM's scheduler (the v1 rescue's
+#    only failure mode was `assert req_id in self.requests`; an unknown id
+#    means the blocks were already freed - drop and log, don't crash)
+#  - save-drain failsafe (SAVE_DRAIN_TIMEOUT_S, default 30): finished
+#    requests parked behind the save queue stop holding KV blocks forever;
+#    queued saves complete-as-skipped, in-flight transfers untouched
+#
+# Build: docker build -f integration/verl/image/Dockerfile.swe4 \
+#          -t us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe4 \
+#          <repo-root>
+FROM us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe3
+
+COPY integration/verl/image/patches/connector_fix_v2.py /tmp/connector_fix_v2.py
+RUN python3 /tmp/connector_fix_v2.py && rm /tmp/connector_fix_v2.py
