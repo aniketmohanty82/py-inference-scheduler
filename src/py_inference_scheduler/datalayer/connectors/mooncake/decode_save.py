@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import os
+
 from vllm.config import VllmConfig
 from vllm.distributed.kv_transfer.kv_connector.v1.base import (
     KVConnectorMetadata,
@@ -45,6 +47,26 @@ def should_save_decode_request(
     return num_computed_tokens >= prefill_end_tokens
 
 
+def should_flush_decode_save(
+    *,
+    token_len: int,
+    num_saved_tokens: int,
+    block_size: int,
+    min_blocks: int,
+) -> bool:
+    """Aggregate decode saves into batches of at least min_blocks full blocks.
+
+    Per-block emission produces one store put per 2MB block, each paying the
+    full RPC overhead (~3.9ms against ~40us of wire time on RDMA); measured
+    at 256-wide rollouts this made the save queue an admission governor.
+    Blocks that never reach a full batch before the request finishes are
+    simply not saved - the store is a cache, and losing the newest few
+    blocks costs at most one future partial hit.
+    """
+    aligned = token_len // block_size * block_size
+    return aligned - num_saved_tokens >= min_blocks * block_size
+
+
 class DecodeKVSavingConnector(MooncakeStoreConnector):
     """
     vllm only saves prompt KV to the store; this also saves decode KV.
@@ -66,6 +88,23 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
         )
         value = extra_config.get("save_decode_kv", False)
         self.save_decode_kv = value is True or str(value).lower() == "true"
+        # RLS_DECODE_SAVE_MIN_BLOCKS: emit a decode-save only once this many
+        # unsaved full blocks have accumulated (1 = legacy per-block saves).
+        self.save_min_blocks = max(1, int(os.getenv("RLS_DECODE_SAVE_MIN_BLOCKS", "1")))
+        # RLS_MIN_PULL_TOKENS: below this many externally-matched tokens,
+        # recompute locally instead of parking the request behind an async
+        # store pull (0 disables). Small pulls cost a scheduler round-trip
+        # plus ~45ms/op for KV that local prefill regenerates faster.
+        self.min_pull_tokens = int(os.getenv("RLS_MIN_PULL_TOKENS", "0"))
+        # RLS_MAX_INFLIGHT_LOADS: cap concurrent async pulls per engine
+        # (0 disables). A request awaiting an async load pre-allocates its
+        # full context and holds it until the load lands, so unbounded
+        # admission lets waiters own the entire KV pool - measured at
+        # 256-wide: all four engines at running=0, waiting~52, KV 91-97%,
+        # deadlocked because running requires blocks that only running can
+        # release. Declining a pull is always safe: the request recomputes.
+        self.max_inflight_loads = int(os.getenv("RLS_MAX_INFLIGHT_LOADS", "0"))
+        self._inflight_loads: set[str] = set()
 
     def get_num_new_matched_tokens(
         self,
@@ -91,12 +130,35 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
         matched: tuple[int, bool] = super().get_num_new_matched_tokens(
             request, num_computed_tokens
         )
+        if 0 < matched[0] < self.min_pull_tokens:
+            return 0, False
+        # matched[1] is load_kv_async: those are the pulls that park a
+        # request on pre-allocated blocks, so only those are capped.
+        if matched[0] > 0 and matched[1] and self.max_inflight_loads:
+            if len(self._inflight_loads) >= self.max_inflight_loads:
+                return 0, False
+            self._inflight_loads.add(request.request_id)
         return matched
 
     def build_connector_meta(
         self, scheduler_output: SchedulerOutput
     ) -> KVConnectorMetadata:
         meta = super().build_connector_meta(scheduler_output)
+        # A request that reaches the scheduled lists is no longer parked on
+        # its load, so it stops counting against the in-flight cap. Requests
+        # the scheduler dropped are cleared against its unfinished set,
+        # which is the only lifetime view available on this side.
+        if self._inflight_loads:
+            for req in scheduler_output.scheduled_new_reqs:
+                self._inflight_loads.discard(req.req_id)
+            self._inflight_loads.difference_update(
+                scheduler_output.scheduled_cached_reqs.req_ids
+            )
+            sched_now = self.connector_scheduler
+            if sched_now is not None:
+                self._inflight_loads.intersection_update(
+                    sched_now._unfinished_requests.keys()
+                )
         if not isinstance(meta, MooncakeStoreConnectorMetadata):
             return meta  # upstream returned a different metadata type
         if not self.save_decode_kv or self.kv_role == "kv_consumer":
@@ -133,6 +195,14 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
             tracker.token_len = max(tracker.token_len, true_token_len)
 
             tracker.update(new_block_ids)
+
+            if not should_flush_decode_save(
+                token_len=tracker.token_len,
+                num_saved_tokens=tracker.num_saved_tokens,
+                block_size=sched._block_size,
+                min_blocks=self.save_min_blocks,
+            ):
+                continue
 
             # returns None until a new full block has completed.
             req_meta = ReqMeta.from_request_tracker(

@@ -1,0 +1,20 @@
+# swe5 = swe2 + connector_v3 (structural fix; REPLACES swe3/swe4's leaf
+# patches by lineage - built from the clean swe2 base):
+#  - completion-on-error hook: every transfer-thread exception still emits
+#    the completion signal (recv: blocks invalidated first)
+#  - tolerant scheduler: unknown done-ids drop-and-log instead of assert
+#  - KV-free liveness watchdog (VLLM_KV_FREE_WATCHDOG_S, default 300s):
+#    lost signals degrade to a logged blip instead of silent engine death
+#
+# The unit suite runs at build time: vendored-code drift fails the build.
+#
+# Build: docker build -f integration/verl/image/Dockerfile.swe5 \
+#          -t us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe5 \
+#          <repo-root>
+FROM us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe2
+
+COPY integration/verl/image/patches/connector_v3.py \
+     integration/verl/image/patches/test_connector_v3.py /tmp/patches/
+RUN python3 /tmp/patches/connector_v3.py \
+    && python3 /tmp/patches/test_connector_v3.py \
+    && rm -rf /tmp/patches
