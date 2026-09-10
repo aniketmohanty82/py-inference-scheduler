@@ -1,0 +1,49 @@
+# Two scheduler policies for the flow-control A/B. The arms differ by exactly
+# the flow_control block; scorers/picker are identical.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-fc-off
+data:
+  scheduler.yaml: |
+    profile_handler:
+      type: single_profile
+    profiles:
+      backpressure:
+        scorers:
+          - type: waiting_queue
+            weight: 5.0
+          - type: least_queue
+            weight: 2.0
+          - type: kv_cache
+            weight: 1.0
+          - type: prefix_cache
+            weight: 1.0
+        picker:
+          type: max_score
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-fc-on
+data:
+  scheduler.yaml: |
+    profile_handler:
+      type: single_profile
+    profiles:
+      backpressure:
+        flow_control:
+          type: simple_backpressure
+          kv_threshold: 0.90
+          waiting_threshold: 4
+        scorers:
+          - type: waiting_queue
+            weight: 5.0
+          - type: least_queue
+            weight: 2.0
+          - type: kv_cache
+            weight: 1.0
+          - type: prefix_cache
+            weight: 1.0
+        picker:
+          type: max_score

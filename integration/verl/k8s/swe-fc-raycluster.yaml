@@ -1,0 +1,143 @@
+# RayCluster for the flow-control A/B on verl's native SWE agent loop.
+#
+# gke-rl-aniket-cluster: 8xH100 spot worker + CPU head. Both arms run on this
+# one cluster sequentially, so hardware/sandbox pool are identical across arms;
+# the arms differ ONLY by the scheduler ConfigMap mounted at /etc/scheduler
+# (flow_control block present or absent).
+#
+# Sandboxes run in agents-system (policy-exempt) via the default/default SA,
+# which swe_sandbox_rbac.yaml binds to the sandbox-manager Role.
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: swe-fc
+spec:
+  rayVersion: "2.56.0"
+  headGroupSpec:
+    rayStartParams:
+      num-cpus: "0"
+      num-gpus: "0"
+      dashboard-host: "0.0.0.0"
+    template:
+      spec:
+        nodeSelector:
+          cloud.google.com/gke-nodepool: default-pool
+        containers:
+        - name: ray-head
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe10
+          imagePullPolicy: IfNotPresent
+          ports:
+          - containerPort: 6379
+            name: gcs
+          - containerPort: 8265
+            name: dashboard
+          env:
+          - name: PYTHONHASHSEED
+            value: "0"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          resources:
+            requests:
+              cpu: "2"
+              memory: 8Gi
+            limits:
+              cpu: "3"
+              memory: 12Gi
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+          - mountPath: /home/ray/data/swe
+            name: swe-data
+          - mountPath: /etc/scheduler
+            name: scheduler-config
+        initContainers:
+        - name: data-downloader
+          image: google/cloud-sdk:slim
+          command:
+          - sh
+          - -c
+          - gcloud storage cp gs://aniketmohanty-slime-rl-data/swe-fc-ab/*.parquet /data/
+          volumeMounts:
+          - mountPath: /data
+            name: swe-data
+        volumes:
+        - name: ray-tmp
+          emptyDir: {}
+        - name: swe-data
+          emptyDir: {}
+        - name: scheduler-config
+          configMap:
+            name: scheduler-fc-off
+  workerGroupSpecs:
+  - replicas: 1
+    minReplicas: 1
+    maxReplicas: 1
+    groupName: gpu-group
+    rayStartParams:
+      num-gpus: "8"
+    template:
+      spec:
+        nodeSelector:
+          cloud.google.com/gke-nodepool: a3-spot-pool
+        tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        - key: cloud.google.com/gke-spot
+          operator: Exists
+          effect: NoSchedule
+        containers:
+        - name: ray-worker
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe10
+          imagePullPolicy: IfNotPresent
+          env:
+          - name: PYTHONHASHSEED
+            value: "0"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          resources:
+            requests:
+              cpu: "80"
+              memory: 800Gi
+              nvidia.com/gpu: "8"
+            limits:
+              cpu: "100"
+              memory: 1000Gi
+              nvidia.com/gpu: "8"
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+          - mountPath: /dev/shm
+            name: shm
+          - mountPath: /home/ray/data/swe
+            name: swe-data
+          - mountPath: /etc/scheduler
+            name: scheduler-config
+        initContainers:
+        - name: data-downloader
+          image: google/cloud-sdk:slim
+          command:
+          - sh
+          - -c
+          - gcloud storage cp gs://aniketmohanty-slime-rl-data/swe-fc-ab/*.parquet /data/
+          volumeMounts:
+          - mountPath: /data
+            name: swe-data
+        volumes:
+        - name: ray-tmp
+          emptyDir: {}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 200Gi
+        - name: swe-data
+          emptyDir: {}
+        - name: scheduler-config
+          configMap:
+            name: scheduler-fc-off
