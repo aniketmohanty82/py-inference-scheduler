@@ -1,0 +1,20 @@
+# swe10 = swe2 + connector_v3 (structural: undroppable completion, tolerant
+# scheduler, liveness watchdog with recv force-fail recovery, load ledger)
+#       + decode_save policy knobs (RLS_DECODE_SAVE_MIN_BLOCKS aggregation,
+#         RLS_MIN_PULL_TOKENS threshold) from the repo source.
+# Unit suites run at build time; drift fails the build.
+#
+# Build: docker build -f integration/verl/image/Dockerfile.swe10 \
+#          -t us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe10 \
+#          <repo-root>
+FROM us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe2
+
+COPY src/py_inference_scheduler/datalayer/connectors/mooncake/decode_save.py \
+     /opt/py-inference-scheduler/src/py_inference_scheduler/datalayer/connectors/mooncake/decode_save.py
+COPY integration/verl/image/patches/connector_v3.py \
+     integration/verl/image/patches/test_connector_v3.py \
+     integration/verl/image/patches/test_decode_policy.py /tmp/patches/
+RUN python3 /tmp/patches/connector_v3.py \
+    && python3 /tmp/patches/test_connector_v3.py \
+    && PYTHONPATH=/opt/py-inference-scheduler/src python3 /tmp/patches/test_decode_policy.py \
+    && rm -rf /tmp/patches
