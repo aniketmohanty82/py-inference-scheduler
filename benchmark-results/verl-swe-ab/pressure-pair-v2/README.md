@@ -33,19 +33,19 @@ tier.
 
 | source | recompute | share | store | share |
 |---|---|---|---|---|
-| local_compute (true prefill) | 58,065,234 | 38.26% | **14,619,750** | **9.76%** |
+| local_compute | 58,065,234 | 38.26% | **14,619,750** | **9.76%** |
 | local_cache_hit | 93,707,616 | 61.74% | 119,627,440 | 79.86% |
 | external_kv_transfer | 0 | 0% | 15,545,040 | 10.38% |
 | TOTAL (= prompt_tokens_total) | 151,772,850 | | 149,792,230 | |
 
-Workloads matched to 1.3% on total prompt tokens. **True prefill compute:
-58.1M -> 14.6M tokens = 3.97x reduction** - the headline result, and the
-one that does not depend on timing noise.
+Workloads matched to 1.3% on total prompt tokens. **local_compute: 58.1M -> 14.6M
+tokens = 3.97x reduction** - the headline result, and the one that does not
+depend on timing noise.
 
 Note the second-order effect: the store arm's LOCAL cache-hit share is also
 higher (79.9% vs 61.7%) and its per-engine prefix-hit rates run 29-67% vs
-21-27%. Restored KV is cached locally on arrival, so the external tier
-raises local hit rate rather than competing with it. The store arm also
+21-27%. external_kv_transfer tokens are cached locally on arrival, so the external
+tier raises local_cache_hit rather than competing with it. The store arm also
 took **half the preemptions** (30 vs 57): recomputing less means holding
 fewer blocks for less time.
 
@@ -72,10 +72,10 @@ over the run (tier turns over at this scale) with no failures.
 | actor/grad_norm | 0.0022 | 0.0088 | +301% | - |
 
 The `slowest/*` pair is the clearest mechanical result in the table: on the
-critical-path trajectory, generation time fell 80.3% while that same
-trajectory's TOOL time rose 21.1%. The store did not shorten the makespan,
-it moved the bottleneck - the slowest trajectory stopped being LLM-limited
-and became purely sandbox-limited. That is why timing_s/gen barely moves.
+trajectory that gated the step, slowest/generate_sequences fell 80.3% while
+that same trajectory's slowest/tool_calls rose 21.1%. The store did not
+shorten timing_s/gen, it moved the bottleneck: the gating trajectory stopped
+being generate_sequences-bound and became tool_calls-bound.
 
 NOTE (perf/throughput is reported but must NOT be read as a serving
 result): verl computes it as `total_num_tokens / (timing_raw["step"] *
@@ -115,8 +115,8 @@ steps, ~par on the two light ones. That is the pressure-gated payoff the
 earlier pairs predicted, now visible WITHIN one pair. It also means the
 arithmetic mean overstates the typical case - report the per-step table.
 
-Rollout wall (timing_s/gen) moves only -5.6% because makespan remains
-sandbox-bound: per-step it equals the slowest trajectory's tool time to
+timing_s/gen moves only -5.6% because it remains sandbox-bound: per step
+it equals timing_s/agent_loop/slowest/tool_calls to
 within a few seconds, as established in `../pressure-pair/`.
 
 ## DRIFT: the store arm's entropy climbs; recompute's does not
@@ -204,7 +204,7 @@ key set rather than silently intersecting them.
 - The store arm ran immediately after recompute on the same node with the
   same warmed sandbox pool; tool-time symmetry is +5.2% at 2/4.
 - Sandboxes have no network egress; `pip install` attempts burn the 60s
-  command timeout in both arms and drive makespan variance.
+  command timeout in both arms and drive timing_s/gen variance.
 - verl's `agent_loop/*/num_preempted` is -1 on this stack; preemption
   counts come from engine `/metrics`.
 - Engine scrape probes the mooncake RDMA handshake listener, producing
