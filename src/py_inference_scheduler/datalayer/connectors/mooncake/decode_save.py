@@ -28,9 +28,12 @@ from vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store.data import (
     MooncakeStoreConnectorMetadata,
     ReqMeta,
 )
+from vllm.logger import init_logger
 from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import KVCacheConfig
 from vllm.v1.request import Request
+
+logger = init_logger(__name__)
 
 
 def should_save_decode_request(
@@ -105,6 +108,71 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
         # release. Declining a pull is always safe: the request recomputes.
         self.max_inflight_loads = int(os.getenv("RLS_MAX_INFLIGHT_LOADS", "0"))
         self._inflight_loads: set[str] = set()
+        # Implements the reset_cache() contract vLLM/verl already call after
+        # every weight sync; see reset_cache below for why the default is on.
+        self.flush_on_reset = os.getenv("RLS_FLUSH_STORE_ON_RESET", "1") != "0"
+        self._flush_store = None
+
+    def reset_cache(self) -> bool:
+        """Wipe the external tier when vLLM signals a weight-update reset.
+
+        verl passes reset_connector=True to reset_prefix_cache() after every
+        weight sync (vllm_async_server.py), intending to "drop any attached
+        external KV store whose entries were computed against the previous
+        weights". The base connector never implements reset_cache(), so it
+        returns None, which the scheduler reads as success while the remote
+        tier keeps serving KV written under earlier weights - measured as a
+        store-only entropy climb 0.198 -> 0.775 over four LoRA steps against
+        a flat recompute control. Store keys are content hashes with no
+        weight version, so wiping is the only invalidation available.
+
+        Set RLS_FLUSH_STORE_ON_RESET=0 to restore the un-flushed behaviour
+        that benchmark-results/verl-swe-ab/pressure-pair-v2 was recorded on.
+        """
+        if not self.flush_on_reset:
+            return True
+        store = self._flush_client()
+        if store is None:
+            return False
+        rc = store.remove_all()
+        if rc < 0:
+            logger.warning("Mooncake store flush failed on reset (rc=%s)", rc)
+            return False
+        logger.info("Flushed external KV store on weight-update reset")
+        return True
+
+    def _flush_client(self):
+        """A segment-less store client: mounts no memory, only issues RPCs."""
+        if self._flush_store is not None:
+            return self._flush_store
+        try:
+            import json
+            import socket
+
+            from mooncake.store import MooncakeDistributedStore
+
+            cfg = json.load(open(os.environ["MOONCAKE_CONFIG_PATH"]))
+            store = MooncakeDistributedStore()
+            host = socket.gethostbyname(socket.gethostname())
+            # 0 global segment + 0 local buffer: setup skips mounting and
+            # registration, leaving a control-plane-only client.
+            rc = store.setup(
+                f"{host}:0",
+                cfg["metadata_server"],
+                0,
+                0,
+                cfg["protocol"],
+                cfg.get("device_name", ""),
+                cfg["master_server_address"],
+            )
+            if rc != 0:
+                logger.warning("Mooncake flush client setup failed (rc=%s)", rc)
+                return None
+            self._flush_store = store
+        except Exception:
+            logger.exception("Could not build the Mooncake flush client")
+            return None
+        return self._flush_store
 
     def get_num_new_matched_tokens(
         self,
