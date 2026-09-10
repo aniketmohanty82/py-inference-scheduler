@@ -120,3 +120,36 @@ def test_filter_scorer_picker_combined():
     chosen = pr.endpoint_list[0].endpoint
     # pod2 has the smallest queue size, but is in the wrong zone, so pod 1 should be chosen
     assert chosen.name == "pod1"
+
+
+def test_config_loads_eagerly_so_flow_control_is_visible_before_first_request(tmp_path):
+    """Integration layers ask about flow control at wire-up time, before any request."""
+    config = tmp_path / "scheduler.yaml"
+    config.write_text(
+        "profile_handler:\n"
+        "  type: single_profile\n"
+        "profiles:\n"
+        "  p:\n"
+        "    flow_control:\n"
+        "      type: simple_backpressure\n"
+        "      kv_threshold: 0.9\n"
+        "      waiting_threshold: 4\n"
+        "    scorers:\n"
+        "      - type: kv_cache\n"
+        "        weight: 1.0\n"
+        "    picker:\n"
+        "      type: max_score\n",
+        encoding="utf-8",
+    )
+    scheduler = Scheduler(config_path=str(config))
+    assert scheduler.has_flow_control()
+    assert [type(p).__name__ for p in scheduler.get_flow_control_plugins()] == [
+        "SimpleBackpressurePlugin"
+    ]
+
+
+def test_bad_config_fails_at_construction(tmp_path):
+    config = tmp_path / "scheduler.yaml"
+    config.write_text("profile_handler:\n  type: no_such_handler\n", encoding="utf-8")
+    with pytest.raises(Exception):  # noqa: B017, PT011 - registry raises on unknown type
+        Scheduler(config_path=str(config))

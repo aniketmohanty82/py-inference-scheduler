@@ -53,6 +53,10 @@ class Scheduler:
                 )
 
         self.last_mtime = 0.0
+        # Load eagerly: a bad config should fail at startup, and callers that ask
+        # about flow control before the first request (integration layers wiring
+        # up admission) must see the configured plugins, not an empty list.
+        self._maybe_reload_config()
 
     @classmethod
     def new_with_config(cls, config: SchedulerConfig) -> Scheduler:
