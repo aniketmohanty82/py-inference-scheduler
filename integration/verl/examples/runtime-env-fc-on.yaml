@@ -9,6 +9,13 @@ excludes:
 pip:
   - "kubernetes"
 env_vars:
+  # Must match runtime-env-fc-off.yaml on every knob except ARM and
+  # ROUTER_CONFIG_PATH -- that is the whole invariant of the comparison.
+  ARM: "fcon"
+  STEPS: "3"
+  GMU: "0.25"
+  BATCH: "8"
+  GROUP_N: "4"
   PYTHONPATH: ".:src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   ROUTER_CONFIG_PATH: "configs/flow-control/fc-on.yaml"
