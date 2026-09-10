@@ -119,6 +119,38 @@ timing_s/gen moves only -5.6% because it remains sandbox-bound: per step
 it equals timing_s/agent_loop/slowest/tool_calls to
 within a few seconds, as established in `../pressure-pair/`.
 
+## Cost per token (all inputs recorded; no FLOPs model)
+
+Per turn = metric / `num_turns/mean`. Same tasks, same output length, so
+the only difference is where the prompt tokens came from.
+
+| per turn | recompute | store |
+|---|---|---|
+| `timing_s/agent_loop/generate_sequences/mean` | 4.14 s | 1.75 s |
+| `response_length/mean` | 227-243 | 227-239 |
+| `prompt_tokens_by_source{local_compute}` | 1,192 | 303 |
+| `prompt_tokens_by_source{external_kv_transfer}` | 0 | 322 |
+
+Divide the latency delta by the token delta:
+
+| | value |
+|---|---|
+| avoided `local_compute` token | **2.7 ms** |
+| `external_kv_transfer` token (`load_get` s / tokens) | **0.027 ms** |
+| ratio | **~100x cheaper to pull** |
+
+Consistent computed per trajectory or per turn (2.71 vs 2.69 ms/token).
+
+NOTE: 2.7 ms is the MARGINAL SYSTEM cost, not hardware cost -
+`generate_sequences` is wall time and includes queueing, so avoided prefill
+also shortens the queue for everyone. Raw FLOPs for 32B at tp=2 are nearer
+0.08 ms/token, i.e. ~30x queueing amplification. It is therefore the right
+number for capacity planning and the wrong one for hardware sizing, and it
+is REGIME-SPECIFIC: the low-pressure pair (gmu 0.30, batch 16 x n 4) showed
+-5.9% on the same metric instead of -58.2%, so recompute it per regime.
+It also credits the whole latency delta to avoided prefill while the arms
+differ in preemptions too (57 vs 30).
+
 ## DRIFT: the store arm's entropy climbs; recompute's does not
 
 | step | recompute entropy | store entropy | rc ppo_kl | store ppo_kl |
