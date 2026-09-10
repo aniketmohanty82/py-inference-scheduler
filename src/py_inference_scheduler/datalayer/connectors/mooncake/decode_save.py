@@ -111,10 +111,14 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
         # Implements the reset_cache() contract vLLM/verl already call after
         # every weight sync; see reset_cache below for why the default is on.
         self.flush_on_reset = os.getenv("RLS_FLUSH_STORE_ON_RESET", "1") != "0"
-        self._flush_store = None
+        # Scheduler side bumps _flush_generation; the worker wipes once it
+        # sees a generation newer than its watermark (see reset_cache).
+        self._flush_generation = 0
+        self._flush_generation_seen = 0
+        self._flush_generation_stamped = 0
 
     def reset_cache(self) -> bool:
-        """Wipe the external tier when vLLM signals a weight-update reset.
+        """Arm an external-tier wipe on the weight-update reset (scheduler side).
 
         verl passes reset_connector=True to reset_prefix_cache() after every
         weight sync (vllm_async_server.py), intending to "drop any attached
@@ -126,53 +130,46 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
         a flat recompute control. Store keys are content hashes with no
         weight version, so wiping is the only invalidation available.
 
+        The wipe itself must run worker-side on the connector's EXISTING
+        store client: building a second client in the engine process
+        clobbers the first one's segment registration and knocks the engines
+        off the master (observed as `Client not available` / `Reconnect
+        failed: RPC_FAIL`). So this only bumps a generation that rides the
+        next connector metadata to the workers, which happens before any
+        request can read the tier again.
+
         Set RLS_FLUSH_STORE_ON_RESET=0 to restore the un-flushed behaviour
         that benchmark-results/verl-swe-ab/pressure-pair-v2 was recorded on.
         """
         if not self.flush_on_reset:
             return True
-        store = self._flush_client()
-        if store is None:
-            return False
-        rc = store.remove_all()
-        if rc < 0:
-            logger.warning("Mooncake store flush failed on reset (rc=%s)", rc)
-            return False
-        logger.info("Flushed external KV store on weight-update reset")
+        self._flush_generation += 1
         return True
 
-    def _flush_client(self):
-        """A segment-less store client: mounts no memory, only issues RPCs."""
-        if self._flush_store is not None:
-            return self._flush_store
-        try:
-            import json
-            import socket
+    def bind_connector_metadata(self, connector_metadata) -> None:
+        """Worker side: perform any wipe armed by reset_cache().
 
-            from mooncake.store import MooncakeDistributedStore
-
-            cfg = json.load(open(os.environ["MOONCAKE_CONFIG_PATH"]))
-            store = MooncakeDistributedStore()
-            host = socket.gethostbyname(socket.gethostname())
-            # 0 global segment + 0 local buffer: setup skips mounting and
-            # registration, leaving a control-plane-only client.
-            rc = store.setup(
-                f"{host}:0",
-                cfg["metadata_server"],
-                0,
-                0,
-                cfg["protocol"],
-                cfg.get("device_name", ""),
-                cfg["master_server_address"],
-            )
-            if rc != 0:
-                logger.warning("Mooncake flush client setup failed (rc=%s)", rc)
-                return None
-            self._flush_store = store
-        except Exception:
-            logger.exception("Could not build the Mooncake flush client")
-            return None
-        return self._flush_store
+        remove_all() is global, so only tp_rank 0 issues it; every rank
+        still advances its watermark so a later generation re-triggers.
+        """
+        generation = getattr(connector_metadata, "rls_flush_generation", 0)
+        worker = self.connector_worker
+        if worker is not None and generation > self._flush_generation_seen:
+            self._flush_generation_seen = generation
+            if worker.tp_rank == 0:
+                try:
+                    rc = worker.store.remove_all()
+                    if rc is not None and rc < 0:
+                        logger.warning("External KV flush failed (rc=%s)", rc)
+                    else:
+                        logger.info(
+                            "Flushed external KV store on weight-update reset "
+                            "(generation %d)",
+                            generation,
+                        )
+                except Exception:
+                    logger.exception("External KV flush raised")
+        super().bind_connector_metadata(connector_metadata)
 
     def get_num_new_matched_tokens(
         self,
@@ -198,6 +195,11 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
         matched: tuple[int, bool] = super().get_num_new_matched_tokens(
             request, num_computed_tokens
         )
+        if self._flush_generation > self._flush_generation_stamped:
+            # A wipe is armed but has not reached the workers yet; matching
+            # now would hand back keys that are about to be removed, turning
+            # a hit into a failed load and a recompute.
+            return 0, False
         if 0 < matched[0] < self.min_pull_tokens:
             return 0, False
         # matched[1] is load_kv_async: those are the pulls that park a
@@ -227,6 +229,9 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
                 self._inflight_loads.intersection_update(
                     sched_now._unfinished_requests.keys()
                 )
+        if self._flush_generation:
+            meta.rls_flush_generation = self._flush_generation
+            self._flush_generation_stamped = self._flush_generation
         if not isinstance(meta, MooncakeStoreConnectorMetadata):
             return meta  # upstream returned a different metadata type
         if not self.save_decode_kv or self.kv_role == "kv_consumer":
