@@ -12,12 +12,10 @@ pip:
   - "kubernetes"
 env_vars:
   # The runtime env IS the arm: ray job submit does not forward the submitting
-  # shell's environment, so every knob the run script reads lives here.
+  # shell's environment. Only ARM and STEPS live here -- the workload itself
+  # comes from run_swe.sh unmodified.
   ARM: "fcoff"
-  STEPS: "3"
-  GMU: "0.25"
-  BATCH: "8"
-  GROUP_N: "4"
+  STEPS: "4"
   PYTHONPATH: ".:src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   ROUTER_CONFIG_PATH: "configs/flow-control/fc-off.yaml"
