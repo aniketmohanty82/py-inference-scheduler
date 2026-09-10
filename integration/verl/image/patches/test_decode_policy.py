@@ -134,6 +134,47 @@ def test_scheduled_requests_release_cap_slots():
     assert _matched(c, "d") == (4096, True)
 
 
+def mk_flusher(enabled=True, store=None):
+    c = object.__new__(DecodeKVSavingConnector)
+    c.flush_on_reset = enabled
+    c._flush_store = store
+    return c
+
+
+class FakeStore:
+    def __init__(self, rc=0):
+        self.rc, self.calls = rc, 0
+
+    def remove_all(self):
+        self.calls += 1
+        return self.rc
+
+
+def test_reset_cache_flushes_external_tier():
+    fs = FakeStore()
+    c = mk_flusher(store=fs)
+    assert c.reset_cache() is True
+    assert fs.calls == 1, "weight-update reset must wipe the external tier"
+
+
+def test_reset_cache_reports_store_failure():
+    c = mk_flusher(store=FakeStore(rc=-1))
+    assert c.reset_cache() is False
+
+
+def test_reset_cache_disabled_is_noop():
+    fs = FakeStore()
+    c = mk_flusher(enabled=False, store=fs)
+    assert c.reset_cache() is True
+    assert fs.calls == 0, "RLS_FLUSH_STORE_ON_RESET=0 must not touch the tier"
+
+
+def test_reset_cache_survives_unbuildable_client():
+    c = mk_flusher(store=None)
+    c._flush_client = lambda: None  # setup failed
+    assert c.reset_cache() is False  # reported, never raised
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in sorted(
