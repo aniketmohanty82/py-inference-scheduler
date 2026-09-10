@@ -1,0 +1,22 @@
+# Treatment arm of the flow-control A/B: same policy as fc-off.yaml plus the
+# simple_backpressure admission gate. Requests park scheduler-side while every
+# engine is at/over threshold, instead of piling into engine queues.
+profile_handler:
+  type: single_profile
+profiles:
+  backpressure:
+    flow_control:
+      type: simple_backpressure
+      kv_threshold: 0.90
+      waiting_threshold: 4
+    scorers:
+      - type: waiting_queue
+        weight: 5.0
+      - type: least_queue
+        weight: 2.0
+      - type: kv_cache
+        weight: 1.0
+      - type: prefix_cache
+        weight: 1.0
+    picker:
+      type: max_score

@@ -1,0 +1,21 @@
+# Baseline arm. ROUTER_CONFIG_PATH must live in the runtime env (not the
+# submitting shell) so it reaches the AgentLoopWorker actors that build the
+# Scheduler. PYTHONPATH puts the shipped working_dir ahead of any copy baked
+# into the image.
+working_dir: "."
+excludes:
+  - ".venv"
+  - ".git"
+  - "benchmark-results"
+  - "**/__pycache__"
+pip:
+  - "kubernetes"
+env_vars:
+  PYTHONPATH: ".:src"
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+  ROUTER_CONFIG_PATH: "configs/flow-control/fc-off.yaml"
+  SWE_SANDBOX_NAMESPACE: "agents-system"
+  SWE_CMD_TIMEOUT_S: "60"
+  SWE_OBS_MAX_CHARS: "6000"
+  SWE_SANDBOX_CPU_REQUEST: "200m"
+  SWE_SANDBOX_MEM_REQUEST: "768Mi"
