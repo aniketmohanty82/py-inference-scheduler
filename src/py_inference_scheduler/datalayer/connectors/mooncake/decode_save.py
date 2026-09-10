@@ -144,6 +144,13 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
         if not self.flush_on_reset:
             return True
         self._flush_generation += 1
+        # warning-level: worker/engine INFO never reaches the driver logs, and
+        # without both of these lines a silent no-op is indistinguishable from
+        # a working flush.
+        logger.warning(
+            "KV flush armed on weight-update reset (generation %d)",
+            self._flush_generation,
+        )
         return True
 
     def bind_connector_metadata(self, connector_metadata) -> None:
@@ -162,7 +169,7 @@ class DecodeKVSavingConnector(MooncakeStoreConnector):
                     if rc is not None and rc < 0:
                         logger.warning("External KV flush failed (rc=%s)", rc)
                     else:
-                        logger.info(
+                        logger.warning(
                             "Flushed external KV store on weight-update reset "
                             "(generation %d)",
                             generation,
