@@ -100,15 +100,6 @@ Mooncake ops (store arm, **zero** failed keys): `save_put` 19,247 ops /
 | `timing_s/agent_loop/slowest/generate_sequences` (selection-biased) | 1,137 | 599 | 44.3 | 455 | 1,388 | 730 | 804 | 613 | +58.1% | 0/4 |
 | `timing_s/agent_loop/slowest/response_length` | 16,478 | 15,784 | 5,299 | 7,935 | 28,672 | 28,672 | 28,672 | 28,672 | +160% | 0/4 |
 
-**NOTE - use the `/max` rows, not the `slowest/*` rows.** `slowest/*` reports
-one trajectory chosen by `argmax(generate_sequences + tool_calls +
-compute_score)`, so it names a *different* trajectory in each step and each
-arm. In the store arm the argmax lands on a generation-bound trajectory that
-happens to have low tool time, which makes `slowest/tool_calls` read -92.5%
-when the selection-free `tool_calls/max` is -43.3%; symmetrically it makes
-`slowest/generate_sequences` read +58.1% when `generate_sequences/max` is
--25.6% in the store's favour at 4/4. Both `slowest/*` rows are kept only
-because they were recorded, and both are struck through in the analysis below.
 | `perf/throughput` | 267.0 | 177.9 | 256.9 | 200.1 | 333.5 | 316.1 | 311.1 | 352.1 | **+45.6%** | **4/4** |
 | `num_turns/mean` | 45.48 | 23.45 | 23.85 | 23.02 | 46.14 | 23.53 | 24.93 | 24.00 | +2.4% | 0/4 |
 | `response_length/mean` | 10,499 | 4,848 | 4,783 | 4,877 | 10,007 | 4,485 | 5,173 | 5,333 | -0.0% | 2/4 |
@@ -116,6 +107,16 @@ because they were recorded, and both are struck through in the analysis below.
 | `critic/score/mean` | 0.051 | 0.012 | 0.016 | 0.037 | 0.047 | 0.016 | 0.020 | 0.039 | +5.1% | 1/4 |
 | `actor/grad_norm` | 0.003 | 0.001 | 0.002 | 0.003 | 0.003 | 0.002 | 0.008 | 0.021 | +263% | 1/4 |
 | `actor/perf/cpu_memory_used_gb` | 154.0 | 167.1 | 169.1 | 169.5 | 1,213 | 1,222 | 1,226 | 1,226 | +641% | 0/4 |
+
+**NOTE - use the `/max` rows, not the `slowest/*` rows.** `slowest/*` reports
+one trajectory chosen by `argmax(generate_sequences + tool_calls +
+compute_score)`, so it names a *different* trajectory in each step and each
+arm. In the store arm the argmax lands on a generation-bound trajectory that
+happens to have low tool time, which makes `slowest/tool_calls` read -92.5%
+when the selection-free `tool_calls/max` is -43.3%; symmetrically it makes
+`slowest/generate_sequences` read +58.1% when `generate_sequences/max` is
+-25.6% in the store's favour at 4/4. The `slowest/*` rows are retained only
+because they were recorded; analysis (b) and (c) below use the `/max` rows.
 
 `cpu_memory_used_gb` is the store's host-memory cost: the 8 x 128GB mooncake
 segments. `perf/throughput` is included because it is now 4/4, but it remains
