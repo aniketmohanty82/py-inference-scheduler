@@ -1,0 +1,2 @@
+rc=0 steps=2 high_entropy=0 low_turn_steps=0 no_tool_steps=0
+pressure=PASS hot_frac=0.68 (need 0.60) active_snaps=28 hot_snaps=19 mean_kv=0.783 preemptions=179
