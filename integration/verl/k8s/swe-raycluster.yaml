@@ -92,8 +92,14 @@ spec:
           # Hash stability across processes - store keys are content hashes.
           - name: PYTHONHASHSEED
             value: "0"
+          # A single straggler burning 60s hangs set the rollout wall in
+          # pressure-pair-v2: slowest/tool_calls reached 1,139s against a
+          # 360s engine-busy window, so 35-69% of every rollout was engine
+          # idle. A shell command in a SWE task that runs past 15s is a hang,
+          # not work; capping it keeps the cohort synchronized, which is what
+          # holds the KV pool oversubscribed.
           - name: SWE_CMD_TIMEOUT_S
-            value: "60"
+            value: "15"
           # Upstream-matched regime (pair 3): fatter tool observations
           # lengthen contexts toward the response cap.
           - name: SWE_OBS_MAX_CHARS
@@ -111,8 +117,11 @@ spec:
           # context, so unbounded admission deadlocked all 4 engines
           # (running=0, KV 91-97%) at 256-wide. 6 x ~8k tokens leaves the
           # 34k-token pool headroom to actually run requests.
+          # 1, not 2, from the sustained-pressure regime on: gmu 0.38 gives
+          # ~106k tokens/engine against a 29.2k max context, so a single
+          # parked waiter is all the headroom that pool can spare.
           - name: RLS_MAX_INFLIGHT_LOADS
-            value: "2"
+            value: "1"
           - name: MOONCAKE_CONFIG_PATH
             value: "/etc/mooncake/mooncake_config.json"
           - name: MC_FORCE_HCA
