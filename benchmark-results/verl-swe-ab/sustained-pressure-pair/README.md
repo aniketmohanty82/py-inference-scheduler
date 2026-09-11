@@ -94,8 +94,21 @@ Mooncake ops (store arm, **zero** failed keys): `save_put` 19,247 ops /
 | `timing_s/gen` | 2,072 | 1,657 | 1,054 | 1,450 | 1,479 | 763 | 879 | 762 | **-37.7%** | **4/4** |
 | `timing_s/agent_loop/generate_sequences/mean` | 888.7 | 175.5 | 174.7 | 154.1 | 577.8 | 77.7 | 130.8 | 118.4 | **-35.1%** | **4/4** |
 | `timing_s/agent_loop/tool_calls/mean` | 86.9 | 48.4 | 43.0 | 50.2 | 89.5 | 59.7 | 44.7 | 44.9 | +4.5% | 1/4 |
-| `timing_s/agent_loop/slowest/tool_calls` | 886 | 1,055 | 1,009 | 992 | 43.7 | 31.8 | 74.4 | 147.6 | -92.5% | 4/4 |
-| `timing_s/agent_loop/slowest/generate_sequences` | 1,137 | 599 | 44.3 | 455 | 1,388 | 730 | 804 | 613 | +58.1% | 0/4 |
+| `timing_s/agent_loop/tool_calls/max` | 886 | 1,055 | 1,009 | 992 | 933 | 421 | 399 | 483 | **-43.3%** | 3/4 |
+| `timing_s/agent_loop/generate_sequences/max` | 1,847 | 982 | 923 | 835 | 1,388 | 730 | 804 | 613 | **-25.6%** | **4/4** |
+| `timing_s/agent_loop/slowest/tool_calls` (selection-biased, see NOTE) | 886 | 1,055 | 1,009 | 992 | 43.7 | 31.8 | 74.4 | 147.6 | -92.5% | 4/4 |
+| `timing_s/agent_loop/slowest/generate_sequences` (selection-biased) | 1,137 | 599 | 44.3 | 455 | 1,388 | 730 | 804 | 613 | +58.1% | 0/4 |
+| `timing_s/agent_loop/slowest/response_length` | 16,478 | 15,784 | 5,299 | 7,935 | 28,672 | 28,672 | 28,672 | 28,672 | +160% | 0/4 |
+
+**NOTE - use the `/max` rows, not the `slowest/*` rows.** `slowest/*` reports
+one trajectory chosen by `argmax(generate_sequences + tool_calls +
+compute_score)`, so it names a *different* trajectory in each step and each
+arm. In the store arm the argmax lands on a generation-bound trajectory that
+happens to have low tool time, which makes `slowest/tool_calls` read -92.5%
+when the selection-free `tool_calls/max` is -43.3%; symmetrically it makes
+`slowest/generate_sequences` read +58.1% when `generate_sequences/max` is
+-25.6% in the store's favour at 4/4. Both `slowest/*` rows are kept only
+because they were recorded, and both are struck through in the analysis below.
 | `perf/throughput` | 267.0 | 177.9 | 256.9 | 200.1 | 333.5 | 316.1 | 311.1 | 352.1 | **+45.6%** | **4/4** |
 | `num_turns/mean` | 45.48 | 23.45 | 23.85 | 23.02 | 46.14 | 23.53 | 24.93 | 24.00 | +2.4% | 0/4 |
 | `response_length/mean` | 10,499 | 4,848 | 4,783 | 4,877 | 10,007 | 4,485 | 5,173 | 5,333 | -0.0% | 2/4 |
@@ -193,23 +206,38 @@ prompts.
 pair-v2 moved `timing_s/gen` by 5.6% because the rollout was straggler-bound
 and the straggler was sandbox-bound in both arms. Here it moves 37.7% at 4/4.
 
-**(b) Part of that is a second-order systems effect, not KV.**
-`slowest/tool_calls` is 886-1,055s in recompute and 32-148s in store - a 20x
-gap - while `tool_calls/mean` is within 4.5%. So the *mean* tool cost is
-identical and only the worst trajectory differs. The plausible mechanism is
-that recompute's 40%-longer rollouts keep more sandboxes alive concurrently,
-so sandbox exec RPCs queue and hit the 45s client ceiling
-(`SWE_CMD_TIMEOUT_S=15` + 30s margin) far more often. That makes some of the
-37.7% a virtuous circle (shorter rollout -> less sandbox contention -> shorter
-rollout) rather than a direct KV saving. **This is a correlation with a
-mechanism, not a demonstrated cause**; separating it needs a run with
-sandbox-side per-exec latency recorded, which is not in this pair.
+**(b) The tool-time tail does shrink, by 43% and not by 92%, and it is NOT
+sandbox contention.** `tool_calls/max` - the selection-free version - is
+886-1,055s in recompute and 399-933s in store (-43.3%, 3/4), while
+`tool_calls/mean` is within 4.5%. So the mean tool cost is identical and only
+the tail differs, but the store arm still has 400-930s tool-bound
+trajectories; the 20x gap in `slowest/tool_calls` was an argmax artifact.
 
-**(c) The bottleneck moved to generation, which is the honest place for it.**
-`slowest/generate_sequences` is *higher* in the store arm (+58.1%, 0/4): its
-gating trajectory spends 1,388s of 1,432s total in generation, while
-recompute's splits 1,137s generation / 886s tools. The store did not make the
-gating trajectory faster at generating - it removed the tool-timeout tail.
+The obvious explanation - that recompute's 40%-longer rollouts keep more
+sandboxes alive, queueing exec RPCs into the 45s client ceiling - is
+**refuted by direct measurement**. A 60s-interval sampler of the sandbox
+fleet ran across both arms (`sandbox_fleet.log`) and the occupancy is
+indistinguishable:
+
+| phase | samples | sandboxes mean | p90 | max | pods not Running (max) |
+|---|---|---|---|---|---|
+| recompute | 127 | 152.2 | 364 | 515 | 183 |
+| store | 90 | 154.4 | 364 | 539 | 178 |
+
+The fleet is equally saturated in both arms, so the remaining -43.3% needs a
+different explanation and this pair does not contain one. Per-exec sandbox
+latency is still not recorded; that is the measurement to add next.
+
+**(c) In the store arm the gating trajectory is capped, not slow.**
+`slowest/response_length` is **28,672 in all four store steps** - exactly
+`data.max_response_length` - against 5,299-16,478 in recompute. So the store's
+worst trajectory is one that generated until the configured ceiling stopped
+it, while recompute's is one that was still grinding. On the selection-free
+metric the store is faster at generation too (`generate_sequences/max`
+-25.6%, 4/4). The honest reading is that the store moved the binding
+constraint onto a config limit, which also means **the response cap is now
+truncating the store arm's tail and any longer-horizon run should raise it or
+report the clip rate.**
 
 **(d) Step 1 is not comparable to steps 2-4 in either arm.** `num_turns/mean`
 is 45.5 at step 1 and 23.0-24.9 afterwards, in both arms, on the same tasks.
@@ -232,7 +260,12 @@ change any sign.
   come from engine `/metrics`.
 - `slowest/*` selects `argmax(generate_sequences + tool_calls + compute_score)`
   (`agent_loop.py:1146`), so it is a **different trajectory** in each step and
-  each arm - the two arms' rows are not the same task.
+  each arm - the two arms' rows are not the same task. This bit the first
+  draft of this README, which read -92.5% off `slowest/tool_calls` where the
+  selection-free `tool_calls/max` is -43.3%. Prefer `/max` over `slowest/*`
+  for any arm-to-arm comparison.
+- The store arm's `slowest/response_length` is pinned at `max_response_length`
+  (28,672) in every step, so its generation tail is censored by config.
 
 ## Files
 
@@ -242,6 +275,9 @@ change any sign.
   engine `/metrics`, SNAP-timestamped; source of by_source and pressure.
 - `smoke_driver.log.gz`, `smoke_scrape.log.gz`, `smoke_gate.txt` - the gating
   run and its verdict.
+- `sandbox_fleet.log.gz` - 60s samples of live sandbox CRs / pending pods
+  across both arms; the evidence that refutes the contention explanation in
+  analysis (b).
 - `harvest34.py` - regenerates every table above from the logs.
 - `pressure_gate.py` - the sustained-pressure gate; run it on any scrape.
 - `p34_arm.sh`, `p34_smoke.sh` - the exact run scripts (regime rationale in
