@@ -71,11 +71,16 @@ over the run (tier turns over at this scale) with no failures.
 | actor/perf/cpu_memory_used_gb | 157.6 | 1218.7 | +673% | - |
 | actor/grad_norm | 0.0022 | 0.0088 | +301% | - |
 
-The `slowest/*` pair is the clearest mechanical result in the table: on the
-trajectory that gated the step, slowest/generate_sequences fell 80.3% while
-that same trajectory's slowest/tool_calls rose 21.1%. The store did not
-shorten timing_s/gen, it moved the bottleneck: the gating trajectory stopped
-being generate_sequences-bound and became tool_calls-bound.
+The `slowest/*` pair is mechanically suggestive but **weakly supported**: on
+the trajectory that gated the step, slowest/generate_sequences fell 80.3%
+while that same trajectory's slowest/tool_calls rose 21.1%, consistent with
+the gating trajectory ceasing to be generate_sequences-bound and becoming
+tool_calls-bound. It is 2/4 and 1/4 on consistency, and `slowest/*` describes
+a *different single trajectory* in each step and each arm, selected by
+`np.argmax(t_generate_sequences + t_tool_calls + t_compute_score)`
+(agent_loop.py:1146) - so the two arms' rows are not even the same task. Read
+it as an illustration of the mechanism, not as evidence for it. The evidence
+is the by_source split and the occupancy table below.
 
 NOTE (perf/throughput is reported but must NOT be read as a serving
 result): verl computes it as `total_num_tokens / (timing_raw["step"] *
@@ -84,8 +89,9 @@ note the upstream typo in the name). Both terms defeat it here. The
 numerator is tokens IN THE BATCH, identical across arms by construction
 (-0.6%), so the store's 3.97x reduction in tokens actually COMPUTED is
 invisible to it. The denominator is the full step wall clock, which this
-workload spends mostly idle waiting on gVisor sandboxes - engines were
-measured idle in 66% of samples in the low-pressure pair. The result is
+workload spends largely idle waiting on gVisor sandboxes - measured at
+35-69% of each rollout in THIS pair (see the straggler dead-time table
+below). The result is
 ~251 vs ~262 tok/s/GPU for a 32B model on H200s, which is a sandbox
 measurement, not a serving one; excluding training only moves it to 315 vs
 332. verl emits no sampling-only throughput (`perf/*` is just throughput,
@@ -99,9 +105,7 @@ is prompt tokens COMPUTED per sampling second: 1,541 vs 411 per GPU
 training-signal difference that moves with the entropy drift below; with
 N=4 it is reported, not explained.
 
-NOTE (read the -58.2% per step, not as a mean): step N draws the same 64
-tasks in both arms (seed 42), so per-step pairs are apples-to-apples, but
-task difficulty varies a lot across steps because each task appears once.
+NOTE (read the -58.2% per step, not as a mean):
 
 | step | rc generate_sequences/mean | store | ratio |
 |---|---|---|---|
@@ -110,14 +114,84 @@ task difficulty varies a lot across steps because each task appears once.
 | 3 | 79.1s | 58.3s | 1.36x |
 | 4 | 58.5s | 66.5s | 0.88x (store slower) |
 
-The store's advantage tracks how loaded the step is: 3x on the two heavy
-steps, ~par on the two light ones. That is the pressure-gated payoff the
-earlier pairs predicted, now visible WITHIN one pair. It also means the
-arithmetic mean overstates the typical case - report the per-step table.
+## THIS PAIR IS BISTABLE: steps 1-2 and 3-4 are different regimes
 
-timing_s/gen moves only -5.6% because it remains sandbox-bound: per step
-it equals timing_s/agent_loop/slowest/tool_calls to
-within a few seconds, as established in `../pressure-pair/`.
+The decay above is **not** task difficulty. The workload is provably
+identical across all four steps, from the driver logs:
+
+| per step | s1 | s2 | s3 | s4 |
+|---|---|---|---|---|
+| `prompt_length/mean` | 519.4 | 515.7 | 522.2 | 515.4 |
+| `num_turns/mean` | 48.8 | 46.2 | 48.4 | 47.0 |
+| `response_length/mean` | 11,088 | 11,144 | 10,606 | 11,428 |
+| `perf/total_num_tokens` | 2,971,459 | 2,985,002 | 2,848,848 | 3,057,639 |
+| `timing_s/gen` | 1,112 | 1,291 | 1,149 | 1,157 |
+
+(`prompt_length/mean` is bit-identical between arms, confirming both saw the
+same tasks in the same order.) What changed is the engine's operating point:
+
+| recompute | `kv_cache_usage_perc` avg | `local_compute`/turn | `local_cache_hit`/turn | preempt | peak running |
+|---|---|---|---|---|---|
+| step 1 | 0.601 | 1,982 | 1,076 | 24 | 127 |
+| step 2 | 0.566 | 2,119 | 1,049 | 29 | 137 |
+| step 3 | 0.273 | 410 | 2,694 | 4 | 75 |
+| step 4 | 0.200 | 265 | 2,867 | 0 | 53 |
+
+Tokens presented per turn are flat at 3,029-3,169 in all eight steps of both
+arms; only the SPLIT moves. A request here is one turn, and between turns a
+trajectory holds zero allocated blocks - its KV sits in the free-but-cached
+tier. So the loop closes on itself: at ~100% occupancy the cached tier is
+squeezed to nothing, every returning turn re-prefills its whole context,
+engine service lengthens, and occupancy stays pinned. Below ~60% the cached
+tier survives, turns prefill only new tokens, and occupancy stays low. Both
+states are self-sustaining; steps 1-2 sat in the first, steps 3-4 in the
+second. **What tipped it between step 2 and step 3 is not determined by
+anything recorded here** - the policy is ruled out (`actor/entropy` flat
+0.188-0.202, `grad_norm` ~0.002 at lr 1e-6), leaving system state that
+evolves within a job and resets when it restarts.
+
+The store arm is FLAT at 0.313 / 0.314 / 0.253 / 0.283 - **it never enters
+the collapsed state at all.** Keeping per-turn prefill small even on a local
+miss (369 tokens/turn recomputed in step 1 vs recompute's 1,982, with 501
+supplied by `external_kv_transfer`) is what stops the collapse. That is a
+stronger claim than the latency delta and it is visible in one recorded
+gauge.
+
+Consequence for reading this pair: **only steps 1-2 tested the pressure
+regime.** Steps 3-4 dilute every mean. Report by regime; the 4-step
+arithmetic means understate the pressured case and overstate the typical one.
+
+### Generation throughput (decode tokens per trajectory-second)
+
+Normalizing decode tokens by the summed `generate_sequences` time removes
+both the task-mix and the straggler-tail confounds:
+
+| step | recompute | store | ratio |
+|---|---|---|---|
+| 1 | 6.83 | 25.87 | **3.8x** |
+| 2 | 7.35 | 25.04 | **3.4x** |
+| 3 | 29.89 | 37.51 | 1.3x |
+| 4 | 40.21 | 35.29 | 0.9x |
+
+Under real pressure the store yields 3.4-3.8x more generated tokens per
+second of engine time; once pressure vanishes the arms converge.
+
+### Why timing_s/gen barely moves: straggler dead time
+
+`timing_s/gen` is set by ONE trajectory, so it hides all of the above:
+
+| recompute | `timing_s/gen` | engine busy (`num_requests_running`>5) | idle | idle % |
+|---|---|---|---|---|
+| step 1 | 1,112s | 720s | 392s | 35% |
+| step 2 | 1,291s | 720s | 571s | 44% |
+| step 3 | 1,149s | 420s | 729s | 63% |
+| step 4 | 1,157s | 360s | 797s | 69% |
+
+35-69% of every rollout has the engine idle while the gating trajectory
+burns `SWE_CMD_TIMEOUT_S=60` hangs (`slowest/tool_calls` 1,139s over 65 turns
+= 17.5s per call). Any rate divided by `timing_s/gen` inherits this: computed
+that way tool throughput looks flat at ~10.5 calls/s, while over the busy
+window it is 17.3 -> 33.4 calls/s and rising.
 
 ## Cost per token (all inputs recorded; no FLOPs model)
 
@@ -232,7 +306,13 @@ key set rather than silently intersecting them.
   4x wider per rollout, has a 5.5x larger KV pool, longer turns and fatter
   observations (response ~11.1k vs ~7.5k). Compare mechanisms, not numbers.
 - 4 steps gives N-of-4 consistency counts; weaker than the prior pair's
-  N-of-12, but each step is a 256-trajectory sample (4x larger).
+  N-of-12, but each step is a 256-trajectory sample (4x larger). Because the
+  pair is bistable, the effective N for the *pressured* regime is 2.
+- The smoke gate for this pair required only `num_preemptions_total > 0`,
+  which the run cleared in its first minutes and then left behind. A gate on
+  sustained occupancy (fraction of the engine-busy window above 0.85) would
+  have caught the regime shift before the pair ran; the successor pair uses
+  one.
 - The store arm ran immediately after recompute on the same node with the
   same warmed sandbox pool; tool-time symmetry is +5.2% at 2/4.
 - Sandboxes have no network egress; `pip install` attempts burn the 60s
