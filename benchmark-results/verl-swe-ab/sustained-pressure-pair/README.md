@@ -86,76 +86,64 @@ Mooncake ops (store arm, **zero** failed keys): `save_put` 19,247 ops /
 404,142 keys (21.0 keys/op), `load_get` 4,182 ops / 2,547,176 keys,
 `lookup_exists` 186,539 ops / 264,393,476 keys.
 
-## Results (4 steps; delta = store vs recompute on the 4-step mean)
+## Results (4-step means; per-step detail in `recompute.md` / `store.md`)
 
-| verl metric | rc s1 | rc s2 | rc s3 | rc s4 | st s1 | st s2 | st s3 | st s4 | delta | store lower |
-|---|---|---|---|---|---|---|---|---|---|---|
-| `timing_s/step` | 2,641 | 1,931 | 1,321 | 1,725 | 2,020 | 1,013 | 1,172 | 1,063 | **-30.9%** | **4/4** |
-| `timing_s/gen` | 2,072 | 1,657 | 1,054 | 1,450 | 1,479 | 763 | 879 | 762 | **-37.7%** | **4/4** |
-| `timing_s/agent_loop/generate_sequences/mean` | 888.7 | 175.5 | 174.7 | 154.1 | 577.8 | 77.7 | 130.8 | 118.4 | **-35.1%** | **4/4** |
-| `timing_s/agent_loop/tool_calls/mean` | 86.9 | 48.4 | 43.0 | 50.2 | 89.5 | 59.7 | 44.7 | 44.9 | +4.5% | 1/4 |
-| `timing_s/agent_loop/tool_calls/max` | 886 | 1,055 | 1,009 | 992 | 933 | 421 | 399 | 483 | **-43.3%** | 3/4 |
-| `timing_s/agent_loop/generate_sequences/max` | 1,847 | 982 | 923 | 835 | 1,388 | 730 | 804 | 613 | **-25.6%** | **4/4** |
-| `timing_s/agent_loop/slowest/tool_calls` (selection-biased, see NOTE) | 886 | 1,055 | 1,009 | 992 | 43.7 | 31.8 | 74.4 | 147.6 | -92.5% | 4/4 |
-| `timing_s/agent_loop/slowest/generate_sequences` (selection-biased) | 1,137 | 599 | 44.3 | 455 | 1,388 | 730 | 804 | 613 | +58.1% | 0/4 |
-| `timing_s/agent_loop/slowest/response_length` | 16,478 | 15,784 | 5,299 | 7,935 | 28,672 | 28,672 | 28,672 | 28,672 | +160% | 0/4 |
+| verl metric | recompute | store | delta | store lower |
+|---|---|---|---|---|
+| `timing_s/step` | 1,904s | 1,317s | **-30.9%** | 4/4 |
+| `timing_s/gen` | 1,558s | 971s | **-37.7%** | 4/4 |
+| `timing_s/agent_loop/generate_sequences/mean` | 348.2s | 226.2s | **-35.1%** | 4/4 |
+| `timing_s/agent_loop/generate_sequences/max` | 1,147s | 884s | **-22.9%** | 4/4 |
+| `timing_s/agent_loop/tool_calls/mean` | 57.1s | 59.7s | +4.5% | 1/4 |
+| `timing_s/agent_loop/tool_calls/max` | 986s | 559s | -43.3% | 3/4 |
+| `perf/throughput` | 225.5 | 328.2 | **+45.6%** | 0/4 |
+| `num_turns/mean` | 28.95 | 29.65 | +2.4% | 0/4 |
+| `response_length/mean` | 6,252 | 6,250 | -0.0% | 2/4 |
+| `perf/total_num_tokens` | 3,466,187 | 3,465,082 | -0.0% | 2/4 |
+| `actor/entropy` | 0.195 | 0.365 | **+86.6%** | 0/4 |
+| `critic/score/mean` | 0.0288 | 0.0303 | +5.1% | 1/4 |
+| `actor/grad_norm` | 0.0023 | 0.0084 | +263.3% | 1/4 |
+| `actor/perf/cpu_memory_used_gb` | 165 GB | 1,222 GB | **+641.0%** | 0/4 |
 
-| `perf/throughput` | 267.0 | 177.9 | 256.9 | 200.1 | 333.5 | 316.1 | 311.1 | 352.1 | **+45.6%** | **4/4** |
-| `num_turns/mean` | 45.48 | 23.45 | 23.85 | 23.02 | 46.14 | 23.53 | 24.93 | 24.00 | +2.4% | 0/4 |
-| `response_length/mean` | 10,499 | 4,848 | 4,783 | 4,877 | 10,007 | 4,485 | 5,173 | 5,333 | -0.0% | 2/4 |
-| `perf/total_num_tokens` | 5.64M | 2.75M | 2.72M | 2.76M | 5.39M | 2.56M | 2.92M | 2.99M | -0.0% | 2/4 |
-| `critic/score/mean` | 0.051 | 0.012 | 0.016 | 0.037 | 0.047 | 0.016 | 0.020 | 0.039 | +5.1% | 1/4 |
-| `actor/grad_norm` | 0.003 | 0.001 | 0.002 | 0.003 | 0.003 | 0.002 | 0.008 | 0.021 | +263% | 1/4 |
-| `actor/perf/cpu_memory_used_gb` | 154.0 | 167.1 | 169.1 | 169.5 | 1,213 | 1,222 | 1,226 | 1,226 | +641% | 0/4 |
+`steps store lower` counts steps where the store's value is the smaller one,
+so for `perf/throughput` - the one metric here where higher is better - 0/4
+means the store was **higher in all four steps**.
 
-**NOTE - use the `/max` rows, not the `slowest/*` rows.** `slowest/*` reports
-one trajectory chosen by `argmax(generate_sequences + tool_calls +
-compute_score)`, so it names a *different* trajectory in each step and each
-arm. In the store arm the argmax lands on a generation-bound trajectory that
-happens to have low tool time, which makes `slowest/tool_calls` read -92.5%
-when the selection-free `tool_calls/max` is -43.3%; symmetrically it makes
-`slowest/generate_sequences` read +58.1% when `generate_sequences/max` is
--25.6% in the store's favour at 4/4. The `slowest/*` rows are retained only
-because they were recorded; analysis (b) and (c) below use the `/max` rows.
+Two metrics are reported but should not be read as serving results.
+`perf/throughput` is `total_num_tokens / (timing_raw["step"] * n_gpus)`: a
+batch-size numerator, identical across arms by construction, over a wall-clock
+denominator - so it says "the step finished sooner", not "the engine served
+faster". `cpu_memory_used_gb` is the store's host-memory bill, the 8 x 128GB
+mooncake segments, not a performance number.
 
-`cpu_memory_used_gb` is the store's host-memory cost: the 8 x 128GB mooncake
-segments. `perf/throughput` is included because it is now 4/4, but it remains
-`total_num_tokens / (timing_raw["step"] * n_gpus)` - a batch-size numerator
-over a wall-clock denominator - so read it as "the step finished sooner", not
-as a serving rate.
+`slowest/*` is omitted from this table on purpose. It reports one trajectory
+chosen by `argmax(generate_sequences + tool_calls + compute_score)`
+(`agent_loop.py:1146`), so it names a **different trajectory in each step and
+each arm** and is not comparable between them: `slowest/tool_calls` reads
+-92.5% where the selection-free `tool_calls/max` is -43.3%, and
+`slowest/generate_sequences` reads +58.1% where `generate_sequences/max` is
+-22.9% in the store's favour. The rows are recorded and kept in the per-arm
+files.
 
-### Per-step pressure decomposition (engine scrape)
+### Pressure held in every step
 
-| recompute | busy min | kv_avg | hot% | `waiting` peak | preempt | `local_compute` | `local_cache_hit` | hit% |
-|---|---|---|---|---|---|---|---|---|
-| step 1 | 29 | 0.827 | 73% | 299 | 162 | 66,551,848 | 5,937,072 | 8.2% |
-| step 2 | 14 | 0.725 | 67% | 95 | 63 | 27,549,011 | 5,866,304 | 17.6% |
-| step 3 | 14 | 0.678 | 60% | 95 | 48 | 28,237,380 | 5,384,976 | 16.0% |
-| step 4 | 12 | 0.774 | 69% | 94 | 44 | 26,040,109 | 6,818,800 | 20.8% |
-
-| store | busy min | kv_avg | hot% | `waiting` peak | preempt | `local_compute` | `local_cache_hit` | `external_kv_transfer` |
-|---|---|---|---|---|---|---|---|---|
-| step 1 | 20 | 0.817 | 76% | 303 | 170 | 30,308,327 | 5,709,712 | 36,039,888 |
-| step 2 | 9 | 0.564 | 20% | 50 | 49 | 8,824,131 | 12,446,288 | 10,639,920 |
-| step 3 | 10 | 0.670 | 55% | 108 | 58 | 14,310,666 | 6,343,872 | 16,229,568 |
-| step 4 | 11 | 0.584 | 33% | 97 | 48 | 13,584,767 | 8,018,528 | 14,839,568 |
-
-Recompute holds hot% 60-73% in **every** step with hit% never above 20.8%.
-That is the property pair-v2 lacked, and it is why the deltas above are 4/4
-instead of 2/4.
+The per-step engine decomposition lives in `recompute.md` and `store.md`.
+The summary that matters: the recompute arm held `hot%` at 60-73% in **all
+four** steps with `local_cache_hit` never above 20.8%, so there is no
+low-occupancy step diluting the means above. That is precisely what
+`../pressure-pair-v2/` lacked, and it is why these deltas are 4/4 where its
+were 2/4.
 
 ### Generation throughput (decode tokens per trajectory-second)
 
-`generation_tokens_total` for the rollout, over
-`generate_sequences/mean x 512 trajectories`. Independent of how many tokens a
-step happened to present:
+`generation_tokens_total` over `generate_sequences/mean x 512 trajectories` -
+independent of how many tokens a step happened to present. 4-step mean:
 
-| step | recompute | store | ratio |
+| | recompute | store | ratio |
 |---|---|---|---|
-| 1 | 2.61 | 4.05 | 1.55x |
-| 2 | 7.41 | 16.14 | 2.18x |
-| 3 | 5.80 | 9.04 | 1.56x |
-| 4 | 6.63 | 9.67 | 1.46x |
+| decode tokens per trajectory-second | 5.61 | 9.72 | **1.73x** |
+
+Per-step values (1.46x-2.18x, store higher in 4/4) are in the per-arm files.
 
 ### Cost per avoided token (recorded inputs only, no FLOPs model)
 
@@ -235,7 +223,7 @@ latency is still not recorded; that is the measurement to add next.
 worst trajectory is one that generated until the configured ceiling stopped
 it, while recompute's is one that was still grinding. On the selection-free
 metric the store is faster at generation too (`generate_sequences/max`
--25.6%, 4/4). The honest reading is that the store moved the binding
+-22.9%, 4/4). The honest reading is that the store moved the binding
 constraint onto a config limit, which also means **the response cap is now
 truncating the store arm's tail and any longer-horizon run should raise it or
 report the clip rate.**
@@ -270,6 +258,9 @@ change any sign.
 
 ## Files
 
+- **`recompute.md`, `store.md`** - per-step detail for each arm: all 22 verl
+  step metrics, the engine-side pressure decomposition, and (store) the flush
+  events and mooncake op totals. This README carries only 4-step means.
 - `recompute_driver.log.gz`, `store_driver.log.gz` - full driver logs, source
   of every verl table here (`zgrep -a "step:[0-9]* - "`).
 - `recompute_scrape.log.gz`, `store_scrape.log.gz` - per-minute in-worker
