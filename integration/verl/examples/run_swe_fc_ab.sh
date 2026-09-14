@@ -11,20 +11,23 @@
 # (benchmark-results/verl-swe-ab/pressure-pair): Qwen2.5-32B-Instruct + LoRA
 # r32/a32, dynamic bsz, safetensors load, no sleep.
 #
-# GMU is NOT copied from that pair. 0.317 is H200-specific: on a 141GB card it
-# leaves ~9GB of KV after 32GB/GPU of weights, but on an 80GB H100 it is 25GB
-# and cannot hold the weights at all.
+# MODEL SIZE: 14B, not the store A/B's 32B. On an 80GB H100 a 32B at tp=2 has
+# NO working gmu, measured both ways: the FSDP actor and the vLLM engine share
+# each card and must both be resident during weight sync.
+#   gmu 0.56 (44.2GB/GPU) -> weights+KV fit, but actor_rollout_update_weights
+#                            OOM'd with 636MB free needing 1.82GB
+#   gmu 0.50 (39.5GB/GPU) -> "No available memory for the cache blocks":
+#                            32GB weights plus ~8GB workspace leaves no KV
+# The store A/B ran 32B on 141GB H200s for exactly this reason. gmu is a
+# FRACTION OF THE CARD and does not port across GPU sizes: their 0.317 is
+# 44.7GB/GPU, which would be gmu 0.57 here.
 #
-# On an 80GB H100 the usable window is narrow, because the FSDP actor and the
-# vLLM engine share the card and must both be resident during weight sync:
-#   floor   gmu >= 0.46  KV pool must hold one max-length request
-#                        (4096 prompt + 28672 response = 32768 tok, ~256KB/tok
-#                        for 32B GQA => ~8.6GB/engine on top of 32GB/GPU weights)
-#   ceiling gmu <= 0.58  actor needs ~31.5GB resident plus ~2GB of sync headroom
-# 0.56 sat at the ceiling and OOM'd in actor_rollout_update_weights when the
-# sync asked for 1.82GB. 0.50 sits mid-window: ~15GB KV/engine (~58k tokens,
-# under two max-length requests) which is deliberately tight, since a small
-# pool is what creates the pressure the gate exists to relieve.
+# 14B at tp=2 is 14GB/GPU of weights, so the window reopens with room to spare:
+# gmu 0.45 gives ~35.5GB/GPU, leaving ~13.5GB/GPU (~27GB, ~138k tokens) of KV
+# per engine, while the actor needs only ~18GB of the remaining ~43GB.
+# 64 concurrent trajectories over 4 engines is 16/engine at up to 32768 tokens
+# = ~524k tokens of demand against a ~138k pool: ~4x oversubscribed, which is
+# the pressure the gate exists to relieve.
 # Verify against the "KV cache size" line the engine logs at startup.
 #
 # ARM=fcon  -> scheduler hook + simple_backpressure admission gate
@@ -34,7 +37,7 @@ set -euo pipefail
 
 ARM=${ARM:?set ARM=fcon|fcoff}
 STEPS=${STEPS:-2}
-GMU=${GMU:-0.50}
+GMU=${GMU:-0.45}
 GROUP_N=${GROUP_N:-4}
 TURNS=${TURNS:-25}
 
@@ -42,7 +45,7 @@ TURNS=${TURNS:-25}
 # assignment, ++ means "add or override".
 exec bash "$(dirname "$0")/run_swe.sh" \
     +actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager \
-    ++actor_rollout_ref.model.path=Qwen/Qwen2.5-32B-Instruct \
+    ++actor_rollout_ref.model.path=Qwen/Qwen2.5-14B-Instruct \
     ++actor_rollout_ref.model.lora_rank=32 \
     ++actor_rollout_ref.model.lora_alpha=32 \
     ++actor_rollout_ref.rollout.load_format=safetensors \
