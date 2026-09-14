@@ -12,26 +12,16 @@ step actually waits on, improved by 23%.
 | sampling time, slowest trajectory | 1,146.7 s | 883.8 s | **-22.9%** |
 | prompt tokens recomputed on GPU | 148.6M | 67.0M | **2.22x less** |
 
-The prefill saving is the expected benefit of KV offload. The sampling-time
-saving is the result worth attention, because it is far larger than the prefill
-saving alone can explain. See "Why sampling got faster".
-
 ---
 
 ## What we tested
 
-Production RL rollouts run local-only today. That means vLLM's paged prefix
-cache, with a full recompute whenever a block is evicted. This is the baseline.
+We theorize that an external KV tier that HBM can offload to is better than always recomputing requests. This is most useful when the local prefix cache
+is not enough to save on prefill. We have seen this to be a normal condition for
+long-context agentic workloads. They present a large, additive context on
+every turn, and they run enough trajectories at once that the HBM memory pool cannot hold them all.
 
-We theorise that an external KV tier is most useful when the local prefix cache
-is not enough to save on prefill. That should be the normal condition for
-long-context agentic workloads. They present a large accumulated context on
-every turn, and they run enough trajectories at once that the pool cannot hold
-them all.
-
-So the test needs a setup where the baseline is genuinely short of local cache.
-If the local cache is doing its job there is nothing for a second tier to
-rescue, and earlier runs of ours found exactly that.
+The goal is to see whether enabling KV offload (through Mooncake) improves sampling performance for long-context, agentic, heavily preemptive RL workloads.
 
 ---
 
