@@ -178,8 +178,12 @@ def write_csv(arms, scr, path="metrics.csv"):
                 d = f"{(sa - ra) / ra * 100:+.2f}" if ra else ""
             else:
                 ra = sa = d = ""
-            w.writerow([k] + ["" if v is None else f"{v:.6g}" for v in rc + st]
-                       + [f"{ra:.6g}" if ra != "" else "", f"{sa:.6g}" if sa != "" else "", d])
+            # repr(), not %g: repr is the shortest string that round-trips a
+            # float exactly, so the CSV is a faithful record rather than a
+            # 6-significant-figure approximation of it. %g silently turned
+            # 66,551,848 recorded tokens into 66,551,800.
+            w.writerow([k] + ["" if v is None else repr(v) for v in rc + st]
+                       + [repr(ra) if ra != "" else "", repr(sa) if sa != "" else "", d])
     return path, len(rows)
 
 
