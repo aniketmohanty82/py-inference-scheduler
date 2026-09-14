@@ -25,10 +25,19 @@ set -euo pipefail
 ARM=${ARM:?set ARM=fcon|fcoff}
 STEPS=${STEPS:-4}
 
+# free_cache_engine=False (no sleep mode) is required on 80GB cards: run_swe.sh
+# is calibrated for the 141GB H200s the SWE harness was built on, and with
+# gmu 0.5 plus the FSDP actor and ref model resident, vLLM's post-training
+# wake_up OOMs in cumem_allocator on an H100. Applied to BOTH arms, and it is
+# not a workload change -- the KV pool, batch, n, response length and turn
+# count are untouched, so in-rollout KV pressure is identical. This also
+# matches run_swe_ab.sh, which runs no-sleep in both of its arms.
+#
 # ++ (not +) on keys run_swe.sh already sets: hydra errors on a duplicate
 # plain assignment, and ++ means "add or override".
 exec bash "$(dirname "$0")/run_swe.sh" \
     +actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager \
+    ++actor_rollout_ref.rollout.free_cache_engine=False \
     ++trainer.total_training_steps="$STEPS" \
     ++trainer.test_freq=-1 \
     ++trainer.val_before_train=False \
