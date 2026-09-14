@@ -102,11 +102,19 @@ A fetch happens only when all five of these hold.
 | 4 | the match is over 1,024 tokens | below that, local prefill beats a round trip |
 | 5 | fewer than 1 fetch already in flight | a waiting request holds its full context in GPU memory until its data lands |
 
-On a fetch the request reserves its blocks and pauses. The transfer is issued
-after the model forward launches, so it overlaps other requests' compute. A
-background thread writes over RDMA straight into the paged cache, with no host
-copy. The request resumes a step or two later and prefills only the part the
-tier did not cover.
+On a fetch the request reserves its blocks and pauses.
+
+The transfer is then started deliberately late within the engine's scheduling
+pass. That pass is the engine's inner loop and runs many times a second, so it
+is not a training step. vLLM hands the GPU its work first. GPU work is queued
+asynchronously, so the CPU is free again the moment it is handed over, well
+before the GPU finishes. The fetch is issued in that gap. The network transfer
+therefore runs while the GPU is busy on other requests, instead of holding them
+up.
+
+A background thread writes over RDMA straight into the engine's KV blocks, with
+no copy through host memory. The request resumes one or two scheduling passes
+later, so milliseconds, and prefills only the part the tier did not cover.
 
 If a fetch fails the request just recomputes. That is why declining at any of
 the five gates is always safe.
@@ -156,10 +164,10 @@ length within 0.03%, and prompt length per step identical between the arms.
 > reproduces that formula to four decimal places in all 8 arm-steps, and its
 > ratio (1.456x) simply inverts the step-time ratio (1.446x).
 >
-> That matters because step wall clock is a makespan. A rollout does not finish
-> until its slowest single trajectory does, and we confirmed rollout wall clock
-> equals the slowest trajectory's generate plus tool time to within 3% in every
-> step of both arms. So `perf/throughput` and `timing_s/gen` track 1 trajectory
+> That matters because a rollout does not finish until its slowest single
+> trajectory does. We confirmed this: rollout wall clock equals the slowest
+> trajectory's generate plus tool time to within 3%, in every step of both
+> arms. So `perf/throughput` and `timing_s/gen` track 1 trajectory
 > out of 512, and most of their apparent gap here comes from that trajectory's
 > shell commands rather than from the KV tier. The two headline metrics are
 > averages over all 512 and do not have this problem.
@@ -245,7 +253,8 @@ prefill tokens     72,557  -   32,733  =  39,824 tokens avoided per trajectory
 ```
 
 Sampling time is the headline metric above. The per-trajectory token counts are
-the engine's own by-source counters divided by the trajectories in the arm,
+the engine's own counters for where each prompt token came from, divided by
+the trajectories in the arm,
 512 x 4 steps = 2,048. As a check, the same division per *turn* instead of per
 trajectory gives the same answer, because turn counts match between arms.
 
