@@ -3,12 +3,13 @@
 ## TLDR
 
 Adding a shared RDMA KV tier to an agentic RL rollout cut **sampling time per
-trajectory by 35%** and raised **generation throughput 1.57x**.
+trajectory by 35%**. The slowest trajectory in each rollout, which is the one a
+step actually waits on, improved by 23%.
 
 | | local-only | shared KV tier | change |
 |---|---|---|---|
 | sampling time per trajectory | 348.2 s | 226.2 s | **-35.1%** |
-| generation throughput (derived) | 4.26 tok/traj-s | 6.69 tok/traj-s | **1.57x** |
+| sampling time, slowest trajectory | 1,146.7 s | 883.8 s | **-22.9%** |
 | prompt tokens recomputed on GPU | 148.6M | 67.0M | **2.22x less** |
 
 The prefill saving is the expected benefit of KV offload. The sampling-time
@@ -133,10 +134,9 @@ the five gates is always safe.
 | | local-only | shared KV tier | change |
 |---|---|---|---|
 | **sampling time per trajectory** | **348.2 s** | **226.2 s** | **-35.1%** |
-| **generation throughput** (derived) | **4.26 tok/traj-s** | **6.69 tok/traj-s** | **1.57x** |
 | decode tokens produced | 3,034,780 | 3,096,673 | +2.0% |
 | prompt tokens recomputed | 148,596,234 | 67,037,475 | **-54.9%** |
-| slowest trajectory's sampling time | 1,146.7 s | 883.8 s | -22.9% |
+| **sampling time, slowest trajectory** | **1,146.7 s** | **883.8 s** | **-22.9%** |
 | tool-call time per trajectory | 57.1 s | 59.7 s | +4.5% |
 | KV pool occupancy while busy | 0.751 | 0.659 | -12.3% |
 | peak requests running | 112.8 | 93.3 | -17.3% |
@@ -147,29 +147,19 @@ the five gates is always safe.
 Workloads matched: total prompt tokens within 2.4%, batch tokens and response
 length within 0.03%, and prompt length per step identical between the arms.
 
-> **NOTE — the two headline metrics, and which is derived.**
-> *Sampling time per trajectory* is recorded directly by verl
-> (`timing_s/agent_loop/generate_sequences/mean`): the time one trajectory
-> spends inside generate calls, summed over its turns and averaged across all
-> 512 trajectories. It includes time queued behind other requests, which is the
-> point.
+> **NOTE — the two headline metrics.** Both are recorded by verl, not derived.
+> *Sampling time per trajectory* is
+> `timing_s/agent_loop/generate_sequences/mean`: the time one trajectory spends
+> inside generate calls, summed over its turns and averaged across all 512
+> trajectories. It includes time queued behind other requests, which is the
+> point. *Sampling time, slowest trajectory* is the same quantity's maximum
+> across the 512.
 >
-> *Generation throughput* is **derived, not recorded.** Neither verl nor vLLM
-> emits a sampling-only throughput, so we compute it from two recorded inputs
-> taken from different sources:
->
-> ```
-> decode tokens          vllm:generation_tokens_total   (engine counter)
-> generation time        generate_sequences/mean x 512  (verl, per step)
-> throughput = decode tokens / summed generation time
-> ```
->
-> It answers "how many tokens does a second of generation buy", and it does not
-> move with how many tokens a given step happened to present. Both inputs are
-> exact totals for the arm. Two caveats: the numerator is an engine-wide counter
-> while the denominator is a verl per-trajectory aggregate, so the two are not
-> measured by the same observer; and the unit is tokens per trajectory-second,
-> not per wall-clock second, because trajectories run concurrently.
+> A maximum over 512 samples can be noisy, so we checked this one. Its spread
+> is mild, at 3.3-3.9x the mean, and the per-step ratios between arms are 0.75,
+> 0.74, 0.87 and 0.73. That is a consistent effect rather than a lucky draw. By
+> contrast the maximum *tool-call* time has a 9-17x spread and ratios swinging
+> from 0.40 to 1.05, so we do not report it as a result.
 
 > **NOTE — why we do not lead with verl's own `perf/throughput`.** It is the
 > obvious metric to reach for, and it agrees with us in direction, but it is not
