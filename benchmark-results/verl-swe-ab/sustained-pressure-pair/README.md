@@ -105,12 +105,11 @@ A fetch happens only when all five of these hold.
 On a fetch the request reserves its blocks and pauses.
 
 The transfer is then started deliberately late within the engine's scheduling
-pass. That pass is the engine's inner loop and runs many times a second, so it
-is not a training step. vLLM hands the GPU its work first. GPU work is queued
-asynchronously, so the CPU is free again the moment it is handed over, well
-before the GPU finishes. The fetch is issued in that gap. The network transfer
-therefore runs while the GPU is busy on other requests, instead of holding them
-up.
+pass, the inner loop that runs many times a second. vLLM hands the GPU its work
+first. GPU work is queued asynchronously, so the CPU is free again the moment
+it is handed over, well before the GPU finishes. The fetch is issued in that
+gap. The network transfer therefore runs while the GPU is busy on other
+requests, instead of holding them up.
 
 A background thread writes over RDMA straight into the engine's KV blocks, with
 no copy through host memory. The request resumes one or two scheduling passes
