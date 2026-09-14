@@ -2,13 +2,14 @@
 
 ## TLDR
 
-Under KV pressure held across every step of the run, serving evicted prefixes
-from a shared RDMA KV tier instead of recomputing them **cuts on-GPU prefill by
-2.27x and per-trajectory generation time by 35.1%, consistent in 4 of 4 steps**.
-The mechanism is not saved arithmetic — the avoided prefill is worth only
-~0.11s of FLOPs per turn — it is **queue relief**: prefill and decode contend
-for the same GPUs, and at 86% recompute the engine sits far past its knee, so
-removing prefill work removes waiting for every other request. The measured
+Under KV pressure held across every step, serving evicted prefixes from a
+shared RDMA KV tier beats recomputing them. **On-GPU prefill drops 2.27x.
+Per-trajectory generation time drops 35.1%, in 4 of 4 steps.**
+
+The mechanism is not saved arithmetic. The avoided prefill is worth about
+0.11 s of FLOPs per turn. It is **queue relief**. Prefill and decode share the
+same GPUs. At 86% recompute the engine runs far past its knee. Work you remove
+from one request shortens the wait for every other request. The measured
 amplification is **39x**.
 
 | headline | local-only (baseline) | shared KV tier | delta |
@@ -17,28 +18,28 @@ amplification is **39x**.
 | `timing_s/agent_loop/generate_sequences/mean` | 348.2 s | 226.2 s | **-35.1%**, 4/4 steps |
 | prefill tokens per turn | 2,503 | 1,104 | **-55.9%** |
 
-Why these metrics: a GRPO rollout is not finished until its slowest trajectory
-is, so per-trajectory generation time is what a practitioner feels, and
-`local_compute` is the only quantity here that is a direct count rather than a
-timing. **Both are population statistics over 512 trajectories**, which is what
-makes them survivable — see analysis (c) for the wall-clock metrics that are
-not.
+Why these two metrics. A rollout is not finished until its slowest trajectory
+is, so per-trajectory generation time is what a practitioner feels.
+`local_compute` is the only figure here that is a direct count rather than a
+timing. **Both are population statistics over 512 trajectories.** That is what
+makes them hold up. Analysis (c) covers the wall-clock metrics that do not.
 
 ---
 
 ## 1. Purpose
 
-Production RL rollouts today run **local-only**: vLLM's paged prefix cache, and
-a full recompute on eviction. That is the baseline because it is what runs, not
-because it is a straw man — it is a strong baseline whenever the working set
-fits, and this program has already recorded regimes where the shared tier buys
-nothing at all.
+Production RL rollouts run **local-only** today. That means vLLM's paged prefix
+cache, and a full recompute on eviction. It is the baseline because it is what
+runs, not because it is easy to beat. It is a strong baseline whenever the
+working set fits. Earlier runs in this program found regimes where the shared
+tier buys nothing at all.
 
-The question this report answers is narrower and harder: **when the local cache
-is genuinely failing, is fetching KV over RDMA cheaper than recomputing it?**
-That requires a regime where the baseline has almost no local cache to fall back
-on, sustained for the whole run rather than for the first two steps. Section 2
-describes how that regime was constructed and gated.
+This report answers a narrower question. **When the local cache is genuinely
+failing, is fetching KV over RDMA cheaper than recomputing it?**
+
+Answering it needs a regime where the baseline has almost no local cache left.
+That pressure has to last the whole run, not just the first two steps.
+Section 3.3 covers how it was built and gated.
 
 ---
 
@@ -50,21 +51,26 @@ live Hydra command line before either arm started.
 
 ### 2.1 Local-only (baseline)
 
-vLLM computes a rolling hash per KV block,
-`H(block_hash[i-1], token_ids_i, extra_keys)`, and matches the longest cached
-prefix. On a miss the tokens are prefilled on-GPU. Under memory pressure the
-scheduler preempts running requests, frees their blocks, and those requests
-re-prefill their **entire** context on resume. There is no second tier.
+vLLM hashes every KV block. The hash chains:
+`H(block_hash[i-1], token_ids_i, extra_keys)`. It matches the longest cached
+prefix and prefills the rest on-GPU.
+
+Under memory pressure the scheduler preempts running requests and frees their
+blocks. Those requests re-prefill their **entire** context on resume. There is
+no second tier to catch them.
 
 ### 2.2 Shared RDMA KV tier (`DecodeKVSavingConnector` over Mooncake)
 
-A vLLM v1 KV-connector subclass. It reuses the *same* block hashes, so the store
-key is `PoolKey(model_name, tp_rank, pp_rank, group_id, block_hash)` — local and
-remote caches are keyed identically, which is why they compose rather than
-compete. Read from source at the pinned image (`swe12`,
-vLLM 0.22.1 `…/kv_connector/v1/mooncake/store/`):
+A vLLM v1 KV-connector subclass. It reuses the *same* block hashes, so the
+store key is `PoolKey(model_name, tp_rank, pp_rank, group_id, block_hash)`.
+Local and remote caches are keyed identically. That is why they compose instead
+of competing.
 
-A load is issued only if **all** of these hold (`get_num_new_matched_tokens`):
+Read from source at the pinned image: `swe12`, vLLM 0.22.1,
+`…/kv_connector/v1/mooncake/store/`.
+
+A load fires only if **all five** of these hold
+(`get_num_new_matched_tokens`):
 
 | # | condition | rationale |
 |---|---|---|
@@ -74,15 +80,17 @@ A load is issued only if **all** of these hold (`get_num_new_matched_tokens`):
 | 4 | the match exceeds `RLS_MIN_PULL_TOKENS` (1024) | a small pull costs a scheduler round-trip for KV that local prefill regenerates faster |
 | 5 | in-flight loads < `RLS_MAX_INFLIGHT_LOADS` (1) | a waiter reserves its **full** context in HBM for the whole round trip |
 
-On a pass, the request's full block set is allocated, the request parks in
-`WAITING_FOR_REMOTE_KVS`, and the transfer is issued from `get_finished()`
-**after** the model forward launches — deliberately, for compute/IO overlap. A
-background thread RDMA-writes straight into the paged cache
-(`base_addr = cache_storage.data_ptr()`); there is no host bounce and no staging
-copy. A later step observes `finished_recving`, promotes the request, and it
-prefills only the tail the store did not cover. **A failed pull degrades to
-recompute** (`get_block_ids_with_load_errors`), which is why declining at any
-gate above is always safe.
+On a pass, three things happen. The request's full block set is allocated. The
+request parks in `WAITING_FOR_REMOTE_KVS`. The transfer is issued from
+`get_finished()`, **after** the model forward launches, so it overlaps compute.
+
+A background thread then RDMA-writes straight into the paged cache, at
+`base_addr = cache_storage.data_ptr()`. There is no host bounce and no staging
+copy. A later step sees `finished_recving` and promotes the request. It then
+prefills only the tail the store did not cover.
+
+**A failed pull degrades to recompute** (`get_block_ids_with_load_errors`). That
+is why declining at any gate above is always safe.
 
 ### 2.3 Config profile, verbatim
 
@@ -114,9 +122,9 @@ Pod environment (both arms): `SWE_CMD_TIMEOUT_S=15`, `SWE_OBS_MAX_CHARS=20000`,
 `RLS_DECODE_SAVE_MIN_BLOCKS=8`, `RLS_MIN_PULL_TOKENS=1024`,
 `RLS_MAX_INFLIGHT_LOADS=1`, `PYTHONHASHSEED=0`.
 
-`PYTHONHASHSEED=0` and `sha256_cbor` are load-bearing, not hygiene: the block
-hash must be byte-identical across processes or a block written by engine 0 is
-invisible to engine 1.
+`PYTHONHASHSEED=0` and `sha256_cbor` are load-bearing, not hygiene. The block
+hash must be byte-identical across processes. Otherwise a block written by
+engine 0 is invisible to engine 1.
 
 ---
 
@@ -137,12 +145,13 @@ invisible to engine 1.
 ### 3.2 Workload
 
 Each GRPO step samples a **rollout**: 128 SWE-bench tasks x n=4 generations =
-**512 trajectories**. A trajectory is a multi-turn agent episode — the model
-emits a bash command, the harness runs it in an isolated gVisor sandbox, the
-output is appended as an observation, and the loop repeats until the model
-submits, hits 32 assistant turns, or exhausts the 28,672-token response budget.
-Each *turn* is a separate engine request carrying the whole accumulated context,
-which is why prefix reuse dominates this workload.
+**512 trajectories**. A trajectory is a multi-turn agent episode. The model
+emits a bash command. The harness runs it in an isolated gVisor sandbox. The
+output comes back as an observation, and the loop repeats. It ends when the
+model submits, hits 32 assistant turns, or exhausts its 28,672-token budget.
+
+Each *turn* is a separate engine request carrying the whole accumulated
+context. That is why prefix reuse dominates this workload.
 
 | dimension | value |
 |---|---|
@@ -157,28 +166,31 @@ which is why prefix reuse dominates this workload.
 Tokens per turn is derived, so the arithmetic:
 `173,441,194 prompt tokens / (512 traj x 115.8 turns) = 173,441,194 / 59,289 ≈ 2,925`.
 
-**Batch must divide the dataset.** 4 steps x 128 = 512 draws = exactly 2 epochs
-of 256 rows, so every task appears exactly twice, identically in both arms. A
-batch that does not divide it causes verl to drop the remainder and reshuffle
-mid-run, silently changing the task set between steps.
+**Batch must divide the dataset.** 4 steps x 128 = 512 draws, which is exactly
+2 epochs of 256 rows. Every task appears twice, identically in both arms. Pick a
+batch that does not divide the dataset and verl drops the remainder, then
+reshuffles. The task set changes between steps and nothing warns you.
 
 ### 3.3 Regime construction and gate
 
-KV pressure in a multi-turn agent loop is **bistable**. A request is one turn,
-and between turns a trajectory holds zero allocated blocks — its KV sits in the
-evictable cached tier. Above ~100% occupancy that tier is squeezed to nothing
-and every returning turn re-prefills its whole context, which sustains the
-occupancy. Below ~60% the tier survives and that sustains the low state. Both
-are self-reinforcing, so a regime that merely *reaches* pressure can fall out of
-it mid-run and average two incompatible operating points together.
+KV pressure in a multi-turn agent loop is **bistable**. A request is one turn.
+Between turns a trajectory holds zero allocated blocks, and its KV sits in the
+evictable cached tier.
 
-The knobs were therefore chosen so the low state does not exist to fall into,
-and the result was gated before either arm ran. `pressure_gate.py` requires
-**≥60% of the engine-busy window above `kv_cache_usage_perc` 0.85**, plus
-preemptions > 0. Peak occupancy does not discriminate — both arms touch 0.99 —
-so the gate is a *fraction of the busy window*. The bar is calibrated against a
-known bistable run, whose collapsed steps score 0.50 and whose healthy steps
-score 0.00.
+That gives two self-sustaining states. Above ~100% occupancy the cached tier is
+squeezed to nothing, so every returning turn re-prefills its whole context,
+which keeps occupancy high. Below ~60% the tier survives, turns prefill only
+new tokens, and occupancy stays low. A regime that merely *reaches* pressure can
+therefore fall out of it mid-run, and its means average two incompatible states.
+
+So the knobs were chosen to leave no low state to fall into, and the result was
+gated before either arm ran. `pressure_gate.py` requires **≥60% of the
+engine-busy window above `kv_cache_usage_perc` 0.85**, plus preemptions > 0.
+
+It has to be a fraction of the busy window, not a peak. Both arms touch 0.99 at
+some point, so peaks do not discriminate. The 0.60 bar is calibrated against a
+known bistable run. Its collapsed steps score 0.50 and its healthy steps score
+0.00.
 
 | | hot_frac | active snapshots | mean kv | preemptions |
 |---|---|---|---|---|
@@ -186,9 +198,9 @@ score 0.00.
 | baseline arm | **0.72** | 69 | 0.802 | 317 |
 | store arm | 0.56 | 50 | 0.736 | 325 |
 
-The store arm scoring below the bar is the measurement, not a failure: the gate
-exists to prove the *baseline* faced real pressure, and an arm that relieves its
-own pressure on identical work is the thing under test.
+The store arm scoring below the bar is the measurement, not a failure. The gate
+exists to prove the *baseline* faced real pressure. An arm that relieves its own
+pressure on identical work is the thing under test.
 
 ### 3.4 Metrics
 
@@ -205,9 +217,9 @@ own pressure on identical work is the thing under test.
 | `actor/entropy` | policy entropy; validity gate is < 1.0 | context |
 | `actor/perf/cpu_memory_used_gb` | host memory — the store's standing cost | lower better |
 
-All engine-side values come from per-minute in-worker `/metrics` scrapes; all
-verl values from the driver logs. Nothing in this report is inferred from a
-model of the system.
+Engine-side values come from per-minute in-worker `/metrics` scrapes. verl
+values come from the driver logs. Nothing here is inferred from a model of the
+system.
 
 ---
 
@@ -275,130 +287,153 @@ response length, and bit-identically on prompt length per step.
 ## 6. Analysis
 
 **(a) The defensible result is prefill work, and it is a count, not a timing.**
-`local_compute` falls 148.6M → 67.0M tokens, 2.27x, with total prompt tokens
-matched to 2.4%. The baseline prefills 85.7% of everything it is shown; the
-store arm prefills 37.7%. This cannot be moved by scheduling noise, stragglers,
-or measurement choices — it is the engine's own counter, and the three
-by_source components sum exactly to `prompt_tokens_total` in both arms.
+`local_compute` falls from 148.6M to 67.0M tokens, a 2.27x cut, with total
+prompt tokens matched to 2.4%. The baseline prefills 85.7% of everything it is
+shown. The store arm prefills 37.7%.
 
-**(b) The speedup is queue relief, not saved arithmetic — 39x amplification.**
+Scheduling noise, stragglers and measurement choices cannot move this. It is the
+engine's own counter, and the three by_source components sum exactly to
+`prompt_tokens_total` in both arms.
+
+**(b) The speedup is queue relief, not saved arithmetic. 39x amplification.**
 Per turn the store avoids 1,399 tokens of prefill and saves 4.40 s of
-`generate_sequences`. Those tokens are worth only **0.113 s** of raw compute
-(32B dense, 2 FLOP/param/token, tp=2 on H200 at ~40% MFU ≈ 0.081 ms/token), so
-the FLOP saving explains 2.6% of the observed gain. The rest is contention:
-prefill and decode share the GPUs, `num_requests_waiting` peaks at 299, and at
-that load the engine is well past its knee, where a small reduction in offered
-work produces a large reduction in latency for *everyone*. This is corroborated
-independently by the per-token cost model in (g): 3.07 ms of marginal system
-cost against ~0.08 ms of hardware cost, the same ~38x.
+`generate_sequences`. Those tokens are worth only **0.113 s** of raw compute.
+(32B dense, 2 FLOP/param/token, tp=2 on H200 at ~40% MFU, so ~0.081 ms/token.)
+The FLOP saving explains 2.6% of the gain.
 
-**(c) HONEST NEGATIVE — the wall-clock numbers are makespan artifacts. Do not
+The rest is contention. Prefill and decode share the GPUs, and
+`num_requests_waiting` peaks at 299. At that load the engine is well past its
+knee. A small cut in offered work buys a large cut in latency for *everyone*.
+
+The cost model in (g) agrees independently: 3.07 ms of marginal system cost
+against ~0.08 ms of hardware cost, the same ~38x.
+
+**(c) HONEST NEGATIVE. The wall-clock numbers are makespan artifacts. Do not
 quote them.** `timing_s/gen` equals the slowest single trajectory's
-`generate_sequences + tool_calls` to within 0.1–3% **in every step of both
-arms**. It is a makespan over 1 trajectory out of 512. Its 588 s mean gap
-decomposes as **+911 s** from that straggler's tool time and **-325 s** from its
-generation time (the store's straggler in fact generates *longer*), netting
-586 s against 588 s observed. So 155% of the -37.7% is tool behaviour, and
-`timing_s/step` and `perf/throughput` inherit the same denominator. Only (a) and
-the `generate_sequences/mean` figure — a mean over 512 trajectories where the
-straggler contributes ~1 s of 348 s — survive this.
+`generate_sequences + tool_calls` to within 0.1–3%, **in every step of both
+arms**. It is a makespan over 1 trajectory out of 512.
 
-**(d) HONEST NEGATIVE — the tool-time tail is not a treatment effect.** Mean
-tool cost is identical (1.97 s vs 2.01 s per call, +4.5% with the store
-*higher*); only the per-step maximum differs. Normalised by `num_turns/max`
-against every arm-run recorded on this harness, fifteen of eighteen
-observations fall in 14–17.5 s/turn and the baseline sits in the middle of them;
-the three outliers are the store arm's steps 2–4, while that same arm's step 1
-(14.3) and its own smoke (14.5, 16.4) match the norm. `tool_calls/max` is 9–17x
-`tool_calls/mean`, so each step's value is one extreme order statistic out of
-512 — three low draws from a tail that heavy is unremarkable. Sandbox contention
-was tested directly and **refuted**: a 60 s sampler across both arms shows
-indistinguishable fleet occupancy (mean 152.2 vs 154.4, p90 364 both, max 515
-vs 539). There is no causal channel from a KV tier to how long a shell command
-takes, and the data provides none.
+Its 588 s mean gap breaks down as **+911 s** from that straggler's tool time and
+**-325 s** from its generation time. The store's straggler actually generates
+*longer*. Those net to 586 s against 588 s observed.
 
-**(e) HONEST NEGATIVE — the store did not reduce preemptions here.** 317 vs 325,
-essentially identical. Earlier regimes in this program showed the store halving
-preemptions; this one does not. The relief appears as lower occupancy
-(`kv_cache_usage_perc` 0.751 → 0.659, peak running 112.8 → 93.3) but not as
-fewer evictions. Any claim that the tier "prevents thrashing" is unsupported by
-this run.
+So 155% of the -37.7% is tool behaviour. `timing_s/step` and `perf/throughput`
+have the same denominator and the same problem. Only (a) and
+`generate_sequences/mean` survive it. That second one is a mean over 512
+trajectories, where the straggler contributes ~1 s of 348 s.
+
+**(d) HONEST NEGATIVE. The tool-time tail is not a treatment effect.** Mean tool
+cost is identical: 1.97 s vs 2.01 s per call, with the store 4.5% *higher*. Only
+the per-step maximum differs.
+
+Normalise by `num_turns/max` across every arm-run on this harness and fifteen of
+eighteen observations fall in 14–17.5 s/turn. The baseline sits in the middle of
+them. The three outliers are the store arm's steps 2–4. That same arm's step 1
+is 14.3, and its own smoke is 14.5 and 16.4, both on the norm.
+
+`tool_calls/max` is 9–17x `tool_calls/mean`, so each step's value is one extreme
+order statistic out of 512. Three low draws from a tail that heavy is
+unremarkable.
+
+Sandbox contention was tested directly and **refuted**. A 60 s sampler across
+both arms shows indistinguishable fleet occupancy: mean 152.2 vs 154.4, p90 364
+both, max 515 vs 539. There is no causal channel from a KV tier to how long a
+shell command takes, and the data offers none.
+
+**(e) HONEST NEGATIVE. The store did not reduce preemptions here.** 317 vs 325,
+essentially identical. Earlier regimes showed the store halving preemptions.
+This one does not.
+
+The relief shows up as lower occupancy instead: `kv_cache_usage_perc` 0.751 to
+0.659, peak running 112.8 to 93.3. Fewer evictions, no. Any claim that the tier
+"prevents thrashing" is unsupported by this run.
 
 **(f) The tiers compose rather than compete.** The store arm's *local* hit share
-is the higher of the two (18.5% vs 14.3%, +32.3% in absolute tokens) despite
-also pulling 43.8% externally. A pulled block is an ordinary cached block once
-it lands, so it counts as a local hit on the next turn of the same trajectory.
-This also means the tier is strictly a second-tier fallback: gate 1 skips the
-store lookup entirely when the local cache already covers the prompt.
+is the higher of the two, 18.5% against 14.3%, or +32.3% in absolute tokens.
+That is despite it also pulling 43.8% externally.
+
+The reason is simple. A pulled block is an ordinary cached block once it lands,
+so it counts as a local hit on the next turn of the same trajectory. The tier is
+strictly a fallback: gate 1 skips the store lookup entirely when the local cache
+already covers the prompt.
 
 **(g) Cost of an avoided prefill token, from recorded inputs only.** Divide the
 recorded latency delta by the recorded token delta:
 `122.1 s per trajectory / 39,824 avoided tokens = 3.07 ms`. See NOTE 3.
 
-**(h) UNEXPLAINED — the store arm runs at ~2x the baseline's policy entropy.**
+**(h) UNEXPLAINED. The store arm runs at ~2x the baseline's policy entropy.**
 0.304–0.404 against 0.189–0.215, +86.6% on the mean. It is flat across all four
-steps and well inside the < 1.0 validity gate, and it is present from step 1, so
-it is a level offset rather than a drift. It appeared alongside a 43.8%
-external-transfer share, so the leading hypothesis is numerical — KV recomputed
-locally and KV pulled from the tier are not bit-identical, because a prefix
-assembled from pulled blocks hits different attention chunk boundaries — and at
-this share the difference may stop being negligible. `actor/grad_norm` reaching
-0.021 by step 4 (baseline 0.003) may be the same effect. The competing
-explanation is that the arms sampled divergent trajectories and visited
-different states; `critic/score/mean` is nearly identical (0.0288 vs 0.0303),
-which argues outcomes are comparable but does not settle it. **This should be
-characterised before the tier is used for convergence work.** The cheap test is
-a 1-step run comparing logprobs of pulled versus recomputed blocks on identical
-prompts.
+steps and well inside the < 1.0 validity gate. It is also present from step 1,
+so it is a level offset, not a drift.
+
+It appeared alongside a 43.8% external-transfer share. The leading hypothesis is
+numerical. KV recomputed locally and KV pulled from the tier are probably not
+bit-identical, because a prefix assembled from pulled blocks hits different
+attention chunk boundaries. At a 43.8% share that may stop being negligible.
+`actor/grad_norm` reaching 0.021 by step 4, against the baseline's 0.003, may be
+the same effect.
+
+The competing explanation is that the arms sampled divergent trajectories and
+visited different states. `critic/score/mean` is nearly identical, 0.0288 vs
+0.0303, which argues the outcomes are comparable. It does not settle it.
+
+**Characterise this before using the tier for convergence work.** The cheap test
+is a 1-step run comparing logprobs of pulled versus recomputed blocks on
+identical prompts.
 
 **(i) The standing cost is 1.2 TB of host memory.** `cpu_memory_used_gb` goes
-164.9 → 1,221.9, the 8 x 128 GB Mooncake segments. On this node that is
-affordable; on a smaller host it is the binding constraint, and it is a cost
-paid whether or not the tier is being hit.
+from 164.9 to 1,221.9, which is the 8 x 128 GB Mooncake segments. On this node
+that is affordable. On a smaller host it is the binding constraint. Either way
+you pay it whether or not the tier is being hit.
 
 **(j) Step 1 is not comparable to steps 2–4, symmetrically in both arms.**
 `num_turns/mean` is 45.5 at step 1 and 23.0–24.9 afterwards, on identical tasks.
-Steps 2–4 are stable to within 6%. The cause is not determined; it is not the
-dataset (prompt lengths are bit-identical per step across arms) and not the
-tier (both arms show it). Because it is symmetric it changes no sign in the
-comparison, but it makes cross-run comparisons on turn-dependent quantities
-unsafe.
+Steps 2–4 are stable to within 6%.
+
+The cause is not determined. It is not the dataset, since prompt lengths are
+bit-identical per step across arms. It is not the tier, since both arms show it.
+Being symmetric, it changes no sign in the comparison. It does make cross-run
+comparisons on turn-dependent quantities unsafe.
 
 ---
 
 ## NOTES — invited scrutiny
 
-**NOTE 1 — `timing_s/gen` / `timing_s/step` are single-trajectory makespans.**
-Verified by identity, not assumed: slowest `generate_sequences + tool_calls`
-reproduces `timing_s/gen` to within 0.1–3% in all 8 arm-steps. Any rate computed
-against these denominators inherits a straggler. This is not a defect in the
-metric, it is what a makespan is; it is a defect in using it as an A/B statistic.
+**NOTE 1. `timing_s/gen` and `timing_s/step` are single-trajectory makespans.**
+Verified by identity, not assumed. Slowest `generate_sequences + tool_calls`
+reproduces `timing_s/gen` to within 0.1–3% in all 8 arm-steps. Any rate divided
+by these inherits a straggler. That is not a defect in the metric. It is what a
+makespan is. It is a defect in using one as an A/B statistic.
 
-**NOTE 2 — `perf/throughput` is not a serving rate.** verl computes it as
-`total_num_tokens / (timing_raw["step"] * n_gpus)`
-(`compute_throughout_metrics`, `verl/trainer/ppo/metric_utils.py` — the upstream
-name has a typo). The numerator is tokens *in the batch*, identical across arms
-by construction (-0.03%), so the 2.27x reduction in tokens actually **computed**
-is invisible to it. The denominator is a step wall clock. Read it as "the step
+**NOTE 2. `perf/throughput` is not a serving rate.** verl computes it as
+`total_num_tokens / (timing_raw["step"] * n_gpus)`, in
+`compute_throughout_metrics`, `verl/trainer/ppo/metric_utils.py`. The upstream
+name has a typo.
+
+The numerator is tokens *in the batch*, which is identical across arms by
+construction at -0.03%. So the 2.27x cut in tokens actually **computed** is
+invisible to it. The denominator is a step wall clock. Read it as "the step
 finished sooner", never as "the engine served faster."
 
-**NOTE 3 — the 3.07 ms per-token figure is a capacity number, not a hardware
-one.** `generate_sequences` is wall time and includes queueing, so avoided
-prefill also shortens the queue for everyone; the figure therefore carries the
-~39x contention amplification from (b) and rises with load. It also credits the
-entire latency delta to avoided prefill while the arms differ in scheduling too.
-It is the right number for "what does a request cost in this system" and the
-wrong number for hardware sizing. Recompute it per regime; do not carry it.
+**NOTE 3. The 3.07 ms per-token figure is a capacity number, not a hardware
+one.** `generate_sequences` is wall time and includes queueing. Avoided prefill
+shortens the queue for everyone, so the figure carries the ~39x contention
+amplification from (b) and rises with load. It also credits the whole latency
+delta to avoided prefill, while the arms differ in scheduling too.
 
-**NOTE 4 — `hot_frac` is reported two ways.** Section 3.3 pools every snapshot
-across an arm (0.72 baseline); the results table means the per-step values
-(0.673). Both are correct and they answer slightly different questions.
+It is the right number for "what does a request cost in this system". It is the
+wrong number for hardware sizing. Recompute it per regime. Do not carry it.
 
-**NOTE 5 — the store arm's generation tail is censored.** Its
-`slowest/response_length` is pinned at 28,672 — exactly `max_response_length` —
-in all four steps, against 5,299–16,478 for the baseline. Its worst trajectory
-is one the config stopped, not one that was slow. A longer-horizon run should
-raise the cap or report the clip rate.
+**NOTE 4. `hot_frac` is reported two ways.** Section 3.3 pools every snapshot
+across an arm, giving 0.72 for the baseline. The results table means the
+per-step values, giving 0.673. Both are correct. They answer slightly different
+questions.
+
+**NOTE 5. The store arm's generation tail is censored.** Its
+`slowest/response_length` is pinned at 28,672 in all four steps, which is
+exactly `max_response_length`. The baseline's is 5,299–16,478. So the store's
+worst trajectory is one the config stopped, not one that was slow. A
+longer-horizon run should raise the cap or report the clip rate.
 
 ---
 
@@ -421,20 +456,20 @@ source logs.
 | 4 | 26,040,109 | 6,818,800 | 13,584,767 | 8,018,528 | 14,839,568 |
 
 **These rows do not sum to the arm totals in §4, and should not.** §4 reports
-the engines' final cumulative counters — the ground truth. The rows above are
-*per-rollout-window deltas*, where a window is the contiguous run of snapshots
-with `num_requests_running` > 5. Tokens processed during ramp-up and drain fall
-outside every window, so the decomposition is slightly lossy:
+the engines' final cumulative counters, which are the ground truth. The rows
+above are *per-rollout-window deltas*. A window is the contiguous run of
+snapshots with `num_requests_running` > 5. Tokens processed during ramp-up and
+drain fall outside every window, so the decomposition is slightly lossy:
 
 | | `local_compute` | `local_cache_hit` | `external_kv_transfer` |
 |---|---|---|---|
 | baseline, windows ÷ total | 99.85% | 96.63% | — |
 | store, windows ÷ total | 99.99% | 98.92% | 99.99% |
 
-Prefill concentrates inside the busy window (99.9%), while cache hits are
-relatively more common in the quiet drain, which is why `local_cache_hit` has
-the larger shortfall. Every `engine/*` row in `metrics.csv` is a window delta on
-the same basis; the §4 serving-split table is not.
+Prefill concentrates inside the busy window, at 99.9%. Cache hits are
+relatively more common during the quiet drain, which is why `local_cache_hit`
+has the larger shortfall. Every `engine/*` row in `metrics.csv` is a window
+delta on this basis. The §4 serving-split table is not.
 
 ### A3. Generation throughput, normalised
 
