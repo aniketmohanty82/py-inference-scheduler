@@ -1,11 +1,16 @@
 # verl-native SWE A/B - sustained-pressure pair (32B + LoRA, 512-wide)
 
 **TLDR.** Under KV pressure that lasts the whole run instead of two steps, the
-external store cuts recompute work by **2.2x** and the rollout wall clock by
-**37.7%, 4/4 steps** - where the previous pair could only show 5.6% at 2/4.
-The per-step flush added since that pair also holds: the store arm's entropy
-drift (0.198 -> 0.775 monotonic) is **gone**, flat at 0.30-0.40 across four
-steps against a flat recompute control.
+external store cuts prefill work by **2.2x** (148.6M -> 67.0M `local_compute`
+tokens) and per-trajectory generate time by **35.1%, 4/4 steps**. The
+per-step flush added since the previous pair also holds: the store arm's
+entropy drift (0.198 -> 0.775 monotonic) is **gone**, flat at 0.30-0.40 across
+four steps against a flat recompute control.
+
+**Do not quote the -37.7% on `timing_s/gen` as a store result.** That metric
+is a single trajectory's makespan (see MAKESPAN below) and 155% of its gap is
+the straggler's tool time, not KV. The two results that survive that scrutiny
+are the token counts and `generate_sequences/mean`.
 
 Store-vs-recompute on verl 0.8.0's native SWE agent loop, 2026-09-11.
 Qwen2.5-32B-Instruct + LoRA r32/a32 (fsdp2, dynamic-bsz 16384), **4 GRPO steps
@@ -125,6 +130,34 @@ each arm** and is not comparable between them: `slowest/tool_calls` reads
 -22.9% in the store's favour. The rows are recorded and kept in the per-arm
 files.
 
+### MAKESPAN: `timing_s/gen` and `timing_s/step` are one trajectory, not the rollout
+
+`timing_s/gen` equals the slowest trajectory's `generate_sequences +
+tool_calls` to within 0.1-3% in **every step of both arms**:
+
+| | slowest gen | slowest tools | sum | `timing_s/gen` | ratio |
+|---|---|---|---|---|---|
+| recompute, 4-step mean | 559s | 986s | 1,544s | 1,558s | 99.1% |
+| store, 4-step mean | 884s | 75s | 958s | 971s | 98.7% |
+
+So the rollout wall is a makespan set by one trajectory out of 512, and its
+gap decomposes as:
+
+| component | contribution to the 588s mean gap |
+|---|---|
+| straggler's tool time (986s vs 75s) | **+911s** for the store |
+| straggler's generation time (559s vs 884s) | **-325s** against the store |
+| net | 586s (observed: 588s) |
+
+**155% of the wall-clock win is the straggler's tool time**, partially offset
+by the store's straggler generating *longer*. The tool pathology behind it is
+characterised in analysis (b) and is not a KV effect. `perf/throughput`
+inherits the same denominator and the same caveat.
+
+What is NOT affected: the by_source token counts (a direct count), and
+`generate_sequences/mean` (a mean over 512 trajectories, where the straggler
+contributes ~1s of 348s).
+
 ### Pressure held in every step
 
 The per-step engine decomposition lives in `recompute.md` and `store.md`.
@@ -191,31 +224,56 @@ prompts.
 
 ## Analysis
 
-**(a) The store's win is now in wall clock, not just per-trajectory time.**
-pair-v2 moved `timing_s/gen` by 5.6% because the rollout was straggler-bound
-and the straggler was sandbox-bound in both arms. Here it moves 37.7% at 4/4.
+**(a) The defensible win is prefill work, not wall clock.** `local_compute`
+falls 2.22x and `generate_sequences/mean` falls 35.1% at 4/4 - both immune to
+the straggler. The wall-clock numbers are makespan artifacts; see MAKESPAN.
 
-**(b) The tool-time tail does shrink, by 43% and not by 92%, and it is NOT
-sandbox contention.** `tool_calls/max` - the selection-free version - is
-886-1,055s in recompute and 399-933s in store (-43.3%, 3/4), while
-`tool_calls/mean` is within 4.5%. So the mean tool cost is identical and only
-the tail differs, but the store arm still has 400-930s tool-bound
-trajectories; the 20x gap in `slowest/tool_calls` was an argmax artifact.
+**(b) The tool-time tail: two different failure modes, and it is NOT sandbox
+contention.** Mean tool time is identical (+4.5%, store *higher*); only the
+tail differs, and only in steps 2-4. Normalising the tail by turn count shows
+what is actually happening:
 
-The obvious explanation - that recompute's 40%-longer rollouts keep more
-sandboxes alive, queueing exec RPCs into the 45s client ceiling - is
-**refuted by direct measurement**. A 60s-interval sampler of the sandbox
-fleet ran across both arms (`sandbox_fleet.log`) and the occupancy is
-indistinguishable:
+| `tool_calls/max` per turn | step 1 | step 2 | step 3 | step 4 |
+|---|---|---|---|---|
+| recompute | 19.5s | **45.0s** | **42.3s** | **43.1s** |
+| store | 20.2s | 17.9s | 16.0s | 20.1s |
+
+**45s is exactly the client exec ceiling** (`SWE_CMD_TIMEOUT_S` 15 + 30, see
+`swe_agent_loop.py::_run_command`); 16-20s is the inner `timeout 15` plus
+overhead. So the store's worst trajectory is being stopped by the *command*
+timeout, while recompute's is spinning out the *RPC deadline* - `_exec_once`
+loops on `resp.is_open()` until the deadline and returns rc 124. `timeout`
+sends SIGTERM, so a child process still holding stdout keeps the stream open
+and burns the full 45s. Step 1 is 19.5 vs 20.2, i.e. identical, so this is not
+an inherent property of either arm.
+
+Two candidate explanations are ruled out. Sandbox contention is **refuted by
+direct measurement** - a 60s sampler across both arms (`sandbox_fleet.log`)
+shows indistinguishable occupancy:
 
 | phase | samples | sandboxes mean | p90 | max | pods not Running (max) |
 |---|---|---|---|---|---|
 | recompute | 127 | 152.2 | 364 | 515 | 183 |
 | store | 90 | 154.4 | 364 | 539 | 178 |
 
-The fleet is equally saturated in both arms, so the remaining -43.3% needs a
-different explanation and this pair does not contain one. Per-exec sandbox
-latency is still not recorded; that is the measurement to add next.
+Exec retries are also not visible: `SandboxError` count is 0 in both arms.
+But that is weak evidence, because `SandboxClient.exec` swallows the exception
+(`except Exception: sleep; retry`) without logging, so silent retries are
+indistinguishable from none.
+
+What remains is that the two arms sample **different trajectories** and
+therefore issue different commands, and one recompute trajectory per step
+happened to issue commands that leave a child holding the pipe. That is an
+n=1-per-step anecdote, not an arm-level property - which is precisely why the
+wall-clock numbers built on it cannot carry the result.
+
+Three cheap fixes make this answerable rather than speculative:
+
+| fix | where | why |
+|---|---|---|
+| `timeout -k 5 15` | `_run_command` | SIGKILL after a grace period so a stubborn child cannot hold the stream to the 45s deadline |
+| log on rc 124, distinguishing deadline-hit from command-kill | `_exec_once` | separates "command was killed at 15s" from "RPC never completed" |
+| log the swallowed exception | `SandboxClient.exec` | makes silent retries visible |
 
 **(c) In the store arm the gating trajectory is capped, not slow.**
 `slowest/response_length` is **28,672 in all four store steps** - exactly
@@ -247,6 +305,14 @@ change any sign.
   Idempotent and harmless, but it is 4 global wipes where 1 would do.
 - verl's `agent_loop/*/num_preempted` is -1 on this stack; preemption counts
   come from engine `/metrics`.
+- **`tool_calls` is not purely tool time.** `simple_timer("tool_calls")` wraps
+  `await sandbox_future`, so a trajectory's FIRST tool call is charged the
+  whole sandbox boot - pod create + `wait_ready` (600s default) +
+  `BASELINE_CMD` (120s) - minus whatever turn-1 generation already hid. It
+  also absorbs queueing for the shared executor: 512 trajectories against
+  8 AgentLoopWorkers x 32 threads = 256. This plausibly explains why the store
+  arm's `tool_calls/mean` is the HIGHER of the two (+4.5%): its faster turn-1
+  generation hides less of the boot. Timing the boot separately is the fix.
 - `slowest/*` selects `argmax(generate_sequences + tool_calls + compute_score)`
   (`agent_loop.py:1146`), so it is a **different trajectory** in each step and
   each arm - the two arms' rows are not the same task. This bit the first
