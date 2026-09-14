@@ -88,7 +88,7 @@ Zero `Client not available`, `Reconnect failed`, `RPC_FAIL` or
   is what the per-step flush is there to prevent (store keys are content hashes
   with no weight version, so without it a late step is served KV computed under
   earlier weights). Its ~2x level offset against recompute is a separate and
-  unexplained effect - see analysis (e) in the README.
+  unexplained effect. See "What we cannot explain yet" in the README.
 - This arm scores 0.56 on the sustained-pressure gate, below the 0.60 bar.
   That is the measurement, not a failure: it relieves its own pressure on
   identical work.
