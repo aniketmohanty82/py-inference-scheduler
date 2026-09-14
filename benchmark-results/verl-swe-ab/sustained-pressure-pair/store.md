@@ -84,9 +84,11 @@ Zero `Client not available`, `Reconnect failed`, `RPC_FAIL` or
 - **`slowest/response_length` is pinned at 28,672 in every step** - exactly
   `data.max_response_length`. The gating trajectory is one the config stopped,
   not one that was slow, so this arm's generation tail is censored.
-- `actor/entropy` is flat (0.304-0.404) where the un-flushed pair-v2 store arm
-  climbed 0.198 -> 0.775. The drift is fixed; the ~2x level offset against
-  recompute is a separate, unexplained effect - see README.
+- `actor/entropy` is flat at 0.304-0.404 across all four steps - no drift, which
+  is what the per-step flush is there to prevent (store keys are content hashes
+  with no weight version, so without it a late step is served KV computed under
+  earlier weights). Its ~2x level offset against recompute is a separate and
+  unexplained effect - see analysis (e) in the README.
 - This arm scores 0.56 on the sustained-pressure gate, below the 0.60 bar.
   That is the measurement, not a failure: it relieves its own pressure on
   identical work.

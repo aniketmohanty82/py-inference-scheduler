@@ -1,11 +1,9 @@
 # verl-native SWE A/B - sustained-pressure pair (32B + LoRA, 512-wide)
 
-**TLDR.** Under KV pressure that lasts the whole run instead of two steps, the
-external store cuts prefill work by **2.2x** (148.6M -> 67.0M `local_compute`
-tokens) and per-trajectory generate time by **35.1%, 4/4 steps**. The
-per-step flush added since the previous pair also holds: the store arm's
-entropy drift (0.198 -> 0.775 monotonic) is **gone**, flat at 0.30-0.40 across
-four steps against a flat recompute control.
+**TLDR.** Under KV pressure sustained across every step, the external store
+cuts prefill work by **2.2x** (148.6M -> 67.0M `local_compute` tokens) and
+per-trajectory generate time by **35.1%, 4/4 steps**, on a control arm that
+has almost no local cache left to fall back on (`local_cache_hit` 14.32%).
 
 **Do not quote the -37.7% on `timing_s/gen` as a store result.** That metric
 is a single trajectory's makespan (see MAKESPAN below) and 155% of its gap is
@@ -18,25 +16,34 @@ per arm, batch 128 x n 4 = 512 trajectories per rollout**, seed 42, single
 8xH200 node, tp=2 (4 engines), image `swe12`. Arms differ by exactly the
 kv_transfer_config flags, both verified on the live Hydra command line.
 
-## Why the regime changed (read this before comparing to pair-v2)
+## Regime design
 
-`../pressure-pair-v2/` turned out to be **bistable**: its steps 1-2 ran the KV
-pool at 93-96% and its steps 3-4 at 20-27%, on provably identical work, so its
-4-step means averaged across a boundary they should not cross. This pair is
-built so that no low-occupancy state exists to fall into.
+An external KV tier can only matter when the local prefix cache is failing, so
+the regime has to hold the KV pool oversubscribed for the whole run. That is
+harder than it sounds, because **KV pressure in a multi-turn agent loop is
+bistable**. A request here is one turn, and between turns a trajectory holds
+zero allocated blocks - its KV sits in the evictable cached tier. Above ~100%
+occupancy that tier is squeezed to nothing and every returning turn re-prefills
+its whole context, which sustains the occupancy; below ~60% the tier survives,
+turns prefill only new tokens, and that sustains the low state. Both are
+self-reinforcing, so a regime that merely *reaches* pressure can fall out of it
+mid-run and average two incompatible operating points together.
 
-| knob | pair-v2 | here | why |
-|---|---|---|---|
-| `data.train_batch_size` | 64 | **128** | 2x trajectories in flight; still divides the 256-row dataset, so 4 steps = exactly 2 epochs |
-| `gpu_memory_utilization` | 0.45 | **0.38** | pool 186k -> ~106k tokens/engine (424k total) |
-| `SWE_CMD_TIMEOUT_S` | 60 | **15** | 35-69% of every pair-v2 rollout was engine-idle behind one straggler's 60s hangs |
-| `RLS_MAX_INFLIGHT_LOADS` | 2 | **1** | a 106k pool against a 29.2k max context spares only one parked waiter |
-| store flush on weight reset | off | **on** | see DRIFT below |
+The settings below are chosen so the low state does not exist to fall into:
 
-The pool is **not** linear in gmu - weights are a fixed cost. Fitting the two
-recorded points (0.317 -> 34k tokens/engine, 0.45 -> 186k) gives
-`tokens/engine ~= 1,143k*gmu - 328k`; gmu 0.30 would have yielded ~14k and
-could not have started.
+| knob | value | why |
+|---|---|---|
+| `data.train_batch_size` | **128** (x n 4 = 512 trajectories) | enough concurrent trajectories to keep the working set above the pool; also divides the 256-row dataset, so 4 steps = exactly 2 epochs |
+| `gpu_memory_utilization` | **0.38** | ~106k tokens/engine, 424k across 4 engines |
+| `SWE_CMD_TIMEOUT_S` | **15** | a SWE shell command past 15s is a hang; long hangs idle the engine and desynchronise the cohort, which is what lets occupancy fall |
+| `RLS_MAX_INFLIGHT_LOADS` | **1** | a 106k pool against a 29.2k max context spares only one parked async-load waiter |
+| store flush on weight reset | **on** | `RLS_FLUSH_STORE_ON_RESET`: store keys are content hashes with no weight version, so KV written under earlier weights must not survive a weight sync. Per-boundary evidence in `store.md` |
+
+The pool is **not** linear in gmu - weights are a fixed cost. Fitting two
+measured points (gmu 0.317 -> 34k tokens/engine, 0.45 -> 186k) gives
+`tokens/engine ~= 1,143k*gmu - 328k`; gmu 0.30 would have yielded ~14k against
+a 29.2k max context and could not have started. Size from the fit, not
+proportionally.
 
 ## Validity (all recorded, all pass)
 
@@ -44,7 +51,7 @@ could not have started.
 |---|---|---|
 | steps completed / rc | 4/4, rc=0 | 4/4, rc=0 |
 | wall-clock audit (sum `timing_s/step` vs arm wall) | 7,618s vs 7,920s (302s init) | 5,267s vs 5,640s (373s init) |
-| `actor/entropy` range | 0.172-0.215 | 0.304-0.404 (flat; see DRIFT) |
+| `actor/entropy` range | 0.172-0.215 | 0.304-0.404 (flat; see analysis (e)) |
 | `num_turns/mean` (4-step mean) | 28.95 | 29.65 |
 | `response/aborted_ratio` | 0.000 | 0.000 |
 | `prompt_length/mean` per step | 517.5 / 518.8 / 521.1 / 515.2 | **bit-identical** |
@@ -66,8 +73,9 @@ The store arm scoring *below* the bar is the finding, not a failure: the gate
 exists to prove the RECOMPUTE arm faced real pressure, and an arm that relieves
 its own pressure on identical work is the thing being measured. Peak occupancy
 does not discriminate - both arms touch 0.99 - which is why the gate is a
-fraction of the busy window. pair-v2's collapsed steps score 0.50 on this same
-gate and its healthy steps score 0.00.
+fraction of the busy window. The 0.60 bar is calibrated against a known
+bistable run on this harness, whose collapsed steps score 0.50 on this gate
+and whose healthy steps score 0.00.
 
 ## Serving split (final cumulative counters, 4 engines)
 
@@ -81,11 +89,11 @@ gate and its healthy steps score 0.00.
 Workloads matched to 2.4% on total prompt tokens. **`local_compute`: 148.6M ->
 67.0M = 2.22x reduction, 81.6M tokens of prefill avoided.**
 
-The headline difference from pair-v2 is the recompute arm's `local_cache_hit`
-share: **14.32% here vs 61.74% there.** That is the regime doing its job - the
-recompute arm now genuinely has almost no local cache to hit, which is the
-condition under which an external tier is supposed to matter. The store
-supplied 43.77% of all prompt tokens from the remote tier (pair-v2: 10.38%).
+The number that makes this pair readable is the recompute arm's
+`local_cache_hit` share: **14.32%**. The control arm has almost no local cache
+to fall back on, which is the condition under which an external tier is
+supposed to matter at all. Against that, the store supplied **43.77%** of its
+prompt tokens from the remote tier.
 
 Mooncake ops (store arm, **zero** failed keys): `save_put` 19,247 ops /
 404,142 keys (21.0 keys/op), `load_get` 4,182 ops / 2,547,176 keys,
@@ -163,9 +171,8 @@ contributes ~1s of 348s).
 The per-step engine decomposition lives in `recompute.md` and `store.md`.
 The summary that matters: the recompute arm held `hot%` at 60-73% in **all
 four** steps with `local_cache_hit` never above 20.8%, so there is no
-low-occupancy step diluting the means above. That is precisely what
-`../pressure-pair-v2/` lacked, and it is why these deltas are 4/4 where its
-were 2/4.
+low-occupancy step diluting the means above, and no boundary the 4-step
+means average across.
 
 ### Generation throughput (decode tokens per trajectory-second)
 
@@ -187,40 +194,12 @@ Per-step values (1.46x-2.18x, store higher in 4/4) are in the per-arm files.
 | **cost per avoided `local_compute` token** | **3.07 ms** |
 | `external_kv_transfer` per trajectory (store) | 37,969 tokens |
 
-3.07 ms here vs 2.7 ms in pair-v2 - the marginal cost rises with contention,
-as expected, since `generate_sequences` is wall time and includes queueing.
-Same caveats as `../pressure-pair-v2/`: this is a capacity number, not a
-hardware number, and it credits the entire latency delta to avoided prefill.
-
-## DRIFT: fixed
-
-| step | rc entropy | st entropy | pair-v2 st entropy (no flush) |
-|---|---|---|---|
-| 1 | 0.189 | 0.404 | 0.198 |
-| 2 | 0.172 | 0.355 | 0.265 |
-| 3 | 0.215 | 0.304 | **0.390** |
-| 4 | 0.206 | 0.395 | **0.775** |
-
-The monotonic climb is gone. The flush fires at every weight-update boundary
-and removes a growing key set - `removed 57596 keys`, `81450`, `140745`,
-`188303` - with zero `Client not available` / `RPC_FAIL` / `EngineDeadError`.
-`actor/ppo_kl`'s consistent sign flip in pair-v2 (rc negative, store positive)
-also **does not reproduce**: here rc is +1.2e-05..+2.5e-04 and store is
-+6.4e-05..-3.2e-04, i.e. no systematic split. Both are consistent with
-stale-KV having been the cause and the flush having removed it.
-
-**NEW, unexplained: a level offset.** The store arm now sits at ~2x the
-recompute arm's entropy from step 1 onward (+86.6% on the mean) where pair-v2
-step 1 differed by only 5%. It is FLAT, well inside the <1.0 gate, and cannot
-be staleness (step 1 has no prior weights to be stale against). It appeared
-together with the jump to 43.77% external transfer, so the leading hypothesis
-is numerical: KV recomputed locally and KV pulled from the tier are not
-bit-identical (different attention chunk boundaries), and at this transfer
-share the difference is no longer negligible. `actor/grad_norm` rising to
-0.021 by step 4 in the store arm may be the same effect. **Not a blocker, but
-it should be characterised before convergence work** - the cheap test is a
-1-step run comparing logprobs of pulled vs recomputed blocks on identical
-prompts.
+This is a **capacity** number, not a hardware one. `generate_sequences` is
+wall time and includes queueing, so removing prefill also shortens the queue
+for every other trajectory; the figure therefore carries a large contention
+amplification and rises with load. It also credits the entire latency delta to
+avoided prefill, while the arms differ in scheduling too. Recompute it per
+regime rather than carrying 3.07 ms anywhere else.
 
 ## Analysis
 
@@ -232,12 +211,12 @@ the straggler. The wall-clock numbers are makespan artifacts; see MAKESPAN.
 store arm got three lucky draws.** Mean tool time is identical (+4.5%, store
 *higher*); only the per-step maximum differs, and only in steps 2-4.
 Normalising the tail by `num_turns/max` (the tail trajectory is a max-turns
-trajectory) against every arm-run recorded in this program:
+trajectory) against every arm-run recorded on this harness:
 
 | run | arm | tool tail, s/turn per step | cmd timeout |
 |---|---|---|---|
-| `../pressure-pair-v2/` | recompute | 11.0, 16.6, 16.8, 17.5 | 60s |
-| `../pressure-pair-v2/` | store | 16.7, 16.2, 17.3, 14.1 | 60s |
+| prior run, no flush | recompute | 11.0, 16.6, 16.8, 17.5 | 60s |
+| prior run, no flush | store | 16.7, 16.2, 17.3, 14.1 | 60s |
 | this pair, smoke | store | 14.5, 16.4 | 15s |
 | this pair | recompute | 13.6, 16.2, 15.5, 15.3 | 15s |
 | this pair | store | 14.3, **6.5, 6.1, 7.4** | 15s |
@@ -249,8 +228,8 @@ norm**. `tool_calls/max` is 9-17x `tool_calls/mean`, so the per-step maximum is
 one extreme order statistic out of 512 trajectories; three consecutive low
 draws from a tail that heavy is unremarkable.
 
-Note that ~16 s/turn also appears in pair-v2, where the timeout was 60s and
-nothing was near a ceiling. So ~16s is simply what the worst trajectory's
+Note that ~16 s/turn also appears in the prior run, where the timeout was 60s
+and nothing was near a ceiling. So ~16s is simply what the worst trajectory's
 commands cost; in this pair it coincides with the 15s cap.
 
 Two mechanisms were tested and ruled out. Sandbox contention is **refuted by
@@ -289,8 +268,30 @@ report the clip rate.**
 **(d) Step 1 is not comparable to steps 2-4 in either arm.** `num_turns/mean`
 is 45.5 at step 1 and 23.0-24.9 afterwards, in both arms, on the same tasks.
 Steps 2-4 are stable to within 6%, so the pair reads as one cold step plus
-three steady ones. Unlike pair-v2 this is symmetric across arms and does not
-change any sign.
+three steady ones. It is symmetric across arms on identical tasks, so it does
+not change any sign in the comparison.
+
+**(e) Unexplained: the store arm runs at ~2x the recompute arm's entropy.**
+`actor/entropy` is 0.304-0.404 in the store arm against 0.189-0.215 in
+recompute (+86.6% on the mean). It is FLAT across all four steps and well
+inside the <1.0 validity gate, and it is present from step 1, so it is a level
+offset rather than a drift. It appeared alongside a 43.77% external-transfer
+share, so the leading hypothesis is numerical - KV recomputed locally and KV
+pulled from the tier are not bit-identical, because a prefix assembled from
+pulled blocks hits different attention chunk boundaries - and at this transfer
+share the difference may stop being negligible. `actor/grad_norm` reaching
+0.021 by step 4 in the store arm (recompute: 0.003) may be the same effect.
+The competing explanation is simply that the arms sampled divergent
+trajectories and visited different states; `critic/score/mean` is nearly
+identical between arms (0.0288 vs 0.0303), which argues the task outcomes are
+comparable but does not settle it. **Not a blocker for this pair, but it
+should be characterised before the store is used for convergence work** - the
+cheap test is a 1-step run comparing logprobs of pulled versus recomputed
+blocks on identical prompts.
+
+`actor/ppo_kl` shows no systematic split between the arms (recompute
++1.2e-05..+2.5e-04, store +6.4e-05..-3.2e-04), so the usual off-policy
+tripwire is quiet.
 
 ## Measurement caveats
 
