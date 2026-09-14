@@ -28,11 +28,17 @@ Usage (WANDB_API_KEY must be set, e.g. on the Ray head pod):
     python3 backfill_wandb.py --log_file store_driver.log.gz \
         --project swe-rl-scheduler --run_name p34-store
     python3 backfill_wandb.py --log_file store_driver.log.gz --project x --dry_run
+
+To push a complete pair - verl metrics AND the engine-scrape metrics, one run
+per arm - backfill from the harvested CSV instead of the driver log:
+    python3 backfill_wandb.py --csv metrics.csv --project swe-store-ab \
+        --prefix p34-
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import gzip
 import pathlib
 import re
@@ -78,9 +84,45 @@ def report_coverage(steps: dict[int, dict[str, float]]) -> None:
     print(f"parsed {len(steps)} steps, {len(all_keys)} distinct metrics")
 
 
+def parse_metrics_csv(path):
+    """Read a harvested metrics.csv into {arm: {step: {metric: value}}}.
+
+    A driver log only carries verl's own step metrics. The engine-scrape
+    metrics (kv usage, preemptions, the by_source split) exist solely in the
+    harvested CSV, so backfilling from the CSV is what gets a complete run
+    into W&B rather than the verl subset.
+    """
+    out = {}
+    with open(path, newline="") as fh:
+        for row in csv.DictReader(fh):
+            metric = row["metric"]
+            for col, raw in row.items():
+                m = re.fullmatch(r"(.+)_s(\d+)", col or "")
+                if not m or raw in ("", None):
+                    continue
+                out.setdefault(m.group(1), {}).setdefault(int(m.group(2)), {})[metric] = float(raw)
+    return out
+
+
+def push(steps, *, project, entity, run_id, run_name):
+    import wandb
+
+    run = wandb.init(
+        project=project, entity=entity, id=run_id, name=run_name,
+        resume="allow" if run_id else None,
+        settings=wandb.Settings(silent=True),
+    )
+    for step in sorted(steps):
+        wandb.log(steps[step], step=step)
+        print(f"  step {step}: {len(steps[step])} metrics")
+    run.finish()
+    print(f"  done -> {run.url}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--log_file", required=True)
+    parser.add_argument("--log_file", help="verl driver log (.log or .log.gz)")
+    parser.add_argument("--csv", help="harvested metrics.csv; pushes one run per arm")
     parser.add_argument("--project", required=True)
     parser.add_argument("--run_id", default=None, help="existing W&B run id to backfill into")
     # A run launched with trainer.logger=["console"] has no W&B run to resume,
@@ -88,7 +130,21 @@ def main() -> None:
     parser.add_argument("--run_name", default=None, help="create a new run under this name instead")
     parser.add_argument("--entity", default=None)
     parser.add_argument("--dry_run", action="store_true", help="parse and report, log nothing")
+    parser.add_argument("--prefix", default="", help="prepended to each run name in --csv mode")
     args = parser.parse_args()
+    if not args.log_file and not args.csv:
+        raise SystemExit("pass --log_file or --csv")
+
+    if args.csv:
+        arms = parse_metrics_csv(args.csv)
+        for arm, steps in sorted(arms.items()):
+            print(f"{arm}:")
+            report_coverage(steps)
+            if not args.dry_run:
+                push(steps, project=args.project, entity=args.entity,
+                     run_id=None, run_name=f"{args.prefix}{arm}")
+        return
+
     if not args.run_id and not args.run_name and not args.dry_run:
         raise SystemExit("pass --run_id to resume a run, or --run_name to create one")
 
@@ -101,19 +157,8 @@ def main() -> None:
     report_coverage(steps)
     if args.dry_run:
         return
-
-    import wandb
-
-    run = wandb.init(
-        project=args.project, entity=args.entity, id=args.run_id, name=args.run_name,
-        resume="allow" if args.run_id else None,
-        settings=wandb.Settings(silent=True),
-    )
-    for step in sorted(steps):
-        wandb.log(steps[step], step=step)
-        print(f"backfilled step {step}: {len(steps[step])} metrics")
-    run.finish()
-    print(f"done -> {run.url}")
+    push(steps, project=args.project, entity=args.entity,
+         run_id=args.run_id, run_name=args.run_name)
 
 
 if __name__ == "__main__":
