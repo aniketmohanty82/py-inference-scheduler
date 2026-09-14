@@ -3,8 +3,7 @@
 ## TLDR
 
 Adding a shared RDMA KV tier to an agentic RL rollout cut **sampling time per
-trajectory by 35%** and raised **generation throughput 1.61x**. It did this
-while producing 4.6% more tokens.
+trajectory by 35%** and raised **generation throughput 1.61x**.
 
 | | local-only | shared KV tier | change |
 |---|---|---|---|
