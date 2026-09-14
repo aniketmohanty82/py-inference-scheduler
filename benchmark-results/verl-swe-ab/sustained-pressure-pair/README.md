@@ -104,16 +104,14 @@ A fetch happens only when all five of these hold.
 
 On a fetch the request reserves its blocks and pauses.
 
-The transfer is then started deliberately late within the engine's scheduling
-pass, the inner loop that runs many times a second. vLLM hands the GPU its work
-first. GPU work is queued asynchronously, so the CPU is free again the moment
-it is handed over, well before the GPU finishes. The fetch is issued in that
-gap. The network transfer therefore runs while the GPU is busy on other
-requests, instead of holding them up.
+The transfer starts late in the engine's scheduling pass. vLLM hands the GPU
+its work first. GPU work is queued asynchronously, so the CPU is free again
+before the GPU finishes, and the fetch is issued in that gap. The transfer runs
+while the GPU is busy on other requests instead of holding them up.
 
 A background thread writes over RDMA straight into the engine's KV blocks, with
 no copy through host memory. The request resumes one or two scheduling passes
-later, so milliseconds, and prefills only the part the tier did not cover.
+later and prefills only the part the tier did not cover.
 
 If a fetch fails the request just recomputes. That is why declining at any of
 the five gates is always safe.
