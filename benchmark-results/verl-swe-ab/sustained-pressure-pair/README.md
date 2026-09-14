@@ -31,12 +31,14 @@ The goal is to see whether enabling KV offload (through Mooncake) improves sampl
 
 | | |
 |---|---|
-| node | 1 x a3-ultragpu-8g, 8 x NVIDIA H200 |
-| engines | 4 vLLM engines, tp=2 |
+| nodes | 1 |
+| machine type | a3-ultragpu-8g |
+| GPUs | 8 x NVIDIA H200, 143 GB each |
+| inference engines | 4, at tp=2 (8 GPUs / 2) |
 | model | Qwen2.5-32B-Instruct + LoRA r32/a32 |
 | vLLM / verl | 0.22.1 / 0.8.0 |
 | KV tier | Mooncake over RDMA, 8 x 128 GB host segments |
-| sandboxes | gVisor pool, 21 x e2-standard-16 |
+| sandbox pool | 21 x e2-standard-16, gVisor |
 
 Both arms run the same engine, scheduler and local prefix cache. They differ
 only by the `kv_transfer_config` flags, checked on the live command line before
