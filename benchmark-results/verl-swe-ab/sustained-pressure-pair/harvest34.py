@@ -9,6 +9,8 @@ each field rather than requiring the whole field to parse, and report which
 steps are missing which keys instead of intersecting them away.
 """
 
+import csv
+import gzip
 import re
 import sys
 
@@ -16,9 +18,15 @@ ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 LEADING_NUM = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
 
 
+def _open(path):
+    """Driver logs live raw on the pod and gzipped in the results dir."""
+    return gzip.open(path, "rt", errors="replace") if str(path).endswith(".gz") \
+        else open(path, errors="replace")
+
+
 def parse_steps(path):
     rows = {}
-    for raw in open(path, errors="replace"):
+    for raw in _open(path):
         line = ANSI.sub("", raw)
         m = re.search(r"step:(\d+) - (.*)", line)
         if not m:
@@ -43,7 +51,7 @@ def parse_steps(path):
 def parse_scrape(path):
     """Per-SNAP totals across engines: running/waiting/kv/preempt/by_source."""
     snaps, cur = [], None
-    for raw in open(path, errors="replace"):
+    for raw in _open(path):
         line = raw.strip()
         if line.startswith("SNAP "):
             cur = {"ts": int(line.split()[1]), "run": 0.0, "wait": 0.0, "kv": [],
@@ -137,3 +145,76 @@ if __name__ == "__main__":
               f"local_cache_hit {t['hit']:>13,.0f} ({t['hit']/tot:6.2%})  "
               f"external {t['ext']:>12,.0f} ({t['ext']/tot:6.2%})  "
               f"total {tot:>13,.0f}  preempt {t['pre']:>5,.0f}  decode {t['decode']:>11,.0f}")
+
+
+def write_csv(arms, scr, path="metrics.csv"):
+    """Every recorded number for this pair in one flat file.
+
+    verl step metrics carry their own names; engine-scrape metrics are derived
+    per rollout window and prefixed `engine/` so the two sources stay
+    distinguishable. Wide layout (one row per metric) because the common use is
+    reading it, not plotting it.
+    """
+    steps = sorted(set(arms["recompute"]) & set(arms["store"]))
+    rows = {}
+    for arm in ("recompute", "store"):
+        for k in set().union(*(set(d) for d in arms[arm].values())):
+            rows.setdefault(k, {})[arm] = [arms[arm][s].get(k) for s in steps]
+        for k, vals in engine_per_step(scr[arm], arms[arm], steps).items():
+            rows.setdefault(f"engine/{k}", {})[arm] = vals
+
+    with open(path, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["metric"] + [f"recompute_s{s}" for s in steps]
+                   + [f"store_s{s}" for s in steps]
+                   + ["recompute_mean", "store_mean", "delta_pct"])
+        for k in sorted(rows):
+            rc = rows[k].get("recompute", [None] * len(steps))
+            st = rows[k].get("store", [None] * len(steps))
+            pair = [(a, b) for a, b in zip(rc, st) if a is not None and b is not None]
+            if pair:
+                ra = sum(a for a, _ in pair) / len(pair)
+                sa = sum(b for _, b in pair) / len(pair)
+                d = f"{(sa - ra) / ra * 100:+.2f}" if ra else ""
+            else:
+                ra = sa = d = ""
+            w.writerow([k] + ["" if v is None else f"{v:.6g}" for v in rc + st]
+                       + [f"{ra:.6g}" if ra != "" else "", f"{sa:.6g}" if sa != "" else "", d])
+    return path, len(rows)
+
+
+def engine_per_step(snaps, rows, steps):
+    """Per-rollout engine counters, keyed the same way as the verl metrics."""
+    rolls, cur = [], []
+    for i, s in enumerate(snaps):
+        if s["run"] > 5:
+            cur.append(i)
+        elif cur:
+            rolls.append(cur)
+            cur = []
+    if cur:
+        rolls.append(cur)
+    rolls = [r for r in rolls if len(r) >= 3]
+    out = {k: [] for k in ("kv_usage_avg", "kv_usage_max", "hot_frac", "waiting_peak",
+                           "running_peak", "preemptions", "local_compute", "local_cache_hit",
+                           "external_kv_transfer", "decode_tokens", "busy_minutes")}
+    for n, r in enumerate(rolls, 1):
+        if n > len(steps):
+            break
+        a, b = r[0], r[-1]
+        w = snaps[a:b + 2]
+        kv = [sum(s["kv"]) / len(s["kv"]) for s in w if s["kv"]]
+        d = {k: snaps[min(b + 1, len(snaps) - 1)][k] - snaps[max(a - 1, 0)][k]
+             for k in ("compute", "hit", "ext", "pre", "decode")}
+        out["kv_usage_avg"].append(sum(kv) / len(kv))
+        out["kv_usage_max"].append(max(kv))
+        out["hot_frac"].append(sum(1 for x in kv if x > 0.85) / len(kv))
+        out["waiting_peak"].append(max(s["wait"] for s in w))
+        out["running_peak"].append(max(s["run"] for s in w))
+        out["preemptions"].append(d["pre"])
+        out["local_compute"].append(d["compute"])
+        out["local_cache_hit"].append(d["hit"])
+        out["external_kv_transfer"].append(d["ext"])
+        out["decode_tokens"].append(d["decode"])
+        out["busy_minutes"].append(len(r))
+    return out

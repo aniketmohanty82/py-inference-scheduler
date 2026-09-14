@@ -324,6 +324,11 @@ change any sign.
 
 ## Files
 
+- **`metrics.csv`** - every recorded number in one flat file: 93 metrics x
+  4 steps x 2 arms, plus per-arm means and the delta. 82 verl step metrics
+  carry their own names; the 11 derived from the engine scrapes are prefixed
+  `engine/`. Regenerate with `python3 -c "import harvest34 as h; ..."` - see
+  `write_csv` in `harvest34.py`.
 - **`recompute.md`, `store.md`** - per-step detail for each arm: all 22 verl
   step metrics, the engine-side pressure decomposition, and (store) the flush
   events and mooncake op totals. This README carries only 4-step means.
