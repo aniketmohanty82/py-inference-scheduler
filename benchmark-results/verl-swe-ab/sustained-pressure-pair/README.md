@@ -228,26 +228,32 @@ prompts.
 falls 2.22x and `generate_sequences/mean` falls 35.1% at 4/4 - both immune to
 the straggler. The wall-clock numbers are makespan artifacts; see MAKESPAN.
 
-**(b) The tool-time tail: two different failure modes, and it is NOT sandbox
-contention.** Mean tool time is identical (+4.5%, store *higher*); only the
-tail differs, and only in steps 2-4. Normalising the tail by turn count shows
-what is actually happening:
+**(b) The tool-time tail is NOT worse in recompute - it is normal, and the
+store arm got three lucky draws.** Mean tool time is identical (+4.5%, store
+*higher*); only the per-step maximum differs, and only in steps 2-4.
+Normalising the tail by `num_turns/max` (the tail trajectory is a max-turns
+trajectory) against every arm-run recorded in this program:
 
-| `tool_calls/max` per turn | step 1 | step 2 | step 3 | step 4 |
-|---|---|---|---|---|
-| recompute | 19.5s | **45.0s** | **42.3s** | **43.1s** |
-| store | 20.2s | 17.9s | 16.0s | 20.1s |
+| run | arm | tool tail, s/turn per step | cmd timeout |
+|---|---|---|---|
+| `../pressure-pair-v2/` | recompute | 11.0, 16.6, 16.8, 17.5 | 60s |
+| `../pressure-pair-v2/` | store | 16.7, 16.2, 17.3, 14.1 | 60s |
+| this pair, smoke | store | 14.5, 16.4 | 15s |
+| this pair | recompute | 13.6, 16.2, 15.5, 15.3 | 15s |
+| this pair | store | 14.3, **6.5, 6.1, 7.4** | 15s |
 
-**45s is exactly the client exec ceiling** (`SWE_CMD_TIMEOUT_S` 15 + 30, see
-`swe_agent_loop.py::_run_command`); 16-20s is the inner `timeout 15` plus
-overhead. So the store's worst trajectory is being stopped by the *command*
-timeout, while recompute's is spinning out the *RPC deadline* - `_exec_once`
-loops on `resp.is_open()` until the deadline and returns rc 124. `timeout`
-sends SIGTERM, so a child process still holding stdout keeps the stream open
-and burns the full 45s. Step 1 is 19.5 vs 20.2, i.e. identical, so this is not
-an inherent property of either arm.
+Fifteen of eighteen observations fall in 14-17.5 s/turn and recompute sits in
+the middle of them. The three outliers are this pair's store arm, steps 2-4 -
+while **that same arm's step 1 (14.3) and its own smoke (14.5, 16.4) match the
+norm**. `tool_calls/max` is 9-17x `tool_calls/mean`, so the per-step maximum is
+one extreme order statistic out of 512 trajectories; three consecutive low
+draws from a tail that heavy is unremarkable.
 
-Two candidate explanations are ruled out. Sandbox contention is **refuted by
+Note that ~16 s/turn also appears in pair-v2, where the timeout was 60s and
+nothing was near a ceiling. So ~16s is simply what the worst trajectory's
+commands cost; in this pair it coincides with the 15s cap.
+
+Two mechanisms were tested and ruled out. Sandbox contention is **refuted by
 direct measurement** - a 60s sampler across both arms (`sandbox_fleet.log`)
 shows indistinguishable occupancy:
 
@@ -256,24 +262,18 @@ shows indistinguishable occupancy:
 | recompute | 127 | 152.2 | 364 | 515 | 183 |
 | store | 90 | 154.4 | 364 | 539 | 178 |
 
-Exec retries are also not visible: `SandboxError` count is 0 in both arms.
-But that is weak evidence, because `SandboxClient.exec` swallows the exception
-(`except Exception: sleep; retry`) without logging, so silent retries are
-indistinguishable from none.
+Exec retries are also not visible (0 `SandboxError` in both arms), though that
+is weak evidence because `SandboxClient.exec` swallows the exception without
+logging.
 
-What remains is that the two arms sample **different trajectories** and
-therefore issue different commands, and one recompute trajectory per step
-happened to issue commands that leave a child holding the pipe. That is an
-n=1-per-step anecdote, not an arm-level property - which is precisely why the
-wall-clock numbers built on it cannot carry the result.
+**Consequence for the headline.** `timing_s/gen` is 99% the straggler's
+makespan and the straggler's tool time is 155% of the wall-clock gap, so the
+-37.7% rests on these three tail draws. That is the concrete reason the
+wall-clock numbers are demoted rather than merely caveated.
 
-Three cheap fixes make this answerable rather than speculative:
-
-| fix | where | why |
-|---|---|---|
-| `timeout -k 5 15` | `_run_command` | SIGKILL after a grace period so a stubborn child cannot hold the stream to the 45s deadline |
-| log on rc 124, distinguishing deadline-hit from command-kill | `_exec_once` | separates "command was killed at 15s" from "RPC never completed" |
-| log the swallowed exception | `SandboxClient.exec` | makes silent retries visible |
+To make the tail measurable instead of anecdotal, record per-exec latency and
+turn count for the tail trajectory, and log rc-124 distinguishing a
+command-kill from an RPC-deadline hit.
 
 **(c) In the store arm the gating trajectory is capped, not slow.**
 `slowest/response_length` is **28,672 in all four store steps** - exactly
