@@ -83,11 +83,6 @@ start. Three settings did that.
 It worked. The baseline served only **14.3%** of its prompt tokens from local
 cache, and was preempted 317 times.
 
-One thing to watch if you repeat this. Batch size must divide the dataset. We
-used 4 steps x 128 against 256 rows, which is exactly 2 epochs. A batch that
-does not divide it makes verl drop the remainder and reshuffle, so the task set
-changes between steps and nothing warns you.
-
 ---
 
 ## How the tier decides to fetch
