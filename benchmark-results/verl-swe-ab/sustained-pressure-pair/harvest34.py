@@ -222,3 +222,80 @@ def engine_per_step(snaps, rows, steps):
         out["decode_tokens"].append(d["decode"])
         out["busy_minutes"].append(len(r))
     return out
+
+
+def write_timeseries(path="engine_timeseries.csv", arms=("recompute", "store")):
+    """Long-format Prometheus dump with a step and phase stamped on every row.
+
+    The raw scrape is wall-clock only. Correlating a counter with the training
+    step it belongs to is the thing anyone actually wants, so rollout windows
+    (contiguous snapshots with requests running) are numbered and the gaps
+    between them are labelled as the weight-update phase.
+    """
+    rows = []
+    for arm in arms:
+        snaps = parse_scrape(f"{arm}_scrape.log.gz")
+        t0 = snaps[0]["ts"]
+        # number the rollout windows; everything between them is training
+        step_of = {}
+        cur, n = [], 0
+        for i, s in enumerate(snaps):
+            if s["run"] > 5:
+                cur.append(i)
+            elif cur:
+                if len(cur) >= 3:
+                    n += 1
+                    for j in cur:
+                        step_of[j] = (n, "rollout")
+                cur = []
+        if cur and len(cur) >= 3:
+            n += 1
+            for j in cur:
+                step_of[j] = (n, "rollout")
+        seen = 0
+        for i in range(len(snaps)):
+            if i in step_of:
+                seen = step_of[i][0]
+            else:
+                step_of[i] = (seen if seen else 1, "train" if seen else "startup")
+
+        for i, raw in enumerate(_raw_snapshots(f"{arm}_scrape.log.gz")):
+            ts, port_lines = raw
+            step, phase = step_of.get(i, (0, "?"))
+            for port, lines in port_lines.items():
+                for name, value in lines:
+                    base, _, lab = name.partition("{")
+                    rows.append((ts, ts - t0, arm, step, phase, port, base,
+                                 lab.rstrip("}"), value))
+
+    with open(path, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["unix_ts", "t_rel_s", "arm", "step", "phase", "engine_port",
+                    "metric", "labels", "value"])
+        w.writerows(rows)
+    return path, len(rows)
+
+
+def _raw_snapshots(path):
+    """Yield (ts, {port: [(metric_name, value), ...]}) preserving all labels."""
+    ts, ports, cur_port = None, None, None
+    for raw in _open(path):
+        line = raw.strip()
+        if line.startswith("SNAP "):
+            if ts is not None:
+                yield ts, ports
+            ts, ports, cur_port = int(line.split()[1]), {}, None
+            continue
+        if line.startswith("=== PORT"):
+            cur_port = line.split()[2]
+            ports.setdefault(cur_port, [])
+            continue
+        if ts is None or cur_port is None or not line.startswith("vllm:"):
+            continue
+        name, _, val = line.rpartition(" ")
+        try:
+            ports[cur_port].append((name, float(val)))
+        except ValueError:
+            continue
+    if ts is not None:
+        yield ts, ports

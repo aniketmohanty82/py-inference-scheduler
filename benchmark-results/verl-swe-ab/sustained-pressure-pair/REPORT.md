@@ -279,6 +279,7 @@ response length, and bit-identically on prompt length per step.
 | `smoke_driver.log.gz`, `smoke_scrape.log.gz`, `smoke_gate.txt` | the gating run and its verdict |
 | `sandbox_fleet.log.gz` | 60 s samples of sandbox CRs and pending pods across both arms |
 | `metrics.csv` | every recorded number: 93 metrics x 4 steps x 2 arms, verified bit-exact against the logs |
+| `engine_timeseries.csv.gz` | the scrape in long form, one row per (snapshot, engine, metric), with `step` and `phase` stamped on. 17,141 rows |
 | `harvest34.py`, `pressure_gate.py` | regenerate every table here; run the gate on any scrape |
 | `p34_arm.sh`, `p34_smoke.sh` | the exact run scripts |
 
