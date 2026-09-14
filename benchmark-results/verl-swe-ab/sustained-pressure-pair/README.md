@@ -40,9 +40,8 @@ The goal is to see whether enabling KV offload (through Mooncake) improves sampl
 | KV tier | Mooncake over RDMA, 8 x 128 GB host segments |
 | sandbox pool | 21 x e2-standard-16, gVisor |
 
-Both arms run the same engine, scheduler and local prefix cache. They differ
-only by the `kv_transfer_config` flags, checked on the live command line before
-each arm started.
+This applies for both arms of the test. They differ
+only by the `kv_transfer_config` flags.
 
 ### Workload
 
