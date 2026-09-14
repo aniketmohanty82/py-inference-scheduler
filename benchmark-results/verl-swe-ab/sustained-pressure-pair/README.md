@@ -98,7 +98,7 @@ A fetch happens only when all five of these hold.
 |---|---|---|
 | 1 | the local cache does not already cover the prompt | if it does, skip the lookup. The lookup is a blocking network call inside the scheduler loop |
 | 2 | the tier has an unbroken run of blocks from the start | it is a prefix match. A gap truncates it |
-| 3 | no tier wipe is pending | otherwise we match keys that are about to be deleted |
+| 3 | no tier wipe is pending | otherwise we match keys that are about to be deleted. the tier is wiped at step boundaries |
 | 4 | the match is over 1,024 tokens | below that, local prefill beats a round trip |
 | 5 | fewer than 1 fetch already in flight | a waiting request holds its full context in GPU memory until its data lands |
 
