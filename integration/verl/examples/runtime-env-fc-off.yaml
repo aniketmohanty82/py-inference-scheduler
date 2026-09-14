@@ -15,7 +15,8 @@ env_vars:
   # shell's environment. Only ARM and STEPS live here -- the workload itself
   # comes from run_swe.sh unmodified.
   ARM: "fcoff"
-  STEPS: "4"
+  # 2 steps: the GPU pool is spot, so keep each arm's preemption window short.
+  STEPS: "2"
   PYTHONPATH: ".:src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   ROUTER_CONFIG_PATH: "configs/flow-control/fc-off.yaml"
