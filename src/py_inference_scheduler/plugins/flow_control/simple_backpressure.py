@@ -71,7 +71,14 @@ class SimpleBackpressurePlugin(FlowControlPlugin):
                 "all %d endpoints saturated: request will queue %s", len(dropped), dropped
             )
         elif dropped:
-            logger.info("backpressure gate dropped %s", dropped)
+            # WARNING, not INFO: this is the only externally visible proof the
+            # gate acted, and INFO does not propagate from Ray workers to the
+            # driver log. Without it an A/B cannot tell "gate filtered" from
+            # "gate inert" -- and the selected-endpoint stats cannot, either,
+            # since a filtered-out endpoint can never be the selected one.
+            logger.warning(
+                "backpressure gate dropped %d/%d: %s", len(dropped), len(candidates), dropped
+            )
         return allowed
 
     def reserve(self, request: LLMRequest, selected: Endpoint) -> None:

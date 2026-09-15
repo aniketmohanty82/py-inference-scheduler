@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 import uuid
 from typing import Sequence
 
@@ -68,6 +69,9 @@ from py_inference_scheduler.datalayer.metrics.verl.fetch_metrics import fetch_wo
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 logger = logging.getLogger(__name__)
+
+# Fleet snapshots are for measurement, not per-request tracing.
+_FLEET_LOG_INTERVAL_S = 15.0
 logger.info("py-inference-scheduler verl hook: %s layout detected", _VERL_LAYOUT)
 
 # Must apply at module level to patch classes before use across distributed
@@ -91,6 +95,7 @@ class _SchedulerCore:
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
+        self._last_fleet_log = 0.0
         self.flow_control = FlowControlManager(
             self.scheduler.get_flow_control_plugins,
             self._refresh_endpoints,
@@ -105,7 +110,35 @@ class _SchedulerCore:
             )
             for ep in self.endpoints:
                 ep.attributes["queue_len"] = self.inflight_store.get(ep.name)
+        self._log_fleet()
         return self.endpoints
+
+    def _log_fleet(self) -> None:
+        """Periodic snapshot of EVERY engine, for measuring fleet pressure.
+
+        Per-decision routing stats describe only the selected endpoint, so they
+        cannot measure saturation when a gate is filtering: a saturated engine
+        is excluded from selection by construction and silently leaves the
+        sample. Comparing that against an ungated arm reads as an effect that
+        is really selection bias. This line is identical in both arms.
+
+        WARNING level because INFO does not propagate from Ray workers.
+        """
+        now = time.monotonic()
+        if now - self._last_fleet_log < _FLEET_LOG_INTERVAL_S:
+            return
+        self._last_fleet_log = now
+        fleet = [
+            "{}=kv{:.2f}/w{}/r{}/p{}".format(
+                ep.name.rsplit(":", 1)[-1],
+                float(ep.attributes.get("routing_stats", {}).get("kv", 0.0)),
+                ep.attributes.get("routing_stats", {}).get("num_waiting_reqs", 0),
+                ep.attributes.get("routing_stats", {}).get("num_running_reqs", 0),
+                ep.attributes.get("routing_stats", {}).get("num_preempted", 0),
+            )
+            for ep in self.endpoints
+        ]
+        logger.warning("FLEET %s", " ".join(fleet))
 
     async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
         """Refresh metrics and pick an endpoint; None means fall back to verl's LB.
