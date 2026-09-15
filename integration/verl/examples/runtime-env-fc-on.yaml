@@ -16,7 +16,7 @@ env_vars:
   STEPS: "2"
   PYTHONPATH: ".:src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
-  ROUTER_CONFIG_PATH: "configs/flow-control/fc-on.yaml"
+  ROUTER_CONFIG_PATH: "configs/flow-control/neutral-on.yaml"
   SWE_SANDBOX_NAMESPACE: "agents-system"
   SWE_CMD_TIMEOUT_S: "60"
   SWE_OBS_MAX_CHARS: "6000"

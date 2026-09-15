@@ -1,0 +1,15 @@
+# Treatment arm: identical round-robin routing plus the admission gate, so the
+# gate is the only difference and the only pressure-management mechanism.
+profile_handler:
+  type: single_profile
+profiles:
+  neutral:
+    flow_control:
+      type: simple_backpressure
+      kv_threshold: 0.90
+      waiting_threshold: 4
+    scorers:
+      - type: round_robin
+        weight: 1.0
+    picker:
+      type: max_score

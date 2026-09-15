@@ -1,0 +1,23 @@
+# Baseline arm: round-robin routing only, matching verl's native load
+# balancer, with NO pressure-awareness. This is the control for "does flow
+# control reduce oversubscription".
+#
+# The earlier fc-off/fc-on pair is not that experiment: it carries
+# waiting_queue 5.0 + least_queue 2.0 + kv_cache 1.0, so 8 of 9 weight units
+# already steer away from saturated engines. That measures whether a gate adds
+# anything on top of a good load balancer, which is a different question and a
+# much smaller effect.
+#
+# The hook stays installed in BOTH arms and routing is identical in both, so
+# the admission gate is the only variable. Running the baseline through verl's
+# own balancer instead would change hook-vs-no-hook at the same time as
+# gate-vs-no-gate and confound the two.
+profile_handler:
+  type: single_profile
+profiles:
+  neutral:
+    scorers:
+      - type: round_robin
+        weight: 1.0
+    picker:
+      type: max_score
