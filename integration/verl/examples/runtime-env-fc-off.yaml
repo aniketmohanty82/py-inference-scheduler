@@ -19,7 +19,9 @@ env_vars:
   STEPS: "2"
   PYTHONPATH: ".:src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
-  # No ROUTER_CONFIG_PATH: the baseline installs no hook, so nothing reads it.
+  ROUTER_CONFIG_PATH: "configs/flow-control/passthrough.yaml"
+  # Hook installed but inert: it observes and defers placement to verl.
+  RLS_ADMISSION_ONLY: "1"
   SWE_SANDBOX_NAMESPACE: "agents-system"
   SWE_CMD_TIMEOUT_S: "60"
   SWE_OBS_MAX_CHARS: "6000"

@@ -1,0 +1,20 @@
+# Baseline: the hook is installed but does nothing except observe.
+#
+# With RLS_ADMISSION_ONLY=1 and no flow_control block, the hook refreshes
+# engine metrics (so FLEET instrumentation covers this arm too) and then
+# returns no selection, leaving placement to verl's own balancer.
+#
+# Why not simply omit the hook: measured on this stack, stock verl collapses
+# to num_turns 2.0 and response_length ~60 against ~42 turns / ~8000 tokens
+# with the hook installed. The hook issues a fresh request_id per turn to
+# dodge vLLM KV-cache collisions with verl's sticky multi-turn ids, so a
+# no-hook arm is a different, degenerate regime rather than an unprotected
+# version of the same one.
+#
+# Why not round-robin: verl's GlobalRequestLoadBalancer is sticky-session plus
+# least-inflight, not round-robin, so imposing round-robin would be a third
+# routing policy rather than a match.
+profile_handler:
+  type: single_profile
+profiles:
+  passthrough: {}
