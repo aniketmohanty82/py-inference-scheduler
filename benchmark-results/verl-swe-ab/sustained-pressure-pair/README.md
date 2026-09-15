@@ -124,16 +124,20 @@ the five gates is always safe.
 
 | | local-only | shared KV tier | change |
 |---|---|---|---|
-| **sampling time per trajectory** | **348.2 s** | **226.2 s** | **-35.1%** |
-| decode tokens produced | 3,034,780 | 3,096,673 | +2.0% |
-| prompt tokens recomputed | 148,596,234 | 67,037,475 | **-54.9%** |
-| **sampling time, slowest trajectory** | **1,146.7 s** | **883.8 s** | **-22.9%** |
-| tool-call time per trajectory | 57.1 s | 59.7 s | +4.5% |
-| KV pool occupancy while busy | 0.751 | 0.659 | -12.3% |
-| peak requests running | 112.8 | 93.3 | -17.3% |
-| preemptions per step | 79.3 | 81.3 | +2.5% |
-| `perf/throughput` from verl, for reference | 225.5 | 328.2 | +45.6% |
-| host memory used | 164.9 GB | 1,221.9 GB | **+641%** |
+| **sampling time per trajectory** | **348.2 s** | **226.2 s** | 🟢 **-35.1%** |
+| **sampling time, slowest trajectory** | **1,146.7 s** | **883.8 s** | 🟢 **-22.9%** |
+| prompt tokens recomputed | 148,596,234 | 67,037,475 | 🟢 **-54.9%** |
+| KV pool occupancy while busy | 0.751 | 0.659 | 🟢 -12.3% |
+| peak requests running | 112.8 | 93.3 | 🟢 -17.3% |
+| `perf/throughput` from verl, for reference | 225.5 | 328.2 | 🟢 +45.6% |
+| tool-call time per trajectory | 57.1 s | 59.7 s | 🔴 +4.5% |
+| preemptions per step | 79.3 | 81.3 | 🔴 +2.5% |
+| host memory used | 164.9 GB | 1,221.9 GB | 🔴 **+641%** |
+| decode tokens produced | 3,034,780 | 3,096,673 | ⚪ +2.0% |
+
+🟢 the shared tier did better · 🔴 it did worse · ⚪ neither, this one describes
+the workload rather than scoring it. Direction is not always "lower is better":
+throughput and decode tokens are better higher, everything else better lower.
 
 Workloads matched: total prompt tokens within 2.4%, batch tokens and response
 length within 0.03%, and prompt length per step identical between the arms.
