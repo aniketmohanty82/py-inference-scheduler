@@ -1,0 +1,625 @@
+=== watcher started 2026-09-14T22:08:27Z ===
+[22:08:27] no log yet
+[22:09:27] arm=smoke32b state=FAILED steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:10:31] arm=smoke32b state=FAILED steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:11:35] arm=smoke32b state=FAILED steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:12:38] arm=smoke32b state=FAILED steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+=== watcher started 2026-09-14T22:13:20Z ===
+[22:13:20] arm=smoke32b state=FAILED steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:14:24] arm=smoke32b state=FAILED steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+=== watcher started 2026-09-14T22:15:15Z ===
+[22:15:15] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:16:18] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:17:21] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:18:24] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:19:27] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:20:31] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:21:34] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:22:37] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:23:40] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:24:43] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:25:47] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:26:50] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:27:53] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:28:56] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:29:59] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:31:03] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:31:03] WARNING: no progress change for 15m
+[22:32:06] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:33:13] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:34:16] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:35:19] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:36:23] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:37:26] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:38:30] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:39:33] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:40:36] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:41:43] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:42:46] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:43:49] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:44:52] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:45:56] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:46:59] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:46:59] WARNING: no progress change for 30m
+[22:48:02] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:49:05] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:50:08] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:51:11] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:52:15] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:53:18] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[22:53:18] ALERT: CUDA OOM in smoke32b
+[22:54:21] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[22:54:21] ALERT: CUDA OOM in smoke32b
+[22:55:24] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:56:27] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:57:31] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[22:58:34] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[22:58:34] ALERT: CUDA OOM in smoke32b
+[22:59:37] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[22:59:37] ALERT: CUDA OOM in smoke32b
+[23:00:40] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:00:40] ALERT: CUDA OOM in smoke32b
+[23:01:43] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:01:43] ALERT: CUDA OOM in smoke32b
+[23:02:46] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:02:46] WARNING: no progress change for 45m
+[23:02:46] ALERT: CUDA OOM in smoke32b
+[23:03:50] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:03:50] ALERT: CUDA OOM in smoke32b
+[23:04:56] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:04:56] ALERT: CUDA OOM in smoke32b
+[23:06:00] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:06:00] ALERT: CUDA OOM in smoke32b
+[23:07:04] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:07:04] ALERT: CUDA OOM in smoke32b
+[23:08:07] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:08:07] ALERT: CUDA OOM in smoke32b
+[23:09:10] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:09:10] ALERT: CUDA OOM in smoke32b
+[23:10:14] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[23:11:17] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[23:12:20] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[23:13:23] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:13:23] ALERT: CUDA OOM in smoke32b
+[23:14:27] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:14:27] ALERT: CUDA OOM in smoke32b
+[23:15:30] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:15:30] ALERT: CUDA OOM in smoke32b
+[23:16:33] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:16:33] ALERT: CUDA OOM in smoke32b
+[23:17:36] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:17:36] ALERT: CUDA OOM in smoke32b
+[23:18:39] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:18:39] WARNING: no progress change for 60m
+[23:18:39] ALERT: CUDA OOM in smoke32b
+[23:19:42] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:19:42] ALERT: CUDA OOM in smoke32b
+[23:20:45] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:20:45] ALERT: CUDA OOM in smoke32b
+[23:21:48] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:21:48] ALERT: CUDA OOM in smoke32b
+[23:22:51] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:22:51] ALERT: CUDA OOM in smoke32b
+[23:23:55] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:23:55] ALERT: CUDA OOM in smoke32b
+[23:24:58] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:24:58] ALERT: CUDA OOM in smoke32b
+[23:26:01] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:26:01] ALERT: CUDA OOM in smoke32b
+[23:27:04] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:27:04] ALERT: CUDA OOM in smoke32b
+[23:28:07] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:28:07] ALERT: CUDA OOM in smoke32b
+[23:29:10] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:29:10] ALERT: CUDA OOM in smoke32b
+[23:30:14] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:30:14] ALERT: CUDA OOM in smoke32b
+[23:31:17] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:31:17] ALERT: CUDA OOM in smoke32b
+[23:32:21] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:32:21] ALERT: CUDA OOM in smoke32b
+[23:33:24] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:33:24] ALERT: CUDA OOM in smoke32b
+[23:34:27] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:34:27] WARNING: no progress change for 75m
+[23:34:27] ALERT: CUDA OOM in smoke32b
+[23:35:30] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:35:30] ALERT: CUDA OOM in smoke32b
+[23:36:33] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:36:33] ALERT: CUDA OOM in smoke32b
+[23:37:37] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:37:37] ALERT: CUDA OOM in smoke32b
+[23:38:40] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:38:40] ALERT: CUDA OOM in smoke32b
+[23:39:43] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:39:43] ALERT: CUDA OOM in smoke32b
+[23:40:47] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:40:47] ALERT: CUDA OOM in smoke32b
+[23:41:54] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:41:54] ALERT: CUDA OOM in smoke32b
+[23:42:57] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:42:57] ALERT: CUDA OOM in smoke32b
+[23:44:01] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:44:01] ALERT: CUDA OOM in smoke32b
+[23:45:04] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:45:04] ALERT: CUDA OOM in smoke32b
+[23:46:07] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:46:07] ALERT: CUDA OOM in smoke32b
+[23:47:10] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:47:10] ALERT: CUDA OOM in smoke32b
+[23:48:13] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:48:13] ALERT: CUDA OOM in smoke32b
+[23:49:16] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:49:16] ALERT: CUDA OOM in smoke32b
+[23:50:20] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:50:20] WARNING: no progress change for 90m
+[23:50:20] ALERT: CUDA OOM in smoke32b
+[23:51:23] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:51:23] ALERT: CUDA OOM in smoke32b
+[23:52:26] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:52:26] ALERT: CUDA OOM in smoke32b
+[23:53:29] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:53:29] ALERT: CUDA OOM in smoke32b
+[23:54:32] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:54:32] ALERT: CUDA OOM in smoke32b
+[23:55:35] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:55:35] ALERT: CUDA OOM in smoke32b
+[23:56:38] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:56:38] ALERT: CUDA OOM in smoke32b
+[23:57:41] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:57:41] ALERT: CUDA OOM in smoke32b
+[23:58:44] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:58:44] ALERT: CUDA OOM in smoke32b
+[23:59:47] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[23:59:47] ALERT: CUDA OOM in smoke32b
+[00:00:50] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:00:50] ALERT: CUDA OOM in smoke32b
+[00:01:53] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:01:53] ALERT: CUDA OOM in smoke32b
+[00:02:56] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:02:56] ALERT: CUDA OOM in smoke32b
+[00:04:00] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:04:00] ALERT: CUDA OOM in smoke32b
+[00:05:03] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:05:03] ALERT: CUDA OOM in smoke32b
+[00:06:07] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:06:07] WARNING: no progress change for 105m
+[00:06:07] ALERT: CUDA OOM in smoke32b
+[00:07:10] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:07:10] ALERT: CUDA OOM in smoke32b
+[00:08:13] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:08:13] ALERT: CUDA OOM in smoke32b
+[00:09:16] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:09:16] ALERT: CUDA OOM in smoke32b
+[00:10:19] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:10:19] ALERT: CUDA OOM in smoke32b
+[00:11:22] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:11:22] ALERT: CUDA OOM in smoke32b
+[00:12:25] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:12:25] ALERT: CUDA OOM in smoke32b
+[00:13:28] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:13:28] ALERT: CUDA OOM in smoke32b
+[00:14:31] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:14:31] ALERT: CUDA OOM in smoke32b
+[00:15:35] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:15:35] ALERT: CUDA OOM in smoke32b
+[00:16:39] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:16:39] ALERT: CUDA OOM in smoke32b
+[00:17:42] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:17:42] ALERT: CUDA OOM in smoke32b
+[00:18:46] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:18:46] ALERT: CUDA OOM in smoke32b
+[00:19:49] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:19:49] ALERT: CUDA OOM in smoke32b
+[00:20:52] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:20:52] ALERT: CUDA OOM in smoke32b
+[00:21:56] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:21:56] WARNING: no progress change for 120m
+[00:21:56] ALERT: CUDA OOM in smoke32b
+[00:23:00] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:23:00] ALERT: CUDA OOM in smoke32b
+[00:24:03] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:24:03] ALERT: CUDA OOM in smoke32b
+[00:25:06] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:25:06] ALERT: CUDA OOM in smoke32b
+[00:26:09] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:26:09] ALERT: CUDA OOM in smoke32b
+[00:27:13] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:27:13] ALERT: CUDA OOM in smoke32b
+[00:28:16] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:28:16] ALERT: CUDA OOM in smoke32b
+[00:29:19] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:29:19] ALERT: CUDA OOM in smoke32b
+[00:30:22] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:30:22] ALERT: CUDA OOM in smoke32b
+[00:31:25] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:31:25] ALERT: CUDA OOM in smoke32b
+[00:32:29] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:32:29] ALERT: CUDA OOM in smoke32b
+[00:33:32] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:33:32] ALERT: CUDA OOM in smoke32b
+[00:34:35] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:34:35] ALERT: CUDA OOM in smoke32b
+[00:35:38] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:35:38] ALERT: CUDA OOM in smoke32b
+[00:36:42] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:36:42] ALERT: CUDA OOM in smoke32b
+[00:37:45] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:37:45] WARNING: no progress change for 135m
+[00:37:45] ALERT: CUDA OOM in smoke32b
+[00:38:48] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:38:48] ALERT: CUDA OOM in smoke32b
+[00:39:51] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:39:51] ALERT: CUDA OOM in smoke32b
+[00:40:55] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:40:55] ALERT: CUDA OOM in smoke32b
+[00:41:59] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:41:59] ALERT: CUDA OOM in smoke32b
+[00:43:02] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:43:02] ALERT: CUDA OOM in smoke32b
+[00:44:05] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:44:05] ALERT: CUDA OOM in smoke32b
+[00:45:09] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:45:09] ALERT: CUDA OOM in smoke32b
+[00:46:12] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:46:12] ALERT: CUDA OOM in smoke32b
+[00:47:15] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:47:15] ALERT: CUDA OOM in smoke32b
+[00:48:18] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:48:18] ALERT: CUDA OOM in smoke32b
+[00:49:22] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:49:22] ALERT: CUDA OOM in smoke32b
+[00:50:25] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:50:25] ALERT: CUDA OOM in smoke32b
+[00:51:28] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:51:28] ALERT: CUDA OOM in smoke32b
+[00:52:31] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:52:31] ALERT: CUDA OOM in smoke32b
+[00:53:35] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:53:35] WARNING: no progress change for 150m
+[00:53:35] ALERT: CUDA OOM in smoke32b
+[00:54:38] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:54:38] ALERT: CUDA OOM in smoke32b
+[00:55:41] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:55:41] ALERT: CUDA OOM in smoke32b
+[00:56:44] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:56:44] ALERT: CUDA OOM in smoke32b
+[00:57:48] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:57:48] ALERT: CUDA OOM in smoke32b
+[00:58:51] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:58:51] ALERT: CUDA OOM in smoke32b
+[00:59:54] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[00:59:54] ALERT: CUDA OOM in smoke32b
+[01:00:58] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:00:58] ALERT: CUDA OOM in smoke32b
+[01:02:02] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:02:02] ALERT: CUDA OOM in smoke32b
+[01:03:05] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:03:05] ALERT: CUDA OOM in smoke32b
+[01:04:11] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:04:11] ALERT: CUDA OOM in smoke32b
+[01:05:14] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:05:14] ALERT: CUDA OOM in smoke32b
+[01:06:18] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:06:18] ALERT: CUDA OOM in smoke32b
+[01:07:21] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:07:21] ALERT: CUDA OOM in smoke32b
+[01:08:25] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:08:25] ALERT: CUDA OOM in smoke32b
+[01:09:28] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:09:28] WARNING: no progress change for 165m
+[01:09:28] ALERT: CUDA OOM in smoke32b
+[01:10:31] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:10:31] ALERT: CUDA OOM in smoke32b
+[01:11:35] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:11:35] ALERT: CUDA OOM in smoke32b
+[01:12:38] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:12:38] ALERT: CUDA OOM in smoke32b
+[01:13:42] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:13:42] ALERT: CUDA OOM in smoke32b
+[01:14:45] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:14:45] ALERT: CUDA OOM in smoke32b
+[01:15:49] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:15:49] ALERT: CUDA OOM in smoke32b
+[01:16:53] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:16:53] ALERT: CUDA OOM in smoke32b
+[01:17:56] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:17:56] ALERT: CUDA OOM in smoke32b
+[01:19:00] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:19:00] ALERT: CUDA OOM in smoke32b
+[01:20:05] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:20:05] ALERT: CUDA OOM in smoke32b
+[01:21:08] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:21:08] ALERT: CUDA OOM in smoke32b
+[01:22:11] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:22:11] ALERT: CUDA OOM in smoke32b
+[01:23:14] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:23:14] ALERT: CUDA OOM in smoke32b
+[01:24:18] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:24:18] ALERT: CUDA OOM in smoke32b
+[01:25:21] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:25:21] WARNING: no progress change for 180m
+[01:25:21] ALERT: CUDA OOM in smoke32b
+[01:26:24] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:26:24] ALERT: CUDA OOM in smoke32b
+[01:27:27] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:27:27] ALERT: CUDA OOM in smoke32b
+[01:28:30] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:28:30] ALERT: CUDA OOM in smoke32b
+[01:29:34] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:29:34] ALERT: CUDA OOM in smoke32b
+[01:30:37] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:30:37] ALERT: CUDA OOM in smoke32b
+[01:31:40] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:31:40] ALERT: CUDA OOM in smoke32b
+[01:32:44] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:32:44] ALERT: CUDA OOM in smoke32b
+[01:33:47] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:33:47] ALERT: CUDA OOM in smoke32b
+[01:34:50] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:34:50] ALERT: CUDA OOM in smoke32b
+[01:35:53] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:35:53] ALERT: CUDA OOM in smoke32b
+[01:36:56] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:36:56] ALERT: CUDA OOM in smoke32b
+[01:37:59] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:37:59] ALERT: CUDA OOM in smoke32b
+[01:39:02] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:39:02] ALERT: CUDA OOM in smoke32b
+[01:40:05] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:40:05] ALERT: CUDA OOM in smoke32b
+[01:41:09] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:41:09] WARNING: no progress change for 195m
+[01:41:09] ALERT: CUDA OOM in smoke32b
+[01:42:12] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:42:12] ALERT: CUDA OOM in smoke32b
+[01:43:15] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:43:15] ALERT: CUDA OOM in smoke32b
+[01:44:18] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:44:18] ALERT: CUDA OOM in smoke32b
+[01:45:22] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:45:22] ALERT: CUDA OOM in smoke32b
+[01:46:25] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:46:25] ALERT: CUDA OOM in smoke32b
+[01:47:28] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:47:28] ALERT: CUDA OOM in smoke32b
+[01:48:31] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:48:31] ALERT: CUDA OOM in smoke32b
+[01:49:34] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:49:34] ALERT: CUDA OOM in smoke32b
+[01:50:38] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:50:38] ALERT: CUDA OOM in smoke32b
+[01:51:41] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:51:41] ALERT: CUDA OOM in smoke32b
+[01:52:44] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:52:44] ALERT: CUDA OOM in smoke32b
+[01:53:47] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:53:47] ALERT: CUDA OOM in smoke32b
+[01:54:53] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:54:53] ALERT: CUDA OOM in smoke32b
+[01:55:58] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:55:58] ALERT: CUDA OOM in smoke32b
+[01:57:04] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:57:04] WARNING: no progress change for 210m
+[01:57:04] ALERT: CUDA OOM in smoke32b
+[01:58:11] arm=smoke32b state=? steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=2 
+[01:58:11] ALERT: CUDA OOM in smoke32b
+[01:59:14] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:00:18] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:01:21] arm=smoke32b state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:02:25] arm=smoke32b state=RUNNING steps=0 kv_max=0.0 run_max=0 parks=0 preempt=0 oom=0 
+[02:03:28] arm=smoke32b state=RUNNING steps=0 kv_max=0.034931212381771326 run_max=6 parks=0 preempt=0 oom=0 
+[02:04:32] arm=smoke32b state=RUNNING steps=0 kv_max=0.22527944969905422 run_max=10 parks=0 preempt=0 oom=0 
+[02:05:35] arm=smoke32b state=RUNNING steps=0 kv_max=0.46453138435081687 run_max=15 parks=0 preempt=0 oom=0 
+[02:06:38] arm=smoke32b state=RUNNING steps=0 kv_max=0.75 run_max=22 parks=0 preempt=0 oom=0 
+[02:07:42] arm=smoke32b state=RUNNING steps=0 kv_max=0.9888220120378332 run_max=22 parks=0 preempt=0 oom=0 
+[02:08:45] arm=smoke32b state=RUNNING steps=0 kv_max=0.999140154772141 run_max=22 parks=0 preempt=0 oom=0 
+[02:09:48] arm=smoke32b state=RUNNING steps=0 kv_max=0.999140154772141 run_max=22 parks=0 preempt=0 oom=0 
+[02:10:51] arm=smoke32b state=RUNNING steps=0 kv_max=0.999140154772141 run_max=22 parks=0 preempt=0 oom=0 
+[02:11:54] arm=smoke32b state=RUNNING steps=0 kv_max=0.999140154772141 run_max=22 parks=0 preempt=0 oom=0 
+[02:12:57] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:14:00] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:15:03] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:16:06] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.046324161650902806 run_max=1 parks=0 preempt=0 oom=0 
+[02:17:10] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.11726139294926918 run_max=6 parks=0 preempt=0 oom=0 
+[02:18:13] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.22302235597592435 run_max=8 parks=0 preempt=0 oom=0 
+[02:19:16] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.22302235597592435 run_max=8 parks=0 preempt=0 oom=0 
+[02:20:20] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.2333404987102322 run_max=8 parks=0 preempt=0 oom=0 
+[02:21:24] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.5109630266552021 run_max=9 parks=0 preempt=0 oom=0 
+[02:22:27] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:23:30] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:24:34] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:25:37] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:26:40] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:27:43] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:28:46] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:29:49] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:30:53] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:31:56] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:32:59] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:34:02] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:35:06] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:36:09] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:37:12] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:38:16] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:38:16] WARNING: no progress change for 15m
+[02:39:19] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:40:22] arm=fcoff.attempt1 state=RUNNING steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:41:26] arm=fcoff.attempt1 state=? steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:42:30] arm=fcoff.attempt1 state=? steps=0 kv_max=0.9249785038693035 run_max=10 parks=0 preempt=0 oom=0 
+[02:43:34] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:44:37] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:45:41] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:46:44] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:47:47] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:48:51] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:49:54] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:50:58] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:52:01] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:53:04] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:54:08] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:55:12] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:56:15] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:57:19] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:58:22] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:59:25] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[02:59:25] WARNING: no progress change for 15m
+[03:00:28] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[03:01:33] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[03:02:41] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[03:03:45] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[03:04:49] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.0 run_max=0 parks=0 preempt=0 oom=0 
+[03:05:53] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.40616938950988823 run_max=34 parks=0 preempt=0 oom=0 
+[03:06:56] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.5281599312123817 run_max=34 parks=0 preempt=0 oom=0 
+[03:08:01] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.5281599312123817 run_max=34 parks=0 preempt=0 oom=0 
+[03:09:05] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:10:08] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:11:12] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:12:16] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:13:19] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:14:23] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:15:26] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:16:29] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:17:32] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:18:37] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:19:42] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9615219260533104 run_max=34 parks=0 preempt=0 oom=0 
+[03:20:45] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9833404987102321 run_max=75 parks=0 preempt=0 oom=0 
+[03:21:49] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9833404987102321 run_max=75 parks=0 preempt=0 oom=0 
+[03:22:52] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9833404987102321 run_max=75 parks=0 preempt=0 oom=0 
+[03:23:55] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9833404987102321 run_max=75 parks=0 preempt=0 oom=0 
+[03:24:58] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:26:02] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:27:05] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:28:08] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:29:12] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:30:15] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:31:18] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:32:21] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:33:24] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:34:27] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:35:30] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:36:36] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:37:40] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:38:43] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:39:46] arm=fcoff.attempt2 state=RUNNING steps=0 kv_max=0.9998925193465176 run_max=75 parks=0 preempt=0 oom=0 
+[03:40:50] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[03:41:53] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[03:42:56] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=na run_max=na parks=0 preempt=0 oom=0 
+[03:44:00] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.11941100601891663 run_max=23 parks=0 preempt=0 oom=0 
+[03:45:03] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.38198624247635427 run_max=51 parks=0 preempt=0 oom=0 
+[03:46:07] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.38198624247635427 run_max=51 parks=0 preempt=0 oom=0 
+[03:47:10] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.4021926053310404 run_max=51 parks=0 preempt=0 oom=0 
+[03:48:13] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8940240756663801 run_max=51 parks=0 preempt=0 oom=0 
+[03:49:17] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:50:20] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:51:23] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:52:26] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:53:29] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:54:32] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:55:36] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:56:39] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:57:42] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:58:46] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[03:59:49] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[04:00:53] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[04:01:57] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[04:03:00] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[04:04:03] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[04:05:07] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[04:05:07] WARNING: no progress change for 15m
+[04:06:11] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8992906276870163 run_max=51 parks=0 preempt=0 oom=0 
+[04:07:14] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:08:18] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:09:21] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:10:25] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:11:29] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:12:32] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:13:36] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:14:41] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:15:46] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:16:50] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:17:53] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:18:57] arm=fcon.attempt1 state=RUNNING steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:20:01] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:20:01] ORCHESTRATOR FINISHED
+[04:21:05] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:21:05] ORCHESTRATOR FINISHED
+[04:22:09] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:22:09] ORCHESTRATOR FINISHED
+[04:23:13] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:23:13] WARNING: no progress change for 15m
+[04:23:13] ORCHESTRATOR FINISHED
+[04:24:16] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:24:16] ORCHESTRATOR FINISHED
+[04:25:19] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:25:19] ORCHESTRATOR FINISHED
+[04:26:23] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:26:23] ORCHESTRATOR FINISHED
+[04:27:26] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:27:26] ORCHESTRATOR FINISHED
+[04:28:30] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:28:30] ORCHESTRATOR FINISHED
+[04:29:33] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:29:33] ORCHESTRATOR FINISHED
+[04:30:37] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:30:37] ORCHESTRATOR FINISHED
+[04:31:40] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:31:40] ORCHESTRATOR FINISHED
+[04:32:44] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:32:44] ORCHESTRATOR FINISHED
+[04:33:47] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:33:47] ORCHESTRATOR FINISHED
+[04:34:51] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:34:51] ORCHESTRATOR FINISHED
+[04:35:54] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:35:54] ORCHESTRATOR FINISHED
+[04:36:58] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:36:58] ORCHESTRATOR FINISHED
+[04:38:01] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:38:01] ORCHESTRATOR FINISHED
+[04:39:05] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:39:05] WARNING: no progress change for 30m
+[04:39:05] ORCHESTRATOR FINISHED
+[04:40:08] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:40:08] ORCHESTRATOR FINISHED
+[04:41:11] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:41:11] ORCHESTRATOR FINISHED
+[04:42:15] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:42:15] ORCHESTRATOR FINISHED
+[04:43:18] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:43:18] ORCHESTRATOR FINISHED
+[04:44:21] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:44:21] ORCHESTRATOR FINISHED
+[04:45:24] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:45:24] ORCHESTRATOR FINISHED
+[04:46:28] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:46:28] ORCHESTRATOR FINISHED
+[04:47:31] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:47:31] ORCHESTRATOR FINISHED
+[04:48:34] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:48:34] ORCHESTRATOR FINISHED
+[04:49:38] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:49:38] ORCHESTRATOR FINISHED
+[04:50:42] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:50:42] ORCHESTRATOR FINISHED
+[04:51:46] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:51:46] ORCHESTRATOR FINISHED
+[04:52:51] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:52:51] ORCHESTRATOR FINISHED
+[04:53:55] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:53:55] ORCHESTRATOR FINISHED
+[04:54:58] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:54:58] WARNING: no progress change for 45m
+[04:54:58] ORCHESTRATOR FINISHED
+[04:56:02] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:56:02] ORCHESTRATOR FINISHED
+[04:57:06] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:57:06] ORCHESTRATOR FINISHED
+[04:58:10] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:58:10] ORCHESTRATOR FINISHED
+[04:59:14] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[04:59:14] ORCHESTRATOR FINISHED
+[05:00:18] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[05:00:18] ORCHESTRATOR FINISHED
+[05:01:22] arm=fcon.FINAL state=? steps=0 kv_max=0.8993981083404987 run_max=51 parks=0 preempt=0 oom=0 
+[05:01:22] ORCHESTRATOR FINISHED
