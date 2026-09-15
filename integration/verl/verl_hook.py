@@ -122,7 +122,8 @@ class _SchedulerCore:
         sample. Comparing that against an ungated arm reads as an effect that
         is really selection bias. This line is identical in both arms.
 
-        WARNING level because INFO does not propagate from Ray workers.
+        Emitted with print(): under Ray only an actor's stdout reaches the
+        driver log, so logging at any level is invisible there.
         """
         now = time.monotonic()
         if now - self._last_fleet_log < _FLEET_LOG_INTERVAL_S:
@@ -138,7 +139,8 @@ class _SchedulerCore:
             )
             for ep in self.endpoints
         ]
-        logger.warning("FLEET %s", " ".join(fleet))
+        # print(), not logger: only actor stdout reaches the Ray driver log.
+        print("FLEET " + " ".join(fleet))
 
     async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
         """Refresh metrics and pick an endpoint; None means fall back to verl's LB.

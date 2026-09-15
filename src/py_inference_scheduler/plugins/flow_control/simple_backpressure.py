@@ -66,19 +66,16 @@ class SimpleBackpressurePlugin(FlowControlPlugin):
             else:
                 allowed.append(ep)
 
+        # print(), not logger: under Ray only an actor's stdout reaches the
+        # driver log, so logging at any level is invisible there. These two
+        # lines are the only external proof of what the gate did -- without
+        # them an A/B cannot separate "gate filtered", "gate parked" and "gate
+        # inert", and selected-endpoint stats cannot help because a
+        # filtered-out endpoint can never be the selected one.
         if not allowed and candidates:
-            logger.warning(
-                "all %d endpoints saturated: request will queue %s", len(dropped), dropped
-            )
+            print(f"FLOWCONTROL park: all {len(dropped)} endpoints saturated {dropped}")
         elif dropped:
-            # WARNING, not INFO: this is the only externally visible proof the
-            # gate acted, and INFO does not propagate from Ray workers to the
-            # driver log. Without it an A/B cannot tell "gate filtered" from
-            # "gate inert" -- and the selected-endpoint stats cannot, either,
-            # since a filtered-out endpoint can never be the selected one.
-            logger.warning(
-                "backpressure gate dropped %d/%d: %s", len(dropped), len(candidates), dropped
-            )
+            print(f"FLOWCONTROL drop {len(dropped)}/{len(candidates)}: {dropped}")
         return allowed
 
     def reserve(self, request: LLMRequest, selected: Endpoint) -> None:
