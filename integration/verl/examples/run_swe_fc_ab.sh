@@ -33,9 +33,17 @@
 # Note this is main's own model: only gmu departs from run_swe.sh.
 # Verify against the "KV cache size" line the engine logs at startup.
 #
-# ARM=fcon  -> scheduler hook + simple_backpressure admission gate
-# ARM=fcoff -> scheduler hook, no flow_control block
-# The hook is in BOTH arms so admission control is the only variable.
+# ARM=fcoff -> BASELINE: verl untouched. The scheduler hook is NOT installed,
+#              so verl's own load balancer routes, exactly as upstream.
+# ARM=fcon  -> the same verl routing PLUS admission gating: the hook is
+#              installed with RLS_ADMISSION_ONLY=1, so it parks while every
+#              replica is saturated and then returns no selection, leaving
+#              placement to verl's balancer.
+#
+# Neither arm uses any scorer, so routing is identical in both and admission
+# is the only variable. An earlier pair ran waiting_queue 5.0 + least_queue
+# 2.0 + kv_cache 1.0 in both arms; that policy already steers away from
+# saturated engines, doing much of the gate's job and masking its effect.
 set -euo pipefail
 
 ARM=${ARM:?set ARM=fcon|fcoff}
@@ -46,8 +54,14 @@ TURNS=${TURNS:-25}
 
 # ++ (not +) on keys run_swe.sh already sets: hydra rejects a duplicate plain
 # assignment, ++ means "add or override".
+# Baseline installs no hook at all; treatment adds only the hook.
+HOOK_ARG=()
+if [ "$ARM" = "fcon" ]; then
+  HOOK_ARG=(+actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager)
+fi
+
 exec bash "$(dirname "$0")/run_swe.sh" \
-    +actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager \
+    "${HOOK_ARG[@]}" \
     ++actor_rollout_ref.model.path=Qwen/Qwen2.5-7B-Instruct \
     ++actor_rollout_ref.model.lora_rank=32 \
     ++actor_rollout_ref.model.lora_alpha=32 \

@@ -96,6 +96,12 @@ class _SchedulerCore:
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
         self._last_fleet_log = 0.0
+        # Admission-only: gate (and park) but do NOT choose the server, leaving
+        # placement to verl's own balancer. This is what isolates flow control
+        # in an A/B -- with any scorer enabled the comparison also varies
+        # routing, and a load-aware policy does much of the gate's job by
+        # itself, which masks whatever the gate contributes.
+        self.admission_only = os.environ.get("RLS_ADMISSION_ONLY", "0") == "1"
         self.flow_control = FlowControlManager(
             self.scheduler.get_flow_control_plugins,
             self._refresh_endpoints,
@@ -163,6 +169,11 @@ class _SchedulerCore:
                 return None
             if not candidates:
                 return None
+
+        if self.admission_only:
+            # Returning None routes this request through verl's balancer, which
+            # is the point: admission was gated, placement was not touched.
+            return None
 
         async with self.lock:
             selected = self.scheduler.run(request, candidates=candidates)
