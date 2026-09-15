@@ -1,0 +1,24 @@
+# Treatment arm at kv 0.9 / waiting 4: admission gating and nothing else.
+#
+# In admission-only mode the gate's ONLY lever is parking, which needs EVERY
+# replica over threshold. The threshold therefore sets how often the feature
+# does anything at all: high thresholds are near-inert, low ones withhold
+# load often. Sweeping it is the point of the experiment.
+#
+# No scorers and no picker: with RLS_ADMISSION_ONLY=1 the hook never runs the
+# scheduling policy at all. It gates (parking while every replica is at or over
+# threshold) and then returns no selection, so verl's own balancer places the
+# request exactly as it does in the baseline.
+#
+# This is what makes the A/B attributable. Any scorer here would vary routing
+# as well as admission, and a load-aware policy performs much of the gate's job
+# on its own, which is why the earlier waiting_queue/least_queue/kv_cache pair
+# could not show what the gate contributes.
+profile_handler:
+  type: single_profile
+profiles:
+  gate:
+    flow_control:
+      type: simple_backpressure
+      kv_threshold: 0.9
+      waiting_threshold: 4
