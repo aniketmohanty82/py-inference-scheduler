@@ -63,7 +63,13 @@ def test_parse_vllm_missing_metrics_defaults_to_zero():
 
 def test_parse_vllm_empty_payload():
     stats = parse_vllm("")
-    assert stats == {"num_waiting_reqs": 0, "num_running_reqs": 0, "kv": 0.0, "error": None}
+    assert stats == {
+        "num_waiting_reqs": 0,
+        "num_running_reqs": 0,
+        "kv": 0.0,
+        "num_preempted": 0,
+        "error": None,
+    }
 
 
 def test_parse_vllm_multiproc_takes_max_across_samples():

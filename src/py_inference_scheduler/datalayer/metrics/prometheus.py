@@ -56,11 +56,21 @@ _VLLM_METRICS = {
     "vllm:num_requests_waiting": "num_waiting_reqs",
     "vllm:num_requests_running": "num_running_reqs",
     "vllm:kv_cache_usage_perc": "kv",
+    # Cumulative counter: a run's preemptions are the delta across the run.
+    # prometheus_client strips the _total suffix from a counter's FAMILY name
+    # (the sample keeps it), so the key here is the stripped form.
+    "vllm:num_preemptions": "num_preempted",
 }
 
 
 def empty_vllm_stats() -> dict[str, Any]:
-    return {"num_waiting_reqs": 0, "num_running_reqs": 0, "kv": 0.0, "error": None}
+    return {
+        "num_waiting_reqs": 0,
+        "num_running_reqs": 0,
+        "kv": 0.0,
+        "num_preempted": 0,
+        "error": None,
+    }
 
 
 def parse_vllm(text: str) -> dict[str, Any]:
@@ -74,7 +84,10 @@ def parse_vllm(text: str) -> dict[str, Any]:
         key = _VLLM_METRICS.get(family.name)
         if key is None:
             continue
-        values = [s.value for s in family.samples if s.name == family.name]
+        # Counter samples are named <family>_total while gauges match the family
+        # name exactly; accept both or every counter reads as absent.
+        wanted = {family.name, f"{family.name}_total"}
+        values = [s.value for s in family.samples if s.name in wanted]
         if not values:
             continue
         # A gauge may appear as several samples (multiprocess mode emits one per
