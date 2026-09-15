@@ -1,0 +1,28 @@
+# Treatment at kv 0.7 / waiting 3: least-loaded routing plus the gate.
+#
+# Routing is least_queue in BOTH arms: verl's own balancer is least-inflight at
+# trajectory start and then sticky (the SWE loop reuses one request_id for all
+# turns), and holding stickiness constant is not worth the variance it adds, so
+# the arms use a deterministic least-loaded policy instead.
+#
+# Consequence to keep in mind when reading results: without stickiness a
+# trajectory can move between engines across turns, which costs prefix reuse
+# relative to stock verl. Both arms pay that equally.
+#
+# The hook is installed in both arms. Omitting it for the baseline was measured
+# to collapse rollouts to num_turns 2.0 / response_length ~60 (versus ~42 turns
+# and ~8000 tokens), because the hook issues a fresh per-turn request_id that
+# dodges vLLM KV-cache collisions with verl's sticky ids.
+profile_handler:
+  type: single_profile
+profiles:
+  lq:
+    flow_control:
+      type: simple_backpressure
+      kv_threshold: 0.7
+      waiting_threshold: 3
+    scorers:
+      - type: least_queue
+        weight: 1.0
+    picker:
+      type: max_score
