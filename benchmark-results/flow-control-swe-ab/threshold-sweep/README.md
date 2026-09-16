@@ -4,10 +4,10 @@ Does `simple_backpressure` produce any gain on a real agentic RL rollout?
 
 ## TLDR
 
-No. Preemptions do not fall at any threshold (713 baseline -> 733/743/746,
-rising slightly as the gate gets more aggressive), and the throughput deltas
-are non-monotonic (-10.3%, -6.9%, +1.6%), which is the signature of noise
-rather than effect. The gate demonstrably works -- it parks, it filters, and
+No. Normalised per million tokens, the preemption RATE is flat with no trend
+(163.7 baseline vs 155.5 / 170.3 / 167.7), and the throughput deltas are
+non-monotonic (-10.3%, -6.9%, +1.6%). Both metrics are noise at one run per
+arm. The gate demonstrably works -- it parks, it filters, and
 at kv 0.50 it measurably suppresses peak saturation -- but on this workload
 that control does not convert into fewer preemptions or more tokens per
 second.
@@ -31,16 +31,20 @@ lose prefix reuse, which every arm pays equally.
 
 ## Results
 
-Throughput is `256 trajectories x response_length/mean / timing_s/gen`.
-Preemptions are the pod-wide `vllm:num_preemptions_total` delta within each
-arm's own window.
+Tokens are `256 trajectories x sum(response_length/mean over steps)`;
+throughput is tokens / `sum(timing_s/gen)`. Preemptions are the pod-wide
+`vllm:num_preemptions_total` delta within each arm's own window, and are
+reported per million tokens because the arms did unequal work.
 
-| Arm | Parks | Drops | Gen wall | Tokens | Throughput | vs base | Preemptions | kv>=0.9 samples |
-|---|---|---|---|---|---|---|---|---|
-| baseline | 0 | 0 | 1968.0 s | 2.178 M | **1,107 tok/s** | — | **713** | 7 / 670 |
-| gate-kv90 | 14 | 45 | 2374.6 s | 2.357 M | 993 tok/s | -10.3% | 733 | 18 / 705 |
-| gate-kv70 | 48 | 51 | 2116.8 s | 2.182 M | 1,031 tok/s | -6.9% | 743 | 14 / 607 |
-| gate-kv50 | 44 | 89 | 1979.0 s | 2.225 M | 1,124 tok/s | +1.6% | 746 | 3 / 663 |
+| Arm | Parks | Drops | Gen wall | Tokens | Throughput | vs base | Preempt | **Preempt/Mtok** | kv>=0.9 |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline | 0 | 0 | 1968.0 s | 4.355 M | **2,213 tok/s** | — | 713 | **163.7** | 7 / 670 |
+| gate-kv90 | 14 | 45 | 2374.6 s | 4.714 M | 1,985 tok/s | -10.3% | 733 | **155.5** | 18 / 705 |
+| gate-kv70 | 48 | 51 | 2116.8 s | 4.364 M | 2,061 tok/s | -6.9% | 743 | **170.3** | 14 / 607 |
+| gate-kv50 | 44 | 89 | 1979.0 s | 4.449 M | 2,248 tok/s | +1.6% | 746 | **167.7** | 3 / 663 |
+
+Preemption counters run 0..N in every arm, so engines are fresh per arm and
+the deltas are the arm's own total.
 
 Turns per trajectory were 42.9-43.6 across all arms, so the arms did
 comparable work.
@@ -51,9 +55,13 @@ comparable work.
 rise with aggressiveness (45 -> 51 -> 89 drops). This is "engaged and did not
 help", not "never engaged" -- a distinction earlier attempts could not make.
 
-**B. Preemptions never fall.** 713 -> 733 -> 743 -> 746, monotonically
-*increasing* with gate aggressiveness. This is the cleanest signal here and it
-runs opposite to the feature's purpose.
+**B. Preemption RATE is flat.** Raw counts rise slightly (713 -> 733/743/746)
+but the arms did different amounts of work: gate-kv90 emitted 8% more tokens
+than baseline, and more tokens means more opportunity to preempt. Per million
+tokens the rate is 163.7 / 155.5 / 170.3 / 167.7 -- no trend, ~9% spread, with
+the HARSHEST threshold the lowest. Raw counts across arms of unequal work are
+not comparable; an earlier version of this document wrongly reported a
+monotonic rise from them.
 
 **C. Throughput shows no consistent effect.** The deltas are non-monotonic:
 the most aggressive setting (kv 0.50) is the *best* of the three. If gating
@@ -73,8 +81,9 @@ work the engines would have absorbed during the long idle stretches.
 
 ## Scrutiny
 
-- One run per arm. Per-arm differences of this size are not resolvable; only
-  the preemption direction (consistent across three arms) is.
+- One run per arm. Nothing here is resolvable: both throughput and preemption
+  rate vary non-monotonically, and an earlier identical baseline differed by
+  33% from this one.
 - Sandbox pool is fixed at 4 nodes with no autoscaling. Every arm resets the
   pool first, because leaked sandboxes silently starve rollouts (see below).
 - Preemption counters are pod-wide prometheus multiprocess aggregates: every
@@ -91,3 +100,4 @@ Recorded because each produced a confident but wrong result first.
 | Sandbox starvation | `num_turns 2.0`, `response_length ~60`, job still SUCCEEDED | 761 leaked sandboxes against a fixed 4-node pool; every arm now resets first |
 | Pooled counters | incoherent "71 vs 112 preemptions" | counter is a pod-wide aggregate read four times, not four engines |
 | Wrong baseline | attributed the 2-turn collapse to the missing hook | it was starvation; the hook was not the cause |
+| Unnormalised counts | "preemptions rise monotonically with harsher thresholds", which is physically backwards | arms emitted up to 8% different token volumes; per-Mtok the rate is flat |
