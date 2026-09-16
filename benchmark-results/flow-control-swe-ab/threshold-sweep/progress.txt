@@ -1,0 +1,22 @@
+=== sweep started Tue Sep 15 23:35:02 UTC 2026 ===
+delete_collection unavailable (ForbiddenException), deleting individually
+sandbox pool clean: 0 pods
+[23:35:03] baseline starting (sandbox pool reset above)
+[23:35:03] baseline attempt=1 starting
+[00:13:33] baseline SUCCEEDED
+delete_collection unavailable (ForbiddenException), deleting individually
+sandbox pool clean: 0 pods
+[00:13:34] gate-kv90 starting (sandbox pool reset above)
+[00:13:34] gate-kv90 attempt=1 starting
+[00:58:56] gate-kv90 SUCCEEDED
+delete_collection unavailable (ForbiddenException), deleting individually
+sandbox pool clean: 0 pods
+[00:58:57] gate-kv70 starting (sandbox pool reset above)
+[00:58:57] gate-kv70 attempt=1 starting
+[01:39:51] gate-kv70 SUCCEEDED
+delete_collection unavailable (ForbiddenException), deleting individually
+sandbox pool clean: 0 pods
+[01:39:53] gate-kv50 starting (sandbox pool reset above)
+[01:39:53] gate-kv50 attempt=1 starting
+[02:18:33] gate-kv50 SUCCEEDED
+=== sweep finished Wed Sep 16 02:18:33 UTC 2026 ===
