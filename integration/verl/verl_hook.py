@@ -62,6 +62,7 @@ except ImportError:  # modern layout (verl v0.9.x)
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
+from integration.verl.shared_inflight import SharedInflightLedger
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.core.flow_control import FlowControlClosedError, FlowControlManager
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
@@ -92,6 +93,7 @@ class _SchedulerCore:
     def __init__(self) -> None:
         self.scheduler = Scheduler()
         self.inflight_store = InflightStore()
+        self.shared_inflight = SharedInflightLedger()
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
@@ -107,6 +109,10 @@ class _SchedulerCore:
             self._refresh_endpoints,
             poll_interval_s=float(os.environ.get("FLOW_CONTROL_POLL_S", "0.1")),
         )
+        # print(): only actor stdout reaches the Ray driver log. One line per
+        # AgentLoopWorker = live proof of both the shipped code version and
+        # the worker fan-out behind this core.
+        print("FLOWCONTROL core init: shared inflight ledger enabled")
 
     async def _refresh_endpoints(self) -> Sequence[Endpoint]:
         """Scrape every engine and republish inflight counts (flow-control poll source)."""
@@ -114,8 +120,16 @@ class _SchedulerCore:
             await asyncio.gather(
                 *(fetch_worker_metrics(ep, self.inflight_store) for ep in self.endpoints)
             )
+            shared = await self.shared_inflight.snapshot()
             for ep in self.endpoints:
-                ep.attributes["queue_len"] = self.inflight_store.get(ep.name)
+                # Fleet-wide counts, not this worker's slice: verl fans the
+                # batch over several AgentLoopWorkers, each holding its own
+                # core, so the local store understates engine load N-fold.
+                ep.attributes["queue_len"] = (
+                    shared.get(ep.name, 0)
+                    if shared is not None
+                    else self.inflight_store.get(ep.name)
+                )
         self._log_fleet()
         return self.endpoints
 
@@ -136,12 +150,13 @@ class _SchedulerCore:
             return
         self._last_fleet_log = now
         fleet = [
-            "{}=kv{:.2f}/w{}/r{}/p{}".format(
+            "{}=kv{:.2f}/w{}/r{}/p{}/q{}".format(
                 ep.name.rsplit(":", 1)[-1],
                 float(ep.attributes.get("routing_stats", {}).get("kv", 0.0)),
                 ep.attributes.get("routing_stats", {}).get("num_waiting_reqs", 0),
                 ep.attributes.get("routing_stats", {}).get("num_running_reqs", 0),
                 ep.attributes.get("routing_stats", {}).get("num_preempted", 0),
+                ep.attributes.get("queue_len", 0),
             )
             for ep in self.endpoints
         ]
@@ -180,12 +195,18 @@ class _SchedulerCore:
             if not selected:
                 return None
             winner: Endpoint = selected[0].endpoint
-            self.inflight_store.increment(winner.name)
+            self.note_dispatch(winner.name)
             self.flow_control.commit(request, winner)
             return winner
 
+    def note_dispatch(self, endpoint_name: str) -> None:
+        """Count a dispatch in both the local and the fleet-wide ledgers."""
+        self.inflight_store.increment(endpoint_name)
+        self.shared_inflight.increment(endpoint_name)
+
     def release(self, server_id: str, request_id: str | None = None) -> None:
         self.inflight_store.decrement(server_id)
+        self.shared_inflight.decrement(server_id)
         self.flow_control.release(LLMRequest(request_id=request_id or "", body=None), server_id)
 
 
@@ -222,7 +243,7 @@ if _VERL_LAYOUT == "legacy":
                 )
                 self.core.lb_acquired_requests.add(request_id)
                 server_id, handle = await super()._acquire_server(request_id)  # type: ignore[no-any-return]
-                self.core.inflight_store.increment(server_id)
+                self.core.note_dispatch(server_id)
                 return server_id, handle
             return winner.name, winner.attributes["replica_obj"]
 
@@ -338,7 +359,7 @@ else:  # modern layout
                 )
                 self.core.lb_acquired_requests.add(request_id)
                 server_id, handle = await super()._acquire_server(request_id)
-                self.core.inflight_store.increment(server_id)
+                self.core.note_dispatch(server_id)
                 return server_id, handle
             return winner.name, winner.attributes["replica_obj"]
 
