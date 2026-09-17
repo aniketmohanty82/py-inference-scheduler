@@ -8,6 +8,9 @@ excludes:
   - ".git"
   - "benchmark-results"
   - "**/__pycache__"
+  # Sweep artifact dirs live inside /work on the head pod; without this the
+  # accumulated run logs push the package over ray's 100MiB upload cap (413).
+  - "sweep*"
 pip:
   - "kubernetes"
 env_vars:

@@ -7,6 +7,8 @@ excludes:
   - ".git"
   - "benchmark-results"
   - "**/__pycache__"
+  # Must match runtime-env-128-off.yaml.
+  - "sweep*"
 pip:
   - "kubernetes"
 env_vars:
