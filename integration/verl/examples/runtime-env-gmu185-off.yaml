@@ -1,7 +1,9 @@
 # Deep-pressure baseline: identical to runtime-env-gmu19-off.yaml except GMU
-# and STEPS. gmu 0.18 is a ~47k-token pool per engine -- still above one
-# max-length (32k) request, so it preempts without the sub-working-set
-# deadlock regime -- and 4 steps double the event count for the rate ratio.
+# and STEPS. The boot floor is measured: gmu 0.18 leaves 0.81GiB/GPU for KV
+# against the 0.88GiB one max-length (32k) request needs, and vLLM refuses
+# to start. 0.185 is a ~45k-token pool per engine (~1.4x a max context) --
+# 25% below the 0.19 pair's 60k, so the ceiling-crossing rate rises
+# superlinearly -- and 4 steps double the event count for the rate ratio.
 working_dir: "."
 excludes:
   - ".venv"
@@ -16,7 +18,7 @@ pip:
 env_vars:
   ARM: "fcoff"
   STEPS: "4"
-  GMU: "0.18"
+  GMU: "0.185"
   PYTHONPATH: ".:src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   # Ray collapses identical stdout lines across actors, silently

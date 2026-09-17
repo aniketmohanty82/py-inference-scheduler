@@ -1,4 +1,4 @@
-# Deep-pressure treatment: identical to runtime-env-gmu18-off.yaml except
+# Deep-pressure treatment: identical to runtime-env-gmu185-off.yaml except
 # ROUTER_CONFIG_PATH (gate kv 0.90 / waiting 4) and the flow-control watcher
 # tick -- the gate is the only difference between the two arms.
 working_dir: "."
@@ -7,17 +7,17 @@ excludes:
   - ".git"
   - "benchmark-results"
   - "**/__pycache__"
-  # Must match runtime-env-gmu18-off.yaml.
+  # Must match runtime-env-gmu185-off.yaml.
   - "sweep*"
 pip:
   - "kubernetes"
 env_vars:
   ARM: "fcon"
   STEPS: "4"
-  GMU: "0.18"
+  GMU: "0.185"
   PYTHONPATH: ".:src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
-  # Must match runtime-env-gmu18-off.yaml: raw stdout lines for measurement.
+  # Must match runtime-env-gmu185-off.yaml: raw stdout lines for measurement.
   RAY_DEDUP_LOGS: "0"
   ROUTER_CONFIG_PATH: "configs/flow-control/lq-kv90.yaml"
   SWE_SANDBOX_NAMESPACE: "agents-system"
