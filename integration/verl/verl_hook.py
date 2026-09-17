@@ -111,8 +111,9 @@ class _SchedulerCore:
         )
         # print(): only actor stdout reaches the Ray driver log. One line per
         # AgentLoopWorker = live proof of both the shipped code version and
-        # the worker fan-out behind this core.
-        print("FLOWCONTROL core init: shared inflight ledger enabled")
+        # the worker fan-out behind this core. The pid keeps the line unique
+        # per actor so Ray's cross-cluster stdout dedup cannot collapse it.
+        print(f"FLOWCONTROL[{os.getpid()}] core init: shared inflight ledger enabled")
 
     async def _refresh_endpoints(self) -> Sequence[Endpoint]:
         """Scrape every engine and republish inflight counts (flow-control poll source)."""
@@ -161,7 +162,10 @@ class _SchedulerCore:
             for ep in self.endpoints
         ]
         # print(), not logger: only actor stdout reaches the Ray driver log.
-        print("FLEET " + " ".join(fleet))
+        # pid tag: identical FLEET lines from different workers would be
+        # collapsed by Ray's stdout dedup, and per-worker attribution is what
+        # proves every worker sees the whole fleet (and the same q counts).
+        print(f"FLEET[{os.getpid()}] " + " ".join(fleet))
 
     async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
         """Refresh metrics and pick an endpoint; None means fall back to verl's LB.
@@ -323,10 +327,21 @@ else:  # modern layout
             self.core = _SchedulerCore()
 
         async def _ensure_endpoints(self) -> None:
-            if self.core.endpoints:
-                return
             server_ids = await self._load_balancer.get_all_servers.remote()
-            handles: dict[str, ray.actor.ActorHandle] = {}
+            known = {ep.name: ep for ep in self.core.endpoints}
+            if known and len(known) >= len(server_ids):
+                return
+            # Engines register with the balancer incrementally during startup,
+            # so a drain taken too early is PARTIAL -- and cached forever it
+            # pins this worker to a subset of the fleet (1- and 3-engine views
+            # were measured in every earlier run, and a 1-engine view routes
+            # all of a worker's trajectories to that engine unconditionally).
+            # Re-drain on every request until the view covers the balancer's
+            # current server list; the extra get_all_servers call above is one
+            # tiny RPC, no more than verl's own per-request acquire.
+            handles: dict[str, ray.actor.ActorHandle] = {
+                name: ep.attributes["replica_obj"] for name, ep in known.items()
+            }
             acquired: list[str] = []
             for _ in range(max(1, len(server_ids)) * 3):
                 server_id, handle = await self._load_balancer.acquire_server.remote(
@@ -339,11 +354,13 @@ else:  # modern layout
             for server_id in acquired:
                 self._load_balancer.release_server.remote(server_id=server_id)
             self.core.endpoints = [
-                Endpoint(name=server_id, attributes={"replica_obj": handle, "routing_stats": {}})
+                known.get(server_id)
+                or Endpoint(name=server_id, attributes={"replica_obj": handle, "routing_stats": {}})
                 for server_id, handle in handles.items()
             ]
-            logger.info(
-                "py-inference-scheduler bootstrapped %d endpoints from global LB", len(handles)
+            print(
+                f"FLOWCONTROL[{os.getpid()}] endpoint view: "
+                f"{len(handles)}/{len(server_ids)} servers"
             )
 
         async def _acquire_server(

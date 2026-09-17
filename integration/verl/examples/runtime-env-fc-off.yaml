@@ -19,6 +19,9 @@ env_vars:
   STEPS: "2"
   PYTHONPATH: ".:src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+  # Ray collapses identical stdout lines across actors, silently
+  # undercounting every log-based measurement (parks, drops, FLEET).
+  RAY_DEDUP_LOGS: "0"
   ROUTER_CONFIG_PATH: "configs/flow-control/lq-off.yaml"
   SWE_SANDBOX_NAMESPACE: "agents-system"
   SWE_CMD_TIMEOUT_S: "60"

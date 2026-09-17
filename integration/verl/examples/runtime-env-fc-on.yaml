@@ -16,6 +16,8 @@ env_vars:
   STEPS: "2"
   PYTHONPATH: ".:src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+  # Must match runtime-env-fc-off.yaml: raw stdout lines for measurement.
+  RAY_DEDUP_LOGS: "0"
   ROUTER_CONFIG_PATH: "configs/flow-control/lq-kv90.yaml"
   SWE_SANDBOX_NAMESPACE: "agents-system"
   SWE_CMD_TIMEOUT_S: "60"
