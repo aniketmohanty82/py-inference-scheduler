@@ -1,0 +1,27 @@
+# Batch-128 pressure baseline: identical to runtime-env-fc-off.yaml except
+# SWE_DATA_DIR points at the 136-task dataset (batch 128 cannot sample from
+# the 64-task one). The batch override itself rides the submit command line
+# (++data.train_batch_size=128), so this file stays a pure environment.
+working_dir: "."
+excludes:
+  - ".venv"
+  - ".git"
+  - "benchmark-results"
+  - "**/__pycache__"
+pip:
+  - "kubernetes"
+env_vars:
+  ARM: "fcoff"
+  STEPS: "2"
+  PYTHONPATH: ".:src"
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+  # Ray collapses identical stdout lines across actors, silently
+  # undercounting every log-based measurement (parks, drops, FLEET).
+  RAY_DEDUP_LOGS: "0"
+  ROUTER_CONFIG_PATH: "configs/flow-control/lq-off.yaml"
+  SWE_DATA_DIR: "/home/ray/data/swe128"
+  SWE_SANDBOX_NAMESPACE: "agents-system"
+  SWE_CMD_TIMEOUT_S: "60"
+  SWE_OBS_MAX_CHARS: "6000"
+  SWE_SANDBOX_CPU_REQUEST: "200m"
+  SWE_SANDBOX_MEM_REQUEST: "768Mi"
