@@ -1,0 +1,26 @@
+# Pool-shrink pressure treatment: identical to runtime-env-gmu19-off.yaml
+# except ROUTER_CONFIG_PATH (gate kv 0.90 / waiting 4) and the flow-control
+# watcher tick -- the gate is the only difference between the two arms.
+working_dir: "."
+excludes:
+  - ".venv"
+  - ".git"
+  - "benchmark-results"
+  - "**/__pycache__"
+pip:
+  - "kubernetes"
+env_vars:
+  ARM: "fcon"
+  STEPS: "2"
+  GMU: "0.19"
+  PYTHONPATH: ".:src"
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+  # Must match runtime-env-gmu19-off.yaml: raw stdout lines for measurement.
+  RAY_DEDUP_LOGS: "0"
+  ROUTER_CONFIG_PATH: "configs/flow-control/lq-kv90.yaml"
+  SWE_SANDBOX_NAMESPACE: "agents-system"
+  SWE_CMD_TIMEOUT_S: "60"
+  SWE_OBS_MAX_CHARS: "6000"
+  SWE_SANDBOX_CPU_REQUEST: "200m"
+  SWE_SANDBOX_MEM_REQUEST: "768Mi"
+  FLOW_CONTROL_POLL_S: "0.1"
