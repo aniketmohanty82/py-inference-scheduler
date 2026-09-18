@@ -18,7 +18,10 @@ requests, dropped saturated engines 216 times, and produced **12
 preemptions (-45%) and fewer saturated samples while generating 5.9% MORE
 tokens**. LLM-side throughput is flat (+0.4% on the tool-independent
 instrument); an earlier +13.6% wall-throughput claim is RETRACTED -- see
-the adversarial-audit correction below.
+the adversarial-audit correction below. A deeper replicate (gmu 0.185 x 4
+steps) reproduces the effect: 53 -> 38 preemptions (-33%/Mtok) at +6.6%
+more gate work, throughput again a wash; pooled across pairs the reduction
+is z ~= 2.6, p ~= 0.01.
 
 ## Headline pair: gmu 0.19 (batch 64, 64-task dataset, 2 steps)
 
@@ -54,6 +57,46 @@ engine waiting depth improve together while the gate arm does MORE decode
 work (+5.9% tokens). Throughput is a wash on the valid instrument (+0.4%
 LLM-side). A replicate pair at deeper pressure (gmu 0.185 x 4 steps) is
 running to firm up the rate ratio.
+
+## Replicate at deeper pressure: gmu 0.185 x 4 steps (09-18)
+
+Same arms, pool shrunk to ~45k tokens (0.18 is below the measured vLLM boot
+floor: 0.81 GiB available vs 0.88 GiB needed for one 32k request), 4 steps
+for event counts. Reported on the audited instruments only.
+
+| Metric | baseline-gmu185 | gate-kv90-gmu185 | delta |
+|---|---|---|---|
+| Preemptions (counter, scraper-verified) | **53** | **38** | -28% |
+| Preempt / Mtok | 6.42 | 4.32 | **-33%** |
+| Parks / drops | 0 / 0 | 439 / 649 | the intervention |
+| Tokens generated | 8.257 M | 8.802 M | gate +6.6% |
+| Turns (sum of step means) | 173.4 | 174.4 | +0.6% |
+| LLM-side throughput (tok per generate_sequences s) | 10.76 | 10.76 | **+0.0%** |
+| tool_calls/mean (sum; symmetry check) | 223.5 s | 207.3 s | -7.2%, worst step -16% |
+| kv>=0.9 samples | 241 / 8135 (2.96%) | 183 / 8379 (2.18%) | -26% rel. |
+| Prefix-cache hit rate (see caveat) | 3.3% | 2.8% | both ~dead |
+| Max selection share | 28.5% | 27.0% | even |
+
+**Pooled across both pairs** (75 vs 50 events on 12.50 vs 13.30 Mtok):
+conditional binomial z = 2.6, p ~= 0.01 -- the gate's preemption reduction
+(-48%, then -33%) is now unlikely to be luck, though both pairs share one
+rig and workload. Throughput is a wash in BOTH pairs on the valid
+instrument, while the gate did more work each time.
+
+**Hit-rate finding**: at a 45k-token pool the prefix cache is effectively
+dead in BOTH arms (3.3% / 2.8%, vLLM v1 token-level counters; queries
+include re-lookups on scheduling retries and preemption resumes, so
+per-arrival hit rate is somewhat understated -- comparable across arms
+either way). Compare 61.7% local-cache share at the H200 pair's 186k pool:
+deep pool-shrink pressure does not just cause preemptions, it destroys
+prefix reuse, which is also why per-token LLM throughput fell ~13% in both
+arms versus the 60k-pool pair (12.4 -> 10.8 tok/s). The gate trims
+preemption events; it cannot restore cache locality the pool cannot hold.
+
+Symmetry and blemishes: tool-time symmetry is acceptable this time (worst
+step -16%, direction favoring the gate arm's walls -- wall clocks remain
+excluded); both arms carry a few short trajectories (num_turns/min 2-14
+baseline, 4-10 gate), roughly symmetric.
 
 ## Correction (adversarial audit, 09-17)
 
