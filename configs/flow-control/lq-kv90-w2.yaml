@@ -1,0 +1,21 @@
+# Treatment at kv 0.9 / waiting 2: isolates the waiting axis against
+# lq-kv90.yaml (same kv threshold, waiting tightened 4 -> 2). Engine-side
+# queue depth converts into running pile-ups when blocks free; parking at
+# shallower queues tests whether that conversion is a preemption source
+# distinct from KV headroom.
+#
+# Routing is least_queue in every arm (see lq-kv90.yaml for the full
+# rationale); the hook is installed in every arm.
+profile_handler:
+  type: single_profile
+profiles:
+  lq:
+    flow_control:
+      type: simple_backpressure
+      kv_threshold: 0.9
+      waiting_threshold: 2
+    scorers:
+      - type: least_queue
+        weight: 1.0
+    picker:
+      type: max_score

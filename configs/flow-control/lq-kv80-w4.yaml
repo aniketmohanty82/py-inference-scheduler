@@ -1,0 +1,21 @@
+# Treatment at kv 0.8 / waiting 4: isolates the KV axis against lq-kv90.yaml
+# (same waiting threshold, kv lowered 0.9 -> 0.8). Parking earlier leaves
+# more headroom for resident requests' decode growth, which is what preempts
+# at a deep pool; the open question is whether the extra parking costs
+# LLM-side throughput.
+#
+# Routing is least_queue in every arm (see lq-kv90.yaml for the full
+# rationale); the hook is installed in every arm.
+profile_handler:
+  type: single_profile
+profiles:
+  lq:
+    flow_control:
+      type: simple_backpressure
+      kv_threshold: 0.8
+      waiting_threshold: 4
+    scorers:
+      - type: least_queue
+        weight: 1.0
+    picker:
+      type: max_score
