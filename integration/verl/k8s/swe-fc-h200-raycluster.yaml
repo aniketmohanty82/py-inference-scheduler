@@ -1,0 +1,198 @@
+# RayCluster for the flow-control A/B at reasoning-model scale (32B-class),
+# derived from swe-raycluster.yaml with three deliberate changes:
+#
+# 1. Worker pins nodeSelector to rdma-flex-pool (flex-start, scales from
+#    zero), so it can NEVER contend with the single rdma-gpu-pool node
+#    reserved for the mooncake store tests.
+# 2. All mooncake/RDMA wiring is stripped (resource claim, config volume,
+#    store env, IPC_LOCK): flow control needs none of it.
+# 3. The image is pinned BY DIGEST. The mutable swe10 tag resolved to two
+#    different digests on two clusters (3ca0d971... here vs 0575431f... on
+#    us-central1), which is the leading explanation for a 9.6x preemption
+#    regime shift between pod generations. Never again.
+#
+# The metrics-scraper sidecar is kept verbatim: its stdout reaches Cloud
+# Logging, the only sink that survives GPU node death.
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: swe-fc-h200
+spec:
+  rayVersion: "2.56.0"
+  headGroupSpec:
+    rayStartParams:
+      num-cpus: "0"
+      num-gpus: "0"
+      dashboard-host: "0.0.0.0"
+    template:
+      spec:
+        serviceAccountName: rllm-sandbox-runner
+        containers:
+        - name: ray-head
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:3ca0d9719dfc2415e3e1fee064d5d2c11ce819bb6beec04b7c2611065b920d78
+          imagePullPolicy: IfNotPresent
+          ports:
+          - containerPort: 6379
+            name: gcs
+          - containerPort: 8265
+            name: dashboard
+          env:
+          - name: PYTHONPATH
+            value: "/opt/py-inference-scheduler"
+          - name: PYTHONHASHSEED
+            value: "0"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          resources:
+            requests:
+              cpu: "3"
+              memory: 16Gi
+            limits:
+              cpu: "3"
+              memory: 16Gi
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+          - mountPath: /home/ray/data
+            name: swe-data
+        volumes:
+        - name: ray-tmp
+          emptyDir: {}
+        - name: swe-data
+          persistentVolumeClaim:
+            claimName: swe-data
+            readOnly: true
+  workerGroupSpecs:
+  - replicas: 1
+    minReplicas: 1
+    maxReplicas: 1
+    groupName: gpu-group
+    rayStartParams:
+      num-gpus: "8"
+    template:
+      spec:
+        serviceAccountName: rllm-sandbox-runner
+        nodeSelector:
+          cloud.google.com/gke-nodepool: rdma-flex-pool
+        tolerations:
+        - key: cloud.google.com/gke-queued
+          operator: Exists
+          effect: NoSchedule
+        - key: cloud.google.com/gke-spot
+          operator: Exists
+          effect: NoSchedule
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        containers:
+        - name: ray-worker
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:3ca0d9719dfc2415e3e1fee064d5d2c11ce819bb6beec04b7c2611065b920d78
+          imagePullPolicy: IfNotPresent
+          env:
+          - name: PYTHONPATH
+            value: "/opt/py-inference-scheduler"
+          - name: PYTHONHASHSEED
+            value: "0"
+          - name: SWE_CMD_TIMEOUT_S
+            value: "60"
+          # Upstream-matched regime: fatter tool observations lengthen
+          # contexts toward the response cap.
+          - name: SWE_OBS_MAX_CHARS
+            value: "20000"
+          # Fragmentation remedy; expandable_segments is BANNED here - it is
+          # IPC-incompatible with the checkpoint-engine weight sync.
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: "max_split_size_mb:512"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          - name: HUGGING_FACE_HUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          resources:
+            requests:
+              cpu: "100"
+              memory: 2200Gi
+              nvidia.com/gpu: "8"
+            limits:
+              cpu: "100"
+              memory: 2200Gi
+              nvidia.com/gpu: "8"
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+          - mountPath: /dev/shm
+            name: dshm
+        # Archival counter scrape: engines die with the job, so counters
+        # must be captured live. Output goes to this container's log, hence
+        # to Cloud Logging - the only sink that survives node death.
+        - name: metrics-scraper
+          image: python:3.11-slim
+          command: ["python", "-u", "-c"]
+          env:
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          args:
+            - |
+              import os, time, urllib.request
+              # verl's run_uvicorn binds each vLLM server to the POD IP on an
+              # ephemeral port, never to loopback. Pod containers share a
+              # netns, so /proc/net/tcp here lists the engines' listeners.
+              HOST = os.environ["POD_IP"]
+
+              def listening_ports():
+                  ports = set()
+                  for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+                      try:
+                          lines = open(path).read().splitlines()[1:]
+                      except OSError:
+                          continue
+                      for ln in lines:
+                          f = ln.split()
+                          if len(f) > 3 and f[3] == "0A":  # LISTEN
+                              ports.add(int(f[1].rsplit(":", 1)[1], 16))
+                  return sorted(p for p in ports if 1024 < p < 65535)
+
+              known: set[int] = set()
+              while True:
+                  for port in listening_ports():
+                      try:
+                          with urllib.request.urlopen(
+                              f"http://{HOST}:{port}/metrics", timeout=4
+                          ) as r:
+                              text = r.read().decode()
+                      except Exception:
+                          continue
+                      if "vllm:" not in text:
+                          continue
+                      if port not in known:
+                          known.add(port)
+                          print("ENGINE", port, flush=True)
+                      print("TS", int(time.time()), "PORT", port, flush=True)
+                      for line in text.splitlines():
+                          if not line.startswith("#"):
+                              print("M", port, line, flush=True)
+                  time.sleep(30)
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+        volumes:
+        - name: ray-tmp
+          emptyDir: {}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Gi
