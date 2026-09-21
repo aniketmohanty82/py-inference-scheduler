@@ -8,8 +8,8 @@
 # (reference-expired on every hash), so /work is pre-placed identically on
 # head AND worker pods and reached via absolute PYTHONPATH; the entrypoint
 # cd's to /work so run_swe.sh's relative paths resolve.
-pip:
-  - "kubernetes"
+# No pip: kubernetes is baked into the image (36.0.3), and skipping the pip
+# virtualenv keeps the image's package set exactly as validated.
 env_vars:
   ARM: "fcoff"
   STEPS: "1"
