@@ -1,0 +1,47 @@
+# DWS queued-provisioning request for one a3-ultra (8xH200) node in
+# rdma-queue-pool: the wait-in-line path for capacity droughts, after both
+# the flex-start grant and a spot resize were refused with
+# ZONE_RESOURCE_POOL_EXHAUSTED. The PodTemplate is a sizing template only --
+# it is never run; the RayCluster's gpu-queued worker group carries the
+# consume annotation and binds when capacity is delivered.
+apiVersion: v1
+kind: PodTemplate
+metadata:
+  name: swe-fc-h200-gpu-template
+  namespace: default
+template:
+  spec:
+    nodeSelector:
+      cloud.google.com/gke-nodepool: rdma-queue-pool
+    tolerations:
+    - key: cloud.google.com/gke-queued
+      operator: Exists
+      effect: NoSchedule
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    containers:
+    - name: sizing
+      image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:3ca0d9719dfc2415e3e1fee064d5d2c11ce819bb6beec04b7c2611065b920d78
+      resources:
+        requests:
+          cpu: "100"
+          memory: 2200Gi
+          nvidia.com/gpu: "8"
+        limits:
+          cpu: "100"
+          memory: 2200Gi
+          nvidia.com/gpu: "8"
+    restartPolicy: Never
+---
+apiVersion: autoscaling.x-k8s.io/v1
+kind: ProvisioningRequest
+metadata:
+  name: swe-fc-h200-gpu
+  namespace: default
+spec:
+  provisioningClassName: queued-provisioning.cloud.google.com
+  podSets:
+  - count: 1
+    podTemplateRef:
+      name: swe-fc-h200-gpu-template

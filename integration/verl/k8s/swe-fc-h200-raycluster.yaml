@@ -66,6 +66,79 @@ spec:
             claimName: swe-data
             readOnly: true
   workerGroupSpecs:
+  # Second capacity path: identical worker bound to the DWS queued
+  # ProvisioningRequest (see swe-fc-h200-provreq.yaml). The consume
+  # annotation pins THIS pod to queued capacity while the gpu-group pod
+  # keeps riding flex-start retries -- whichever binds first becomes the
+  # cluster's worker; scale the loser's group to 0 afterwards.
+  - replicas: 1
+    minReplicas: 0
+    maxReplicas: 1
+    groupName: gpu-queued
+    rayStartParams:
+      num-gpus: "8"
+    template:
+      metadata:
+        annotations:
+          cluster-autoscaler.kubernetes.io/consume-provisioning-request: swe-fc-h200-gpu
+          cluster-autoscaler.kubernetes.io/provisioning-class-name: queued-provisioning.cloud.google.com
+      spec:
+        serviceAccountName: rllm-sandbox-runner
+        nodeSelector:
+          cloud.google.com/gke-nodepool: rdma-queue-pool
+        tolerations:
+        - key: cloud.google.com/gke-queued
+          operator: Exists
+          effect: NoSchedule
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        containers:
+        - name: ray-worker
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:3ca0d9719dfc2415e3e1fee064d5d2c11ce819bb6beec04b7c2611065b920d78
+          imagePullPolicy: IfNotPresent
+          env:
+          - name: PYTHONPATH
+            value: "/opt/py-inference-scheduler"
+          - name: PYTHONHASHSEED
+            value: "0"
+          - name: SWE_CMD_TIMEOUT_S
+            value: "60"
+          - name: SWE_OBS_MAX_CHARS
+            value: "20000"
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: "max_split_size_mb:512"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          - name: HUGGING_FACE_HUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          resources:
+            requests:
+              cpu: "100"
+              memory: 2200Gi
+              nvidia.com/gpu: "8"
+            limits:
+              cpu: "100"
+              memory: 2200Gi
+              nvidia.com/gpu: "8"
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+          - mountPath: /dev/shm
+            name: dshm
+        volumes:
+        - name: ray-tmp
+          emptyDir: {}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Gi
   - replicas: 1
     minReplicas: 1
     maxReplicas: 1
