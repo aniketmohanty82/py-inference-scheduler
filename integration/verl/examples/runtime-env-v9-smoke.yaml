@@ -1,0 +1,29 @@
+# One-step 32B smoke on verl 0.9 / 8xH100: proves the adapter-only LoRA
+# sync (base_sync_done via load_format=safetensors) survives a full step --
+# rollout, update, post-update sync -- where verl 0.8's full-model gather
+# OOMed before the first rollout. Small rollout (n1, 8 turns); gmu 0.55
+# per-GPU budget: 32.5 weights (tp2) + ~4 workspace + ~7 KV.
+working_dir: "."
+excludes:
+  - ".venv"
+  - ".git"
+  - "benchmark-results"
+  - "**/__pycache__"
+  - "sweep*"
+pip:
+  - "kubernetes"
+env_vars:
+  ARM: "fcoff"
+  STEPS: "1"
+  GMU: "0.55"
+  GROUP_N: "1"
+  TURNS: "8"
+  PYTHONPATH: ".:src"
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+  RAY_DEDUP_LOGS: "0"
+  ROUTER_CONFIG_PATH: "configs/flow-control/lq-off.yaml"
+  SWE_SANDBOX_NAMESPACE: "agents-system"
+  SWE_CMD_TIMEOUT_S: "60"
+  SWE_OBS_MAX_CHARS: "20000"
+  SWE_SANDBOX_CPU_REQUEST: "200m"
+  SWE_SANDBOX_MEM_REQUEST: "768Mi"
