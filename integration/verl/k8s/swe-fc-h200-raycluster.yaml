@@ -75,8 +75,26 @@ spec:
     template:
       spec:
         serviceAccountName: rllm-sandbox-runner
-        nodeSelector:
-          cloud.google.com/gke-nodepool: rdma-flex-pool
+        # Either the flex pool, or a NEW rdma-gpu-pool node -- never the
+        # existing mooncake-reserved node, which is excluded by hostname.
+        # (GPU accounting alone also protects it while the store tests run,
+        # since their worker holds all 8 GPUs; the hostname exclusion keeps
+        # the guarantee even if that cluster idles.)
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: cloud.google.com/gke-nodepool
+                  operator: In
+                  values: ["rdma-flex-pool"]
+              - matchExpressions:
+                - key: cloud.google.com/gke-nodepool
+                  operator: In
+                  values: ["rdma-gpu-pool"]
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values: ["gke-gke-gpu-rdma-cluste-rdma-gpu-pool-57f00aa0-ox7s"]
         tolerations:
         - key: cloud.google.com/gke-queued
           operator: Exists
