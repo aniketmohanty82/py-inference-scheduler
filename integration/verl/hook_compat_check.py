@@ -34,7 +34,7 @@ import ray
 from omegaconf import OmegaConf
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class FakeServer:
     def __init__(self, name: str):  # noqa: ANN204
         self.name = name
@@ -62,7 +62,14 @@ async def main() -> int:
     assert verl_hook._VERL_LAYOUT == "modern", "expected modern layout on this verl build"  # noqa: S101
 
     servers = {f"srv-{i}": FakeServer.remote(f"srv-{i}") for i in range(3)}
-    lb = GlobalRequestLoadBalancer.remote(servers)
+    # verl <=0.8 ships the balancer pre-decorated; 0.9 makes it a plain class
+    # wrapped with ray.remote() at instantiation time (so it can be
+    # subclassed). Handle both.
+    if hasattr(GlobalRequestLoadBalancer, "remote"):
+        lb = GlobalRequestLoadBalancer.remote(servers)
+    else:
+        # num_cpus=0 keeps the check runnable on a zero-CPU head node.
+        lb = ray.remote(GlobalRequestLoadBalancer).options(num_cpus=0).remote(servers)
 
     config = OmegaConf.create({"actor_rollout_ref": {"rollout": {"ignore_eos": False}}})
     client = verl_hook.InferenceSchedulerServerClient(config, load_balancer_handle=lb)
