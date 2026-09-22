@@ -4,7 +4,7 @@
 # only difference between arms.
 env_vars:
   ARM: "fcon"
-  STEPS: "2"
+  STEPS: "1"
   GMU: "0.5"
   GROUP_N: "4"
   TURNS: "25"

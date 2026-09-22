@@ -14,7 +14,7 @@
 # reference-expires on this cluster); kubernetes is image-baked, so no pip.
 env_vars:
   ARM: "fcoff"
-  STEPS: "2"
+  STEPS: "1"
   GMU: "0.5"
   GROUP_N: "4"
   TURNS: "25"
