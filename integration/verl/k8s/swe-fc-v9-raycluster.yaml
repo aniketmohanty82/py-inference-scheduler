@@ -72,9 +72,9 @@ spec:
           configMap:
             name: scheduler-fc-off
   workerGroupSpecs:
-  - replicas: 1
-    minReplicas: 1
-    maxReplicas: 1
+  - replicas: 2
+    minReplicas: 2
+    maxReplicas: 2
     groupName: gpu-group
     rayStartParams:
       num-gpus: "8"
