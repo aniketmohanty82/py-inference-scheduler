@@ -24,7 +24,7 @@ spec:
           cloud.google.com/gke-nodepool: default-pool
         containers:
         - name: ray-head
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:3ca0d9719dfc2415e3e1fee064d5d2c11ce819bb6beec04b7c2611065b920d78
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:8cdf4fb8d47021a7a7d3ac217ac197efbfd12528ee6d26b7fcc1a0b2e194a2d0
           imagePullPolicy: IfNotPresent
           ports:
           - containerPort: 6379
@@ -91,7 +91,7 @@ spec:
           effect: NoSchedule
         containers:
         - name: ray-worker
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:3ca0d9719dfc2415e3e1fee064d5d2c11ce819bb6beec04b7c2611065b920d78
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake@sha256:8cdf4fb8d47021a7a7d3ac217ac197efbfd12528ee6d26b7fcc1a0b2e194a2d0
           imagePullPolicy: IfNotPresent
           env:
           - name: PYTHONHASHSEED
