@@ -1,0 +1,31 @@
+# Reasoning-scale baseline: Qwen3-32B, no gate.
+#
+# Runs on swe13 (verl 0.9 + flash-attn), which is what makes 32B viable on
+# 80GB cards: 0.9 syncs LoRA adapters only (never the 64GB base) and
+# flash-attn keeps main's packed-sequence path, so no memory workarounds.
+#
+# gmu 0.5 -> ~39.6GB engine budget/GPU: 32GB of tp=2 weights leaves ~7GB KV,
+# ~53k tokens per replica against a 32k max context. Above the
+# one-working-set deadlock floor, but ~12x oversubscribed by 64
+# trajectories/replica -- pressure arises from the model's own footprint
+# rather than an artificially starved pool.
+#
+# /work is pre-placed on head AND worker (Ray's working_dir upload
+# reference-expires on this cluster); kubernetes is image-baked, so no pip.
+env_vars:
+  ARM: "fcoff"
+  STEPS: "2"
+  GMU: "0.5"
+  GROUP_N: "4"
+  TURNS: "25"
+  PYTHONPATH: "/work:/work/src"
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+  # Ray collapses identical stdout across actors, undercounting every
+  # log-based measurement (parks, drops, FLEET).
+  RAY_DEDUP_LOGS: "0"
+  ROUTER_CONFIG_PATH: "/work/configs/flow-control/lq-off.yaml"
+  SWE_SANDBOX_NAMESPACE: "agents-system"
+  SWE_CMD_TIMEOUT_S: "60"
+  SWE_OBS_MAX_CHARS: "20000"
+  SWE_SANDBOX_CPU_REQUEST: "200m"
+  SWE_SANDBOX_MEM_REQUEST: "768Mi"
