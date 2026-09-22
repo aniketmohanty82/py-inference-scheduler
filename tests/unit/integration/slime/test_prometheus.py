@@ -50,6 +50,53 @@ def test_parse_sglang_empty_payload():
     assert stats == {"num_waiting_reqs": 0, "num_running_reqs": 0, "kv": 0.0, "error": None}
 
 
+# Shape of a SGLang v0.5.20 scheduler scrape (observability/metrics_collector.py at
+# the v0.5.20 tag): the full scheduler label set, the sibling utilisation gauges
+# added next to token_usage, and a tokenizer histogram carrying is_streaming.
+_SGLANG_V0_5_20_LABELS = (
+    'model_name="Qwen/Qwen3-8B",engine_type="unified",tp_rank="0",pp_rank="0",'
+    'moe_ep_rank="0",dp_rank="0"'
+)
+_SGLANG_V0_5_20_METRICS = (
+    "# TYPE sglang:num_running_reqs gauge\n"
+    f"sglang:num_running_reqs{{{_SGLANG_V0_5_20_LABELS}}} 12.0\n"
+    "# TYPE sglang:num_queue_reqs gauge\n"
+    f"sglang:num_queue_reqs{{{_SGLANG_V0_5_20_LABELS}}} 3.0\n"
+    "# TYPE sglang:num_grammar_queue_reqs gauge\n"
+    f"sglang:num_grammar_queue_reqs{{{_SGLANG_V0_5_20_LABELS}}} 9.0\n"
+    "# TYPE sglang:token_usage gauge\n"
+    f"sglang:token_usage{{{_SGLANG_V0_5_20_LABELS}}} 0.74\n"
+    "# TYPE sglang:full_token_usage gauge\n"
+    f"sglang:full_token_usage{{{_SGLANG_V0_5_20_LABELS}}} 0.91\n"
+    "# TYPE sglang:swa_token_usage gauge\n"
+    f"sglang:swa_token_usage{{{_SGLANG_V0_5_20_LABELS}}} 0.33\n"
+    "# TYPE sglang:mamba_usage gauge\n"
+    f"sglang:mamba_usage{{{_SGLANG_V0_5_20_LABELS}}} 0.0\n"
+    "# TYPE sglang:kv_used_tokens gauge\n"
+    f"sglang:kv_used_tokens{{{_SGLANG_V0_5_20_LABELS}}} 48000.0\n"
+    "# TYPE sglang:cache_hit_rate gauge\n"
+    f"sglang:cache_hit_rate{{{_SGLANG_V0_5_20_LABELS}}} 0.61\n"
+    "# TYPE sglang:time_to_first_token_seconds histogram\n"
+    'sglang:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen3-8B",'
+    'engine_type="unified",is_streaming="false",le="0.1"} 5.0\n'
+    'sglang:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen3-8B",'
+    'engine_type="unified",is_streaming="false",le="+Inf"} 7.0\n'
+    'sglang:time_to_first_token_seconds_sum{model_name="Qwen/Qwen3-8B",'
+    'engine_type="unified",is_streaming="false"} 1.2\n'
+    'sglang:time_to_first_token_seconds_count{model_name="Qwen/Qwen3-8B",'
+    'engine_type="unified",is_streaming="false"} 7.0\n'
+)
+
+
+def test_parse_sglang_v0_5_20_scrape_picks_exact_families():
+    stats = parse_sglang(_SGLANG_V0_5_20_METRICS)
+    assert stats["num_running_reqs"] == 12
+    assert stats["num_waiting_reqs"] == 3
+    # kv must come from token_usage, not the full_/swa_ siblings that share its prefix.
+    assert stats["kv"] == 0.74
+    assert stats["error"] is None
+
+
 def test_parse_sglang_multiproc_takes_max_across_samples():
     # Prometheus multiprocess mode (e.g. TP>1) exposes one sample per PID; the
     # scheduler process reports the real value while others report 0.

@@ -66,9 +66,13 @@ def _make_handler(worker_id):
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
-            self.rfile.read(length)
+            received = self.rfile.read(length)
             if self.path == "/generate":
-                body = json.dumps({"worker": worker_id, "meta_info": {}}).encode()
+                body = json.dumps({
+                    "worker": worker_id,
+                    "meta_info": {},
+                    "received": json.loads(received),
+                }).encode()
                 self._send(200, body, "application/json")
             else:
                 self._send(404, b"", "text/plain")
@@ -119,6 +123,29 @@ def test_add_worker_requires_url():
         assert client.post("/workers", json={}).status_code == 400
 
 
+def test_add_worker_accepts_gateway_registration_fields():
+    # slime's _register_to_router sends the sgl-model-gateway 0.3.2 WorkerConfigRequest
+    # (unchanged through SGLang v0.5.20): only url is required; prefill workers add
+    # bootstrap_port and the schema carries many more optional fields we must ignore.
+    payload = {
+        "url": "http://127.0.0.1:9",
+        "worker_type": "prefill",
+        "bootstrap_port": 8998,
+        "api_key": None,
+        "model_id": "Qwen/Qwen3-8B",
+        "priority": 0,
+        "labels": {"dp_rank": "0"},
+        "disable_health_check": True,
+    }
+    with TestClient(create_app(_scheduler())) as client:
+        resp = client.post("/workers", json=payload)
+        assert resp.status_code == 200
+        assert resp.json()["url"] == payload["url"]
+        assert client.get("/workers").json()["workers"] == [
+            {"url": payload["url"], "id": resp.json()["id"]}
+        ]
+
+
 def test_generate_with_no_workers_returns_503():
     with TestClient(create_app(_scheduler())) as client:
         assert client.post("/generate", json={"input_ids": [1, 2, 3]}).status_code == 503
@@ -139,6 +166,25 @@ def test_generate_proxies_and_keeps_prefix_affinity():
         assert second.status_code == 200
         assert first.json()["worker"] in {"a", "b"}
         assert first.json()["worker"] == second.json()["worker"]
+
+
+def test_generate_forwards_body_verbatim_including_new_fields():
+    # The router only reads input_ids for routing; everything else — including
+    # fields introduced in SGLang v0.5.20's GenerateReqInput — must reach the
+    # engine untouched.
+    payload = {
+        "input_ids": list(range(64)),
+        "sampling_params": {"max_new_tokens": 1, "top_k": 4096},
+        "return_logprob": True,
+        "return_sampling_mask": True,
+        "routing_key": "traj-42",
+        "rid": "req-1",
+    }
+    with StubWorker("a") as a, TestClient(create_app(_scheduler())) as client:
+        client.post("/workers", json={"url": a.url})
+        resp = client.post("/generate", json=payload)
+        assert resp.status_code == 200
+        assert resp.json()["received"] == payload
 
 
 def test_metrics_refresh_ms_flag_defaults_and_overrides():
