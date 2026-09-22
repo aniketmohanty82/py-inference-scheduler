@@ -1,21 +1,25 @@
-# One-step 32B smoke on verl 0.9 / 8xH100: proves the adapter-only LoRA
-# sync (base_sync_done via load_format=safetensors) survives a full step --
-# rollout, update, post-update sync -- where verl 0.8's full-model gather
-# OOMed before the first rollout. Small rollout (n1, 8 turns); gmu 0.55
-# per-GPU budget: 32.5 weights (tp2) + ~4 workspace + ~7 KV.
+# One-step 32B smoke on swe13 (verl 0.9 WITH flash-attn 2.8.3): proves the
+# adapter-only LoRA sync (base_sync_done via load_format=safetensors)
+# survives a full step -- rollout, update, post-update sync -- where verl
+# 0.8's full-model gather OOMed before the first rollout.
+#
+# swe13 carries flash-attn, so main's own settings work unchanged:
+# use_remove_padding and ulysses sequence parallelism stay ON. That removes
+# the entire swe10 workaround stack (sdpa's O(n^2) attention, unpacked
+# 16k-token micro-batches, the 13.6GiB logits tensor, fused kernels, FSDP1).
+# The only smoke-specific narrowing is n1 / 4 turns / 1 step.
 #
 # No working_dir upload: Ray's package transfer flakes on this cluster
 # (reference-expired on every hash), so /work is pre-placed identically on
 # head AND worker pods and reached via absolute PYTHONPATH; the entrypoint
 # cd's to /work so run_swe.sh's relative paths resolve.
-# No pip: kubernetes is baked into the image (36.0.3), and skipping the pip
-# virtualenv keeps the image's package set exactly as validated.
+# No pip: kubernetes is baked into the image (36.0.3).
 env_vars:
   ARM: "fcoff"
   STEPS: "1"
-  GMU: "0.55"
+  GMU: "0.5"
   GROUP_N: "1"
-  TURNS: "8"
+  TURNS: "4"
   PYTHONPATH: "/work:/work/src"
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   RAY_DEDUP_LOGS: "0"
