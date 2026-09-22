@@ -15,7 +15,7 @@
 env_vars:
   ARM: "fcoff"
   STEPS: "1"
-  GMU: "0.5"
+  GMU: "0.35"
   GROUP_N: "4"
   TURNS: "25"
   PYTHONPATH: "/work:/work/src"
