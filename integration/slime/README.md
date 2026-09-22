@@ -8,6 +8,32 @@ slime v0.3.0 ships sgl-router 0.3.2, whose `/workers` HTTP API this integration 
 older sgl-router endpoints (`/add_worker`, `/list_workers`, `/remove_worker`) are intentionally not
 implemented. It may require updates for other slime / sgl-router versions.
 
+### SGLang v0.5.20
+
+The router never imports SGLang — it only speaks HTTP to the engines — so an engine upgrade can
+reach it through three surfaces only. All three were checked against the
+[SGLang v0.5.20](https://github.com/sgl-project/sglang/releases/tag/v0.5.20) source (released
+2026-09-18) and are unchanged; `tests/unit/integration/slime/` pins them against v0.5.20-shaped
+payloads.
+
+| Router-facing surface | What the router depends on | Status at SGLang v0.5.20 |
+|---|---|---|
+| Engine `/metrics` | Exact gauge families `sglang:num_queue_reqs`, `sglang:num_running_reqs`, `sglang:token_usage` | Unchanged. The new sibling gauges (`full_token_usage`, `swa_token_usage`, `mamba_usage`) and the `is_streaming` label on the TTFT / e2e histograms are ignored by the parser. |
+| Worker registration | `POST /workers {url, worker_type}`, `GET /workers`, `DELETE /workers/{id}` | Unchanged. The bundled router is still sgl-model-gateway 0.3.2 and its request schema (`openai-protocol` 1.0.0) adds no required fields. |
+| `POST /generate` | Reads `input_ids` (falls back to `text`) for routing; the body is forwarded verbatim | Unchanged. New optional request fields (`return_sampling_mask`, `routing_key`, ...) pass straight through. |
+
+Two v0.5.20 changes sit outside the router but affect a slime job:
+
+- **slime itself is not v0.5.20-ready (as of slime `main`, 2026-09-22).** v0.5.20 turned `ServerArgs`
+  into a `msgspec.Struct` (see the release's *Breaking Changes*), and slime's
+  `slime/backends/sglang_utils/sglang_engine.py` still calls `dataclasses.fields(ServerArgs)`, which
+  raises `TypeError` on a v0.5.20 install. The `slimerl/slime` images pin SGLang v0.5.15.post1, so
+  this only bites if you upgrade SGLang inside the image yourself. miles has already ported — see
+  the [miles compatibility notice](./Miles_README.md#compatibility-notice).
+- **Engine-side scheduling does not shift on upgrade.** The new `--schedule-policy hrrn` is opt-in
+  (the default stays `fcfs`), so the queue and KV signals the `backpressure` profile routes on behave
+  as before unless you set it.
+
 ## Architecture
 
 slime manages its own SGLang rollout engines and, by default, launches its own sgl-router to load
