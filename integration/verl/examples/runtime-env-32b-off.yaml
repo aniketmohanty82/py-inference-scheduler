@@ -19,7 +19,10 @@ env_vars:
   GROUP_N: "4"
   TURNS: "25"
   PYTHONPATH: "/work:/work/src"
-  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+  # Per-arm metrics dir: the prometheus multiproc dir persists on the worker
+  # pod, so a shared path carries earlier jobs preemption counts into this
+  # arm. Isolating it makes each engine start at 0, so the max IS the delta.
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics-base32b"
   # Ray collapses identical stdout across actors, undercounting every
   # log-based measurement (parks, drops, FLEET).
   RAY_DEDUP_LOGS: "0"

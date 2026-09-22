@@ -9,7 +9,8 @@ env_vars:
   GROUP_N: "4"
   TURNS: "25"
   PYTHONPATH: "/work:/work/src"
-  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
+  # Must differ from the baseline arm dir (see runtime-env-32b-off.yaml).
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics-gate32b"
   # Must match runtime-env-32b-off.yaml: raw stdout lines for measurement.
   RAY_DEDUP_LOGS: "0"
   ROUTER_CONFIG_PATH: "/work/configs/flow-control/lq-kv90.yaml"
