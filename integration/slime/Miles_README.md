@@ -11,30 +11,12 @@ slime router (`python -m integration.slime`) unchanged**. To learn how it works,
 
 > [!WARNING]
 > **miles temporarily removed external-router mode on 2026-09-04**
-> ([radixark/miles#1996](https://github.com/radixark/miles/pull/1996), commit `43fc74fa0`).
-> `miles/ray/rollout/rollout_server.py` now asserts that `--sglang-router-ip` is unset, and miles'
-> own message says the mode is "expected to return with the k8s-native mode" — the Kubernetes-native
-> backend tracked under [#1837](https://github.com/radixark/miles/issues/1837) (e.g.
-> [#2188](https://github.com/radixark/miles/pull/2188), unmerged as of 2026-09-23). Until it returns,
-> the two-flag recipe below only works on miles checkouts and images **older than that commit**.
-
-miles publishes no releases, so this integration is pinned by validation rather than by tag:
-
-| | Validated end-to-end (2026-06-22) | miles `main` (2026-09-23) |
-|---|---|---|
-| miles commit | `713d99d` | `b3c8f9c` (908 commits later) |
-| SGLang engine | 0.5.14 | 0.5.21.dev55 (`sglang-miles` branch on v0.5.20; image `radixark/miles:latest`) |
-| sglang-router | 0.3.2 | 0.3.2 |
-| `--sglang-router-ip/port` | honoured | **rejected until the k8s-native backend lands** ([#1996](https://github.com/radixark/miles/pull/1996)) |
-
-The SGLang side of that drift does not affect the router. On 2026-09-23 it was run on an 8×H100 node
-against two engines launched from `radixark/miles:latest` (SGLang 0.5.21.dev55, the v0.5.20 line):
-the engines registered and deregistered through the exact flow miles'
-`SGLangRouterApiClient` uses (`POST /workers {url, worker_type}`, `GET /workers` → id →
-`DELETE /workers/{id}`), 288 generations (~442k tokens) routed with zero errors, and the poller
-parsed live gauges from the v0.5.20 `/metrics` format (`num_running_reqs` 75, `token_usage` 0.29
-mid-load). What that run could not exercise is miles' own launch path, which no longer talks to an
-external router at all.
+> ([radixark/miles#1996](https://github.com/radixark/miles/pull/1996), commit `43fc74fa0`):
+> `miles/ray/rollout/rollout_server.py` now rejects `--sglang-router-ip`, noting the mode is
+> "expected to return with the k8s-native mode" ([#1837](https://github.com/radixark/miles/issues/1837)).
+> Until it returns, this recipe only works on miles checkouts and images **older than that commit**.
+> miles publishes no releases; the commit this integration was validated against is `713d99d`
+> (`radixark/miles`, 2026-06-22).
 
 ---
 

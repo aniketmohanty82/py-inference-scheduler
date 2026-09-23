@@ -8,36 +8,6 @@ slime v0.3.0 ships sgl-router 0.3.2, whose `/workers` HTTP API this integration 
 older sgl-router endpoints (`/add_worker`, `/list_workers`, `/remove_worker`) are intentionally not
 implemented. It may require updates for other slime / sgl-router versions.
 
-### SGLang v0.5.20
-
-The router never imports SGLang — it only speaks HTTP to the engines — so an engine upgrade can
-reach it through three surfaces only. All three were checked against the
-[SGLang v0.5.20](https://github.com/sgl-project/sglang/releases/tag/v0.5.20) source (released
-2026-09-18) and then exercised live on 2026-09-23 against two SGLang 0.5.21.dev55 engines (the
-v0.5.20 line, launched from `radixark/miles:latest`) on an 8×H100 node: 288 generations routed with
-zero errors, live gauges parsed mid-load, register / deregister round-trips clean.
-`tests/unit/integration/slime/` pins the same contracts against v0.5.20-shaped payloads.
-
-| Router-facing surface | What the router depends on | Status at SGLang v0.5.20 |
-|---|---|---|
-| Engine `/metrics` | Exact gauge families `sglang:num_queue_reqs`, `sglang:num_running_reqs`, `sglang:token_usage` | Unchanged (83 families in a live scrape; parser read `num_running_reqs` 75 / `token_usage` 0.29 under load). The new sibling gauges (`full_token_usage`, `swa_token_usage`, `mamba_usage`) and the `is_streaming` label on the TTFT / e2e histograms are ignored. |
-| Worker registration | `POST /workers {url, worker_type}`, `GET /workers`, `DELETE /workers/{id}` | Unchanged. The bundled router is still sgl-model-gateway 0.3.2 and its request schema (`openai-protocol` 1.0.0) adds no required fields. |
-| `POST /generate` | Reads `input_ids` (falls back to `text`) for routing; the body is forwarded verbatim | Unchanged. New optional request fields (`rid`, `routing_key`, `return_logprob`, ...) pass straight through. `return_sampling_mask` is engine-gated: it needs `top_k` ≤ `--sampling-mask-max-tokens` (default 4096) or the engine answers 400, which the router forwards as-is. |
-
-Two v0.5.20 changes sit outside the router but affect a slime job:
-
-- **slime itself is not v0.5.20-ready (as of slime `main`, 2026-09-22).** v0.5.20 turned `ServerArgs`
-  into a `msgspec.Struct` (see the release's *Breaking Changes*), and slime's
-  `slime/backends/sglang_utils/sglang_engine.py` still calls `dataclasses.fields(ServerArgs)`, which
-  raises `TypeError` on a v0.5.20 install. The `slimerl/slime` images pin SGLang v0.5.15.post1, so
-  this only bites if you upgrade SGLang inside the image yourself. slime `main` still honours
-  `--sglang-router-ip` (`slime/backends/sglang_utils/deployment.py`); miles has ported the
-  `ServerArgs` change but has **temporarily dropped external-router mode** pending its k8s-native
-  backend — see the [miles compatibility notice](./Miles_README.md#compatibility-notice).
-- **Engine-side scheduling does not shift on upgrade.** The new `--schedule-policy hrrn` is opt-in
-  (the default stays `fcfs`), so the queue and KV signals the `backpressure` profile routes on behave
-  as before unless you set it.
-
 ## Architecture
 
 slime manages its own SGLang rollout engines and, by default, launches its own sgl-router to load
