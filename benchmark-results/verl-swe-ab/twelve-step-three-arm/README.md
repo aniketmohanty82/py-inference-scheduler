@@ -170,7 +170,7 @@ reaching the tier. Our connector inherits this code unchanged.
 | **sampling time, slowest trajectory** | **811.7 s** | **477.3 s** | **440.6 s** | 🟢 **-41.2%** | ⚪ -7.7% |
 | prompt tokens recomputed | 279,253,366 | 24,247,030 | 27,224,236 | 🟢 **-91.3%** | 🔴 +12.3% |
 | tool-call time per trajectory | 45.9 s | 47.0 s | 50.7 s | 🔴 +2.4% | 🔴 +7.8% |
-| `timing_s/gen` from verl, for reference | 1,095.8 s | 744.0 s | 853.8 s | 🟢 -32.1% | 🔴 +14.8% |
+| rollout time/step (`timing_s/gen`) | 1,095.8 s | 744.0 s | 853.8 s | 🟢 -32.1% | 🔴 +14.8% |
 | `perf/throughput` from verl, for reference | 270.1 | 362.1 | 337.5 | 🟢 +34.1% | 🔴 -6.8% |
 | preemptions over the run | 408 | 2,146 | 1,756 | 🔴 +426% | 🟢 -18.2% |
 | host memory used | 131.2 GB | 1,191.2 GB | 1,191.5 GB | 🔴 **+808%** | ⚪ +0.0% |

@@ -129,6 +129,7 @@ the five gates is always safe.
 | prompt tokens recomputed | 148,596,234 | 67,037,475 | 🟢 **-54.9%** |
 | KV pool occupancy while busy | 0.751 | 0.659 | 🟢 -12.3% |
 | peak requests running | 112.8 | 93.3 | 🟢 -17.3% |
+| rollout time/step (`timing_s/gen`) | 1,558.2 s | 970.7 s | 🟢 -37.7% |
 | `perf/throughput` from verl, for reference | 225.5 | 328.2 | 🟢 +45.6% |
 | tool-call time per trajectory | 57.1 s | 59.7 s | 🔴 +4.5% |
 | preemptions per step | 79.3 | 81.3 | 🔴 +2.5% |
