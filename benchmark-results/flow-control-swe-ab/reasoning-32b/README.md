@@ -1,152 +1,314 @@
-# Flow control at reasoning scale: Qwen3-32B, sustained saturation
-
-The regime the 7B work pointed at. At 7B the gate reliably cut preemptions
-(-30% to -46% across five pairs) but each preemption was too cheap to matter:
-re-prefill is ~10x cheaper than decode, so all 509 events in the storm grid
-wasted only ~5% of compute and any saving vanished under noise. A 32B model
-with long reasoning contexts makes each eviction ~5x costlier. Two clean
-pairs were run; the second adds engine-side performance instrumentation.
+# Router-side flow control vs unthrottled admission — SWE-bench agent RL, Qwen3-32B
 
 ## TLDR
 
-At genuine sustained saturation (fleet KV p90 0.98, hard-ceiling time
-3-6%), the gate cuts preemptions **-34% and -40% per generated Mtok across
-two independent pairs** (p ~= 5e-4 and 1e-5) and cuts **mean engine queue
-wait 3.8 s -> 1.0 s (-74%)**. It does this by holding requests at the router
-(13,670 parks) instead of letting engines overshoot into eviction. The cost,
-now measurable for the first time: **decode throughput per busy
-engine-second falls ~8.5%** and the **prefix-cache hit rate falls 30.7% ->
-24.2%**, because parked trajectories return to find their prefix blocks
-evicted. Net compute is close to a wash -- the gate trades preemption
-recompute for cache-miss recompute of similar size -- so the win is
-stability and engine-side latency, not tokens per GPU-hour.
+Holding requests at the router until an engine reads below a KV threshold cut
+**preemptions by 40% per generated token** and **engine queue wait by 74%**,
+on a fleet running at a median KV occupancy of 0.95. It cost 8.5% of decode
+throughput and 6.5 points of prefix-cache hit rate, because a parked
+trajectory comes back to find its prefix evicted. Net GPU work is close to a
+wash. The gate buys stability and engine-side latency, not tokens per
+GPU-hour.
 
-## Setup (both pairs)
+| | unthrottled | flow control | change |
+|---|---|---|---|
+| preemptions per generated Mtok | 112.7 | 67.2 | **-40.4%** |
+| mean engine queue wait | 3.78 s | 0.98 s | **-74.0%** |
+| decode throughput per busy engine-second | 897 tok/s | 821 tok/s | **-8.5%** |
+
+A second, earlier pair on a different pod generation measured -34% on
+preemptions. Both pairs are individually significant.
+
+---
+
+## What we tested
+
+We theorize that an RL rollout oversubscribes its inference engines in a
+specific way: the trainer composes a whole batch of trajectories and admits
+every generate call the moment its sandbox returns, so the engines' KV pools
+are pushed past capacity and vLLM responds by preempting, which evicts a
+running request's KV and re-prefills it later. `simple_backpressure` holds a
+request at the router while every engine reads above a KV or queue-depth
+threshold, and releases it to the least-loaded engine once one drops under.
+
+The goal is to see whether that admission gate reduces preemptions on a
+long-context, heavily preemptive agentic RL workload, and what it costs. An
+earlier campaign at 7B established that the gate cuts preemptions 30-46% but
+that each preemption there was too cheap to matter. At 32B with reasoning-
+length contexts every eviction re-prefills ~5x the compute.
+
+---
+
+## Setup
+
+### Stack
 
 | | |
 |---|---|
-| Model | Qwen3-32B (reasoning) + LoRA r32/a32, `load_format=safetensors` |
-| Hardware | 2 x 8xH100 80GB (16 GPUs), tp=4 -> **4 replicas**, `nnodes=2` |
-| Image | swe13 (`sha256:8cdf4fb8...`): verl 0.9.0 **and** flash-attn 2.8.3 |
-| Workload | R2E-Gym SWE agent loop, batch 64 x n4 = 256 trajectories, 25 turns, 20k-char observations, 4096 prompt / 28672 response, 1 step/arm |
-| Pressure | gmu 0.35 -> ~16GB engine weights + ~10GB KV per GPU (~155k tokens/replica). Saturation comes from the model's footprint and context length, NOT a starved pool |
-| Arms | baseline (no gate) vs `simple_backpressure` kv 0.90 / waiting 4; gate is the only difference |
+| nodes | 2 |
+| machine type | a3-highgpu-8g (spot) |
+| GPUs | 16 x NVIDIA H100, 80 GB each |
+| inference engines | 4, at tp=4 (16 GPUs / 4) |
+| model | Qwen3-32B (thinking) + LoRA r32/a32 |
+| vLLM / verl | 0.29.0 / 0.9.0 (image `rllm-verl-mooncake@sha256:8cdf4fb8…`, pinned by digest) |
+| router | `integration/verl/verl_hook.py`, `least_queue` scorer, shared-inflight ledger |
+| sandbox pool | 4 x e2-standard-32, gVisor |
 
-Why this stack: verl 0.8 could not load 32B here (its weight sync
-materialises the full 64GB model per rank). verl 0.9 ships LoRA adapters only
-(`base_sync_done`, engine_workers.py:667); tp=4 across two nodes halves both
-the engine weight burden and the FSDP actor shard, taking the per-GPU total
-from 79GB (OOM) to ~62GB.
+This applies for both arms of the test. They differ only by the presence of
+the `flow_control` block in the router config (`lq-off.yaml` vs
+`lq-kv90.yaml`: kv threshold 0.90, waiting threshold 4).
 
-## Instruments
+### Workload
 
-| Quantity | Source | Notes |
+Each training step samples 64 SWE-bench tasks with 4 generations each, so
+**256 trajectories per rollout**. A trajectory is a multi-turn agent episode.
+The model writes a bash command. The harness runs it in a sandbox. The output
+comes back as an observation and the loop repeats, until the model submits or
+hits 25 turns.
+
+| | |
+|---|---|
+| trajectories per rollout | 256 |
+| steps per arm | 1 |
+| turns per trajectory | up to 25 |
+| response tokens per trajectory | ~8,200-8,900 |
+| prompt tokens presented per generated token | 6.7-8.3 |
+| KV pool | ~155k tokens per engine, ~620k across 4 |
+
+Two things about this workload drive preemption.
+
+**Every turn is a separate engine request carrying the whole conversation.**
+Prompt tokens outnumber generated tokens roughly 7 to 1. A preemption is
+therefore expensive twice: the evicted request's KV is gone, and when it
+resumes it re-prefills a context that is mostly repeat.
+
+**Between turns a trajectory holds no GPU memory.** It is away running a
+shell command. When it returns, whether its prefix is still cached decides
+whether the next turn is cheap or expensive. Anything that delays its return
+-- including a router that parks it -- makes eviction more likely.
+
+### Making the engines saturate
+
+We wanted pressure to come from the model's own footprint, not from a pool
+starved below one request's working set (the 7B campaign had to do that,
+and it invites the objection that the workload was rigged).
+
+| setting | value | reason |
 |---|---|---|
-| Preemptions | vLLM `num_preemptions_total`, one delta per POD (engines sharing a pod report the same aggregate); scraper and hook FLEET lines agree exactly | per-arm `PROMETHEUS_MULTIPROC_DIR`; first-of-attempt deltas when an arm retried |
-| Decode throughput | `generation_tokens_total` delta / busy engine-seconds (samples with running > 0, 15 s each) | tool-time-free; the rollout wall is NOT a rate denominator on this workload |
-| Engine queue wait | `request_queue_time_seconds` sum / count deltas | the quantity the gate moves directly |
-| Prefix-cache hit rate | `prefix_cache_hits` / `prefix_cache_queries` deltas | |
-| KV distribution | scraper (uniform 15 s sampling) | hook FLEET distributions are park-biased ~10x |
-| Per-token latency | not exported by vLLM 0.29 under `time_per_output_token_seconds` | column empty |
+| `gpu_memory_utilization` | 0.35 | 16 GB of tp=4 weights + ~10 GB KV per GPU; ~155k tokens per engine, about 5 full contexts, well above the one-context deadlock floor |
+| trajectories | 64 tasks x 4 generations | 64 per engine against ~5 contexts of pool: ~12x oversubscribed |
+| observation cap / turns | 20,000 chars / 25 | upstream regime; long contexts are the point |
+
+It worked. The unthrottled arm ran at a **median KV occupancy of 0.95**
+(engine-side, sampled uniformly: p90 0.98), spent 5.9% of samples at the
+hard ceiling of 0.99+, and was preempted **194 times in a single rollout** --
+the entire 7B storm grid produced 509 across four.
+
+---
+
+## How the gate decides to park
+
+The router refreshes every engine's stats before each admission (KV
+occupancy, queue depth, running requests) and runs the gate over the
+candidate list. An engine is excluded when either threshold is met. If every
+engine is excluded, the request parks.
+
+| | condition | why |
+|---|---|---|
+| 1 | engine KV occupancy >= 0.90 | the next request's prefill would push it into eviction |
+| 2 | engine waiting queue >= 4 | queued requests convert into KV growth the moment blocks free |
+| 3 | all engines excluded | park; otherwise route to the least-loaded survivor |
+| 4 | parked: a watcher re-polls every 100 ms | releases one waiter per tick at an AIMD-paced rate, re-gated on the fresh snapshot |
+| 5 | inflight counts are fleet-wide | verl fans the batch across 8 loop workers; a shared ledger keeps each one's view of "least loaded" honest |
+
+Parking costs nothing on the engine. What it costs is time: a parked
+trajectory's prefix keeps ageing in a cache under eviction pressure.
+
+---
 
 ## Results
 
-### Pair 2 (09-23, fresh pods, engine-side instrumentation)
+Single-step values. Change is flow control relative to unthrottled.
 
-| Metric | baseline | gate kv 0.90 / w 4 | delta |
+| | unthrottled | flow control | change |
 |---|---|---|---|
-| **Preemptions** | **194** | **110** | **-43%** |
-| Generated tokens (engine) | 1.722 M | 1.638 M | -4.9% |
-| **Preemptions / Mtok (gen)** | **112.7** | **67.2** | **-40%**, z = 4.38, p = 1.2e-5 |
-| **Mean engine queue wait** | **3.78 s** | **0.98 s** | **-74%** (1,883 vs 1,923 requests) |
-| Decode throughput (gen tok / busy engine-s) | 897 | 821 | **-8.5%** |
-| Total tokens (gen + prompt) / busy engine-s | 6,883 | 7,607 | +10.5% |
-| Prompt tokens (prefill) | 11.49 M | 13.54 M | +17.8% |
-| Prefix-cache hit rate | 30.7% | 24.2% | -6.5 pp |
-| KV >= 0.99 (hard ceiling) share | 5.9% | 3.1% | -47% rel. |
-| KV >= 0.90 share | 27.0% | 32.3% | held at threshold by design |
-| Parks / drops | 0 / 0 | 13,670 / 1,256 | |
-| Mean response length (verl) | 8,236 | 8,927 | +8.4% |
-| Rollout wall (`timing_s/gen`) | 535 s | 568 s | +6.0% (descriptive only) |
+| **preemptions per generated Mtok** | **112.7** | **67.2** | 🟢 **-40.4%** |
+| **preemptions** | **194** | **110** | 🟢 **-43.3%** |
+| **mean engine queue wait** | **3.78 s** | **0.98 s** | 🟢 **-74.0%** |
+| samples at the hard KV ceiling (>= 0.99) | 5.9% | 3.1% | 🟢 -47.5% |
+| decode throughput per busy engine-second | 896.9 tok/s | 821.0 tok/s | 🔴 **-8.5%** |
+| prefix-cache hit rate | 30.7% | 24.2% | 🔴 **-6.5 pp** |
+| prompt tokens prefilled | 11,493,364 | 13,537,253 | 🔴 +17.8% |
+| all tokens processed per busy engine-second | 6,883 | 7,607 | ⚪ +10.5% |
+| samples above the gate threshold (>= 0.90) | 27.0% | 32.3% | ⚪ +5.3 pp |
+| decode tokens produced | 1,722,062 | 1,637,890 | ⚪ -4.9% |
+| response length per trajectory, from verl | 8,236 | 8,927 | ⚪ +8.4% |
+| rollout wall clock, from verl | 535 s | 568 s | ⚪ +6.0% |
+| requests parked / engines dropped from a ballot | 0 / 0 | 13,670 / 1,256 | ⚪ the intervention |
 
-A second baseline rollout (an attempt whose rollout completed before an OOM
-in the update) gives the baseline's own spread: 929 vs 897 tok/busy-s
-(3.5%), 4.35 vs 3.78 s queue wait, 111.3 vs 112.7 preempt/Mtok, 33.4% vs
-30.7% hit rate.
+🟢 flow control did better · 🔴 it did worse · ⚪ neither, this one describes
+the workload or the mechanism rather than scoring it. Direction is not always
+"lower is better": throughput and hit rate are better higher, everything
+else better lower.
 
-### Pair 1 (09-22, counters clean, no performance scraper)
+Workloads matched: same 64 tasks, generations and seed; engine requests
+within 2.1% (1,883 vs 1,923); decode tokens within 4.9%; response length
+within 8.4% (the flow-control arm generated more).
 
-| Metric | baseline | gate | delta |
+> **NOTE — the headline metrics are engine counters, not verl-derived.**
+> *Preemptions* is vLLM's `num_preemptions_total`, read two ways -- by the
+> router's periodic fleet snapshot and by an independent scraper of each
+> engine's `/metrics` -- and the two agree exactly (194 and 110). The counter
+> is a pod-wide aggregate, so the two engines on a pod report the same number
+> and each pod contributes one delta. *Mean engine queue wait* is
+> `request_queue_time_seconds` sum over count, the time a request sits in
+> the engine's own queue before its first schedule. Neither contains a second
+> of sandbox time.
+>
+> Significance: a Poisson rate-ratio test on 304 events with generated tokens
+> as exposure gives z = 4.38, p = 1.2e-5. The earlier pair (164 vs 122 on
+> 2.08M vs 2.33M tokens) gives z = 3.46, p = 5e-4.
+
+> **NOTE — why we do not lead with rollout wall clock or verl's throughput.**
+> Rollout wall clock (`timing_s/gen`) equals the slowest trajectory's time,
+> and on this workload that trajectory is mostly sandbox time: in the 7B
+> audit the same clock swung by +/-20% on tool luck alone and produced a
+> throughput claim we had to retract. Here it reads +6.0% for an arm that
+> generated 8.4% more tokens, which is a per-token wash and says nothing.
+> verl 0.9's legacy trainer (`main_ppo_v0`, needed because its V1 trainer
+> requires a package the image lacks) does not emit the per-trajectory
+> `generate_sequences` and `tool_calls` timings that let us separate
+> generation from tool time at 7B. So throughput is measured at the engines:
+> decode tokens per second of engine time with at least one request running.
+
+> **NOTE — two throughput numbers disagree in sign, and both are right.**
+> Decode throughput per busy engine-second is down 8.5%. All tokens
+> processed per busy engine-second is up 10.5%. The gap is prefill: the
+> flow-control arm prefilled 17.8% more prompt tokens, partly because its
+> responses were 8.4% longer and partly because its prefix-cache hit rate
+> fell. Whether that extra prefill is "work done" or "work wasted" is the
+> whole question, and the section below prices it. We report decode
+> throughput as the cost because it is the number that does not credit
+> recomputation.
+
+> **NOTE — occupancy above the threshold is higher under the gate, by
+> design.** 32.3% of samples at KV >= 0.90 against 27.0%. The gate releases
+> a waiter the moment an engine reads below 0.90, so it holds engines *at*
+> the threshold. What it prevents is the overshoot: time at 0.99+ halved.
+
+> **NOTE — preemptions fell but did not vanish.** 110 remain. The gate acts
+> on a 100 ms-old snapshot and admits into engines whose resident requests
+> are still growing; it cannot see decode growth already committed.
+
+---
+
+## Where the waiting went
+
+Under the gate a request waits in one of two places: at the router before
+admission, or in the engine's queue after it. The engine side is measured.
+
+| | requests | mean engine queue wait | total engine queue time |
 |---|---|---|---|
-| Preemptions | 164 | 122 | -26% |
-| Tokens (verl response accounting) | 2.076 M | 2.328 M | +12% |
-| Preemptions / Mtok | 79.0 | 52.4 | -34%, z ~= 3.46, p ~= 5e-4 |
-| Parks / drops | 0 / 0 | 13,063 / 1,141 | |
+| unthrottled | 1,883 | 3.78 s | 7,124 s |
+| flow control | 1,923 | 0.98 s | 1,888 s |
 
-## Analysis
+The gate removed about 5,200 request-seconds of engine queueing and parked
+13,670 times to do it. Park durations are not recorded per request, so we
+cannot say whether the total wait fell or merely moved; the rollout wall
+clock (+6% for +8% more tokens) suggests moved. What did change is *where*
+the request waits: in the engine's queue it holds a KV reservation and
+contributes to the next eviction; at the router it holds nothing.
 
-**A. The preemption effect is replicated and large.** -34% then -40% per
-Mtok on two pairs run on different pod generations, each individually
-significant, consistent with the -30..-46% band from five 7B pairs. The
-mechanism is visible in the ceiling-time column: the gate roughly halves the
-time engines spend at KV >= 0.99, while holding them near 0.90 (the share at
->= 0.90 is slightly higher in the gate arm, which is the threshold doing its
-job, not a regression).
+---
 
-**B. Engine queue wait collapses.** 3.78 s -> 0.98 s. Requests that reach an
-engine under the gate are admitted almost immediately; the waiting has moved
-to the router (13,670 parks). This is the first direct measurement of what
-the gate does to engine-side latency, and it is the metric a serving
-deployment with tail-latency SLOs would care about.
+## Where the prefill went
 
-**C. The cost is real and now measured: ~8.5% decode throughput and 6.5 pp
-of prefix-cache hit rate.** Baseline-to-baseline spread is 3.5% on
-throughput, so -8.5% is suggestive at n = 1 for the gate arm, not
-conclusive. The hit-rate drop has a clean mechanism: a parked trajectory's
-next turn arrives late, and under saturation its prefix blocks have been
-evicted by then, so it re-prefills. Prompt tokens rose 17.8% (about half
-attributable to the 8.4% longer responses, the rest to cache misses).
+Every generated token in this workload carries about 7 prompt tokens of
+context. Two things decide how many of those the GPU actually computes: the
+prefix cache, and preemption.
 
-**D. Net compute is close to a wash.** The 84 avoided preemptions save
-roughly 0.8 M tokens of re-prefill; the cache misses cost roughly 1.1 M
-extra prompt tokens. Total tokens processed per busy engine-second is +10.5%
-for the gate arm, decode-only is -8.5%; which number is "throughput" depends
-on how prefill is priced. The defensible statement: on this workload the
-gate converts preemption recompute into cache-miss recompute of similar
-magnitude, and buys lower ceiling time and a 4x reduction in engine queue
-wait for it.
+| | prompt tokens | prefix-cache hit rate | preemptions | prompt tokens per decode token |
+|---|---|---|---|---|
+| unthrottled | 11.49M | 30.7% | 194 | 6.67 |
+| flow control | 13.54M | 24.2% | 110 | 8.27 |
 
-**E. Where this leaves flow control.** As a *throughput* optimisation for
-RL rollouts, the evidence across 7B and 32B says no measurable gain. As a
-*stability and latency* control -- fewer evictions, no ceiling thrash,
-predictable engine queues -- the effect is large, replicated, and
-significant. That is the design goal ("do not force replicas into
-preemption"), delivered, with its price tag attached.
+The flow-control arm prefilled 2.04M more prompt tokens. Its responses were
+8.4% longer, which accounts for roughly 0.97M of that at the unthrottled
+arm's ratio. The remaining ~1.07M is the cache-miss penalty: a parked
+trajectory returns later, and under saturation its prefix has been evicted
+in the meantime, so the turn re-prefills from scratch.
 
-## Scrutiny
+Set against that, the 84 avoided preemptions each saved one re-prefill of a
+resident context. At the arm's ~10k-token mean context that is roughly
+0.84M prompt tokens not recomputed.
 
-- One step per arm; the gate arm is n = 1 for the performance metrics.
-  Preemption and queue-wait deltas dwarf the baseline's own spread;
-  throughput and hit-rate deltas do not, and are stated as suggestive.
-- verl 0.9's legacy trainer (`main_ppo_v0`, required because the V1 trainer
-  needs the absent `transfer_queue` package) emits no per-trajectory
-  timings, so the 7B audit's tool-independent instruments could not be
-  computed; the engine-side counters replace them and are strictly better
-  (no sandbox time in any denominator).
-- Both arms' first attempts in this pair's history hit a 9 GiB CUDA OOM in
-  the update (the LM-head logits at a 32k token budget): the configuration
-  sits ~0.5 GB from the card ceiling and passes or fails on packing luck.
-  Retries within an arm re-use the arm's prometheus dir, so preemptions are
-  first-of-attempt deltas, cross-checked against the scraper.
-- An earlier rerun wedged twice in the cross-node update with all ranks in
-  `epoll_wait` and no NCCL watchdog -- a bootstrap-handshake hang. The
-  scraper at the time swept every listening port on the pod with HTTP GETs,
-  including the actors' NCCL listeners; it now probes only ports owned by
-  vLLM server processes and the worker pods were recreated (they carried
-  ~900 zombie/orphan processes from earlier failed jobs). Both fixes were
-  applied together, so the hang's cause is a strong hypothesis, not proven.
-- Configuration departures from main's SWE script: LoRA r32, `use_v1=False`,
-  tp=4 / nnodes=2, gmu 0.35, 1 step, token budgets raised to 32768, per-arm
-  `PROMETHEUS_MULTIPROC_DIR`. Raw logs and scraper series are archived
-  off-pod; `perf_window.py` and `engine_scraper.sh` in this directory
-  reproduce every engine-side number.
+**The gate traded ~0.84M tokens of preemption recompute for ~1.07M tokens of
+cache-miss recompute.** On GPU work it is a wash, slightly negative. This is
+the mechanism behind the 8.5% decode-throughput cost: busy engine-seconds
+went to prefill that the unthrottled arm's warmer cache did not need.
+
+---
+
+## Cost of an avoided preemption
+
+This puts a price on one avoided preemption, from measured values only.
+
+```
+extra prompt tokens          13,537,253 - 11,493,364  =  2,043,889
+  of which response growth   (8,927 / 8,236 - 1) x 11,493,364  =  ~967,000
+  attributable to the gate                              =  ~1,077,000
+avoided preemptions          194 - 110                =  84
+
+1,077,000 / 84  =  ~12,800 extra prefill tokens per avoided preemption
+```
+
+A preemption re-prefills the evicted request's context, ~10,000 tokens here.
+So the gate paid about 1.3 tokens of prefill for every token it saved.
+
+**What the number is.** The exchange rate between the two kinds of recompute
+under this gate at this load. It is roughly 1, which is why every throughput
+measurement across the 7B and 32B campaigns came out near a wash.
+
+**What it is for.** Deciding whether to enable the gate. If preemptions are
+merely recompute, the gate is close to free and close to useless. If they
+are something worse -- a latency-SLO breach, a cascade into the deadlock
+attractor this stack has hit before, or an engine whose eviction path is
+costlier than re-prefill -- the gate removes 40% of them for a ~1:1 token
+trade and a 4x cut in engine queue wait.
+
+**What to be careful about.** One step per arm. The response-length
+adjustment assumes prefill scales linearly with response length, which
+holds only on average. The 10k-token context is the arm's mean, and
+evictions are biased toward the longest residents, so 0.84M is a floor and
+the exchange rate may be closer to 1:1 than 1.3:1.
+
+---
+
+## What we cannot explain yet
+
+**Both flow-control arms generated more.** +12% response tokens in the first
+pair, +8.4% in the second. The tasks, generations and seed are identical,
+so the trajectories should be statistically alike. Two candidates: fewer
+preemptions mean fewer requests resumed from a truncated state, or lower
+engine queueing lets more trajectories reach their natural end before the
+turn cap. Either would be a real effect of the gate on the *content* of a
+rollout, not only its cost. The cheap test is a two-step pair with the
+per-trajectory turn counts recorded.
+
+**Whether total request latency fell.** Engine queue wait fell 74% but park
+time at the router is unrecorded. The hook should log park duration per
+request; until it does, "moved" is the honest reading.
+
+---
+
+## Files
+
+| file | contents |
+|---|---|
+| `metrics.csv` | every number in this document, both pairs, with source and direction |
+| `logs/pair2_baseline-32b.driver.log.gz`, `logs/pair2_gate-kv90-32b.driver.log.gz` | raw verl driver logs for the instrumented pair. Source of every training-loop metric and the router's fleet snapshots |
+| `logs/pair2_engine_scrapes_pod-*.tsv.gz` | raw vLLM `/metrics` counters and gauges per engine, sampled every 15 s, one file per worker pod. Source of every engine metric |
+| `logs/pair1_*.driver.log.gz` | raw driver logs for the earlier pair (preemptions and verl metrics only; no engine scraper ran) |
+| `perf_window.py` | regenerates every engine-side number from the scrapes for a time window |
+| `engine_scraper.sh` | the scraper, restricted to ports owned by vLLM server processes |
+| `sweep32b.sh` | the exact run script; arms are `integration/verl/examples/runtime-env-32b-{off,on}.yaml` |

@@ -1,0 +1,34 @@
+metric,pair,unthrottled,flow_control,change_pct,better_when,source
+preemptions,2,194,110,-43.3,lower,"vllm num_preemptions_total, one delta per pod; scraper == FLEET"
+preemptions_per_generated_Mtok,2,112.7,67.2,-40.4,lower,preemptions / (generation_tokens_total delta)
+generation_tokens,2,1722062,1637890,-4.9,neutral,vllm generation_tokens_total delta
+prompt_tokens,2,11493364,13537253,+17.8,lower,vllm prompt_tokens_total delta
+busy_engine_seconds,2,1920,1995,+3.9,neutral,"scraper samples with running>0 x 15s, summed over engines"
+decode_tok_per_busy_engine_s,2,896.9,821.0,-8.5,higher,generation_tokens / busy_engine_seconds
+all_tok_per_busy_engine_s,2,6883,7607,+10.5,neutral,(generation+prompt tokens) / busy_engine_seconds
+mean_engine_queue_wait_s,2,3.783,0.982,-74.0,lower,request_queue_time_seconds sum/count deltas
+engine_requests,2,1883,1923,+2.1,neutral,request_queue_time_seconds_count delta
+prefix_cache_hit_rate_pct,2,30.7,24.2,-21.2,higher,prefix_cache_hits / prefix_cache_queries deltas
+kv_ceiling_share_pct_ge0.99,2,5.9,3.1,-47.5,lower,scraper kv samples >= 0.99
+kv_threshold_share_pct_ge0.90,2,27.0,32.3,+19.6,neutral,scraper kv samples >= 0.90 (held at threshold by design)
+kv_p50,2,0.16,0.16,+0.0,neutral,"scraper, uniform 15s sampling"
+kv_p90,2,0.98,0.98,+0.0,neutral,"scraper, uniform 15s sampling"
+parks,2,0,13670,,neutral,hook FLOWCONTROL park lines
+drops,2,0,1256,,neutral,hook FLOWCONTROL drop lines
+response_length_mean,2,8236.08,8927.02,+8.4,neutral,verl response_length/mean
+timing_s_gen,2,535.31,567.57,+6.0,neutral,verl timing_s/gen (slowest-trajectory clock; not a rate denominator)
+timing_s_step,2,834.7,902.85,+8.2,neutral,verl timing_s/step
+poisson_rate_ratio_z,2,,4.38,,,exposure = generation tokens; p = 1.2e-5
+preemptions,1,164,122,-25.6,lower,"vllm num_preemptions_total, one delta per pod"
+response_tokens_verl,1,2076000,2328000,+12.1,neutral,256 x response_length/mean
+preemptions_per_Mtok_verl,1,79.0,52.4,-33.7,lower,preemptions / verl response tokens
+parks,1,0,13063,,neutral,hook FLOWCONTROL park lines
+drops,1,0,1141,,neutral,hook FLOWCONTROL drop lines
+response_length_mean,1,8108.27,9092.7,+12.1,neutral,verl response_length/mean
+timing_s_gen,1,488.55,554.66,+13.5,neutral,verl timing_s/gen
+timing_s_step,1,798.46,869.2,+8.9,neutral,verl timing_s/step
+poisson_rate_ratio_z,1,,3.46,,,exposure = verl response tokens; p = 5e-4
+baseline_extra_rollout_decode_tok_per_busy_s,2,929.2,,,,second unthrottled rollout (attempt whose update OOMed); baseline spread
+baseline_extra_rollout_queue_wait_s,2,4.35,,,,second unthrottled rollout
+baseline_extra_rollout_preemptions,2,183,,,,second unthrottled rollout
+baseline_extra_rollout_prefix_hit_pct,2,33.4,,,,second unthrottled rollout
