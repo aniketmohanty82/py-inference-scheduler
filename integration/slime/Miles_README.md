@@ -9,28 +9,31 @@ slime router (`python -m integration.slime`) unchanged**. To learn how it works,
 
 ## Compatibility Notice
 
+> [!WARNING]
+> **miles removed external-router mode on 2026-09-04**
+> ([radixark/miles#1996](https://github.com/radixark/miles/pull/1996), commit `43fc74fa0`).
+> `miles/ray/rollout/rollout_server.py` now asserts that `--sglang-router-ip` is unset ("miles always
+> starts its own routers, expected to return with the k8s-native mode"). The two-flag recipe below
+> therefore only works on miles checkouts and images **older than that commit**; it is kept for those
+> pins until miles' k8s-native router mode lands.
+
 miles publishes no releases, so this integration is pinned by validation rather than by tag:
 
-| | Validated (2026-06-22) | miles `main` (2026-09-22) |
+| | Validated end-to-end (2026-06-22) | miles `main` (2026-09-23) |
 |---|---|---|
-| miles commit | `713d99d` | moving |
-| SGLang engine | 0.5.14 | v0.5.20 ([radixark/miles#3321](https://github.com/radixark/miles/pull/3321), merged 2026-09-21) |
+| miles commit | `713d99d` | `b3c8f9c` (908 commits later) |
+| SGLang engine | 0.5.14 | 0.5.21.dev55 (`sglang-miles` branch on v0.5.20; image `radixark/miles:latest`) |
 | sglang-router | 0.3.2 | 0.3.2 |
+| `--sglang-router-ip/port` | honoured | **rejected** ([#1996](https://github.com/radixark/miles/pull/1996)) |
 
-The router-facing contract is unchanged at SGLang v0.5.20 (see the
-[slime README](./README.md#sglang-v0520)), and miles ports the v0.5.20 `ServerArgs` → `msgspec`
-change itself ([#3321](https://github.com/radixark/miles/pull/3321),
-[#3581](https://github.com/radixark/miles/pull/3581)), so `python -m integration.slime` needs no
-change. Two things to watch when running against current miles:
-
-- **SGLang CLI flag renames.** The v0.5.20 bump renamed flags SGLang removed
-  (`--cuda-graph-max-bs` → `--cuda-graph-max-bs-decode`, `--cuda-graph-bs` → `--cuda-graph-bs-decode`,
-  `--nsa-*-backend` → `--dsa-*-backend`, `--mamba-scheduler-strategy` →
-  `--mamba-radix-cache-strategy`). `SGLANG_ARGS` copied from older run scripts are rejected at engine
-  start; the two router flags below are unaffected.
-- **Not yet re-validated on GPUs.** The v0.5.20 check is source-level plus unit tests, not a training
-  run. Before a long run on a v0.5.20 miles image, confirm the engines appear under `GET /workers`
-  and `Selected endpoint` lines flow (Step 4).
+The SGLang side of that drift does not affect the router. On 2026-09-23 it was run on an 8×H100 node
+against two engines launched from `radixark/miles:latest` (SGLang 0.5.21.dev55, the v0.5.20 line):
+the engines registered and deregistered through the exact flow miles'
+`SGLangRouterApiClient` uses (`POST /workers {url, worker_type}`, `GET /workers` → id →
+`DELETE /workers/{id}`), 288 generations (~442k tokens) routed with zero errors, and the poller
+parsed live gauges from the v0.5.20 `/metrics` format (`num_running_reqs` 75, `token_usage` 0.29
+mid-load). What that run could not exercise is miles' own launch path, which no longer talks to an
+external router at all.
 
 ---
 
