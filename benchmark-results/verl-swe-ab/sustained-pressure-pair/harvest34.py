@@ -16,6 +16,11 @@ import sys
 
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 LEADING_NUM = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
+# verl 0.9 (numpy >= 2 reprs) prints scalars as "np.float64(45.95)"; without
+# stripping the prefix, LEADING_NUM rejects them and every agent_loop metric
+# silently drops out of the table. Prefix-only, because the last field on a
+# line has Ray output glued after its closing paren.
+NP_SCALAR = re.compile(r"^np\.\w+\(")
 
 
 def _open(path):
@@ -40,7 +45,8 @@ def parse_steps(path):
             # Flushed..."), and splitting on the LAST colon hands back
             # " removed 0 keys" as the value and drops the metric.
             key, _, val = field.partition(":")
-            hit = LEADING_NUM.match(val.strip())
+            val = NP_SCALAR.sub("", val.strip())
+            hit = LEADING_NUM.match(val)
             if hit:
                 d[key.strip()] = float(hit.group())
         if len(d) > 20:
