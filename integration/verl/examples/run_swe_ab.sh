@@ -2,11 +2,16 @@
 # Store-vs-recompute A/B on verl's native SWE agent loop.
 #
 # ARM=recompute -> no KV offload (baseline)
-# ARM=store     -> Mooncake DecodeKVSavingConnector on the rollout engines
+# ARM=stock     -> upstream MooncakeStoreConnector, what verl's docs prescribe
+# ARM=store     -> ours: upstream + the pull-admission policy
 #
-# The two arms differ by EXACTLY the kv_transfer_config block below (plus the
+# The arms differ by EXACTLY the kv_transfer_config block below (plus the
 # experiment name); everything else is shared, which is the invariant the
 # whole comparison rests on - see benchmark-results/.../METHODOLOGY.md.
+#
+# stock vs store is the kill decision: on vLLM 0.29.0 upstream ships both
+# features our connector was built for (reset_cache, save_decode_cache), so
+# if those two arms tie, our connector has no reason to exist here.
 #
 # Sleep is disabled in BOTH arms (free_cache_engine=False): vLLM sleep-mode
 # page remapping corrupts the engine under the connector's one-time pinned
@@ -15,9 +20,25 @@
 # Routing is held constant: the scheduler hook is deliberately NOT installed
 # in either arm, so this measures KV offload alone and avoids PR #62's
 # "verl 0.8.x untested" hook caveat.
+#
+# flash-attn is COMPILED FROM SOURCE in the swe13 image (no wheel exists for
+# torch 2.13/cu130), so the actor runs the same configuration as every earlier
+# pair: remove_padding on, ulysses SP=2, flash_attention_2. The sdpa/SP=1
+# detour is gone - sdpa materialized full attention scores on 29k-token
+# sequences (33-48 GiB single allocations) and OOM'd all three arms.
+#
+# trainer.use_v1=False keeps us on verl's legacy main_ppo_v0 TaskRunner. verl
+# 0.9.0 defaults use_v1=true, whose TaskRunnerV1.run() unconditionally does
+# `import transfer_queue` and forces config.transfer_queue.enable=True - and
+# transfer_queue is not on PyPI and is not declared by verl, so that path
+# cannot even start here. It is also the wrong path for this comparison:
+# verl 0.8.0, which produced every earlier result, has no use_v1 key, no
+# TaskRunnerV1 and no transfer_queue import, so the legacy runner is the
+# like-for-like choice. Adopting V1 would confound a trainer rewrite with the
+# vLLM upgrade we are actually measuring.
 set -euo pipefail
 
-ARM=${ARM:?set ARM=store|recompute}
+ARM=${ARM:?set ARM=store|stock|recompute}
 STEPS=${STEPS:-12}
 SWE_DATA_DIR=${SWE_DATA_DIR:-/home/ray/data/swe}
 MODEL=${MODEL:-Qwen/Qwen2.5-7B-Instruct}
@@ -27,13 +48,26 @@ GMU=${GMU:-0.30}
 BATCH=${BATCH:-16}
 GROUP_N=${GROUP_N:-4}
 
+# Both offload arms enable save_decode_cache, upstream's own decode-KV knob,
+# so arm store differs from arm stock by the pull-admission policy ALONE -
+# see RLPullPolicyConnector for why nothing else of ours survives on 0.29.
 STORE_ARGS=()
-if [ "$ARM" = "store" ]; then
-  STORE_ARGS=(
-    "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config={kv_connector: DecodeKVSavingConnector, kv_connector_module_path: py_inference_scheduler.datalayer.connectors.mooncake.decode_save, kv_role: kv_both, kv_connector_extra_config: {save_decode_kv: true}}"
-    "+actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor"
-  )
-fi
+case "$ARM" in
+  stock)
+    STORE_ARGS=(
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config={kv_connector: MooncakeStoreConnector, kv_role: kv_both, kv_connector_extra_config: {save_decode_cache: true}}"
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor"
+    )
+    ;;
+  store)
+    STORE_ARGS=(
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config={kv_connector: RLPullPolicyConnector, kv_connector_module_path: py_inference_scheduler.datalayer.connectors.mooncake.rl_pull_policy, kv_role: kv_both, kv_connector_extra_config: {save_decode_cache: true}}"
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor"
+    )
+    ;;
+  recompute) ;;
+  *) echo "unknown ARM=$ARM (want store|stock|recompute)" >&2; exit 2 ;;
+esac
 
 set -x
 python3 -m verl.trainer.main_ppo \
@@ -73,6 +107,7 @@ python3 -m verl.trainer.main_ppo \
     +actor_rollout_ref.rollout.agent.agent_loop_config_path=integration/verl/examples/swe_agent_loop.yaml \
     "${STORE_ARGS[@]}" \
     algorithm.use_kl_in_reward=False \
+    trainer.use_v1=False \
     trainer.critic_warmup=0 \
     trainer.logger='["console"]' \
     trainer.project_name='swe-store-ab' \

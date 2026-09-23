@@ -21,7 +21,7 @@ spec:
         serviceAccountName: rllm-sandbox-runner
         containers:
         - name: ray-head
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe12
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe13
           imagePullPolicy: Always
           ports:
           - containerPort: 6379
@@ -81,7 +81,7 @@ spec:
           effect: NoSchedule
         containers:
         - name: ray-worker
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe12
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe13
           imagePullPolicy: Always
           securityContext:
             capabilities:
@@ -104,24 +104,20 @@ spec:
           # lengthen contexts toward the response cap.
           - name: SWE_OBS_MAX_CHARS
             value: "20000"
-          # Decode-save aggregation + minimum-pull threshold (see
-          # src/.../mooncake/decode_save.py; both arms identical).
-          - name: RLS_DECODE_SAVE_MIN_BLOCKS
-            value: "8"
+          # The only knob still ours on vLLM 0.29: decline an external pull
+          # below this many matched tokens and recompute locally instead
+          # (see src/.../mooncake/rl_pull_policy.py). Read only by the
+          # `store` arm; inert for `stock` and `recompute`.
           - name: RLS_MIN_PULL_TOKENS
             value: "1024"
-          # Load/done-signal ledger (bug-hunt diagnostics; unset to silence).
-          - name: RLS_KV_LEDGER
-            value: "1"
-          # Cap concurrent async pulls: a load-waiter pre-allocates its full
-          # context, so unbounded admission deadlocked all 4 engines
-          # (running=0, KV 91-97%) at 256-wide. 6 x ~8k tokens leaves the
-          # 34k-token pool headroom to actually run requests.
-          # 1, not 2, from the sustained-pressure regime on: gmu 0.38 gives
-          # ~106k tokens/engine against a 29.2k max context, so a single
-          # parked waiter is all the headroom that pool can spare.
+          # 0 = disabled, and disabled is correct here. The cap existed for a
+          # 34k-token pool where one max-length waiter held 85% of it. At
+          # gmu 0.38 the pool is ~106k and that waiter holds 27%, where the
+          # cap instead serialised fetches and cost most of the tier's value
+          # (43.8% of prompt tokens served externally, against 73.5%
+          # uncapped). Size the pool; do not cap admission.
           - name: RLS_MAX_INFLIGHT_LOADS
-            value: "1"
+            value: "0"
           - name: MOONCAKE_CONFIG_PATH
             value: "/etc/mooncake/mooncake_config.json"
           - name: MC_FORCE_HCA

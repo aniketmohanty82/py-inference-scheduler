@@ -1,0 +1,44 @@
+# DWS queued-provisioning request for one H200 node (a3-ultragpu-8g) on
+# rdma-queue-pool. This is the third capacity channel on the cluster and the
+# only one built for a stockout: spot (rdma-gpu-pool) was reclaimed, on-demand
+# (rdma-flex-pool) scale-ups fail with "GCE out of resources", and this queue
+# had never been used - no ProvisioningRequest existed.
+#
+# When status shows Provisioned=True, the node comes up fenced to this
+# request: patch the swe-ab worker podTemplate with
+#   annotations:
+#     cluster-autoscaler.gke.io/consume-provisioning-request: swe-ab-h200
+#     cluster-autoscaler.gke.io/provisioning-class-name: queued-provisioning.gke.io
+# and the (recreated) worker pod schedules onto it. Delete the PR when done -
+# DWS bills the node for its whole lease.
+apiVersion: v1
+kind: PodTemplate
+metadata:
+  name: swe-ab-h200-shape
+  namespace: default
+template:
+  spec:
+    nodeSelector:
+      cloud.google.com/gke-nodepool: rdma-queue-pool
+    tolerations:
+    - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+    - {key: cloud.google.com/gke-queued, operator: Exists, effect: NoSchedule}
+    containers:
+    - name: shape
+      image: registry.k8s.io/pause:3.9
+      resources:
+        requests: {cpu: "100", memory: 2200Gi, nvidia.com/gpu: "8"}
+        limits: {cpu: "100", memory: 2200Gi, nvidia.com/gpu: "8"}
+    restartPolicy: Never
+---
+apiVersion: autoscaling.x-k8s.io/v1
+kind: ProvisioningRequest
+metadata:
+  name: swe-ab-h200
+  namespace: default
+spec:
+  provisioningClassName: queued-provisioning.gke.io
+  podSets:
+  - count: 1
+    podTemplateRef:
+      name: swe-ab-h200-shape
