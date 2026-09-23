@@ -1,0 +1,194 @@
+# swe13 = the kill-decision image: vLLM 0.29.0 + verl 0.9.0.
+#
+# Why a new base instead of bumping swe2: vLLM 0.29.0 hard-pins torch==2.13.0
+# and we were on 2.11.0+cu130, so the whole stack moves together. Building
+# from vLLM's own release image is the only way to get a torch/kernel set that
+# is known-consistent with the engine.
+#
+# What this image is FOR: by 0.29.0 upstream ships both features our connector
+# existed to provide - MooncakeStoreConnector.reset_cache() (remove_all(
+# force=True) on worker rank 0) and the save_decode_cache flag. So the three
+# arms it runs are a straight test of whether our connector still earns its
+# place, and the gate below asserts upstream's reset_cache is really there.
+#
+# Deliberately NOT applied: integration/verl/image/patches/connector_v3.py.
+# Its tolerant-receiver half is structural in 0.29 (the unguarded
+# finished_recving remove is reached only behind a membership check), and
+# dropping the patch buys a genuinely stock arm - every previous "stock" run
+# was measured on a patched engine. The liveness watchdog half is NOT upstream;
+# if engines wedge in the smoke gate, re-apply only that half, to ALL THREE
+# arms, since it is an engine fix rather than a connector feature.
+#
+# Build: integration/verl/image/build.sh swe13
+FROM vllm/vllm-openai:v0.29.0
+
+USER root
+# The base image entrypoints straight into the OpenAI server; Ray must be able
+# to run arbitrary commands.
+ENTRYPOINT []
+
+# torch and vllm come from the base and must survive every later resolution -
+# verl pulls a large dependency set and pip will happily move them otherwise.
+RUN python3 -c "import torch, vllm; print(torch.__version__, vllm.__version__)" \
+    && printf 'vllm==%s\ntorch==%s\n' \
+        "$(python3 -c 'import vllm;print(vllm.__version__)')" \
+        "$(python3 -c 'import torch;print(torch.__version__)')" \
+        > /tmp/pins.txt \
+    && cat /tmp/pins.txt
+
+# ray must match the RayCluster's rayVersion (integration/verl/k8s/swe-raycluster.yaml).
+RUN pip install --no-cache-dir -c /tmp/pins.txt "ray[default]==2.56.0"
+
+# verl 0.9.0 declares vllm>=0.18.0 with no upper bound, which is what makes
+# 0.29.0 usable at all - 0.8.0 declared vllm<=0.12.0.
+RUN pip install --no-cache-dir -c /tmp/pins.txt "verl[vllm]==0.9.0"
+
+# The shared KV tier. PINNED TO THE MASTER'S VERSION: the cluster's
+# mooncake-master runs 0.3.11.post1, and a 0.3.13.post1 client fails its very
+# first call against it - mount_segment_to_master -> "RPC call failed:
+# invalid rpc arg" -> RPC_FAIL on all four engines, killing both offload arms
+# at connector construction. Client and master must move together; vLLM
+# 0.29.0's worker needs only setup/register_buffer/batch_is_exist/
+# batch_get_into_multi_buffers/batch_put_from_multi_buffers/remove_all, all of
+# which exist in the v0.3.11 bindings (verified against store_py.cpp at the
+# tag).
+#
+# mooncake's engine.so links libcudart.so.12, but the vLLM 0.29.0 base ships
+# CUDA 13 only (/usr/local/cuda-13, libcudart.so.13), so the import dies with
+# "libcudart.so.12: cannot open shared object file". The cu12 runtime wheel
+# supplies just that shared object alongside the cu13 toolkit; it does not
+# displace it.
+RUN pip install --no-cache-dir -c /tmp/pins.txt \
+        "mooncake-transfer-engine==0.3.11.post1" "nvidia-cuda-runtime-cu12" \
+    && ls -1 /usr/local/lib/python3.12/dist-packages/nvidia/cuda_runtime/lib/libcudart.so.12*
+# Put the cu12 runtime on the loader path for every process in the image.
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/dist-packages/nvidia/cuda_runtime/lib:${LD_LIBRARY_PATH}
+
+# flash-attn, COMPILED FROM SOURCE: no wheel exists for torch 2.13/cu130 on
+# PyPI or in Dao-AILab's releases, and the actor cannot run without it at this
+# workload's sequence lengths - the sdpa fallback materializes full attention
+# scores on 29k-token trajectories (33-48 GiB single allocations) and OOMs on
+# GPUs shared with resident vLLM engines. Source build is viable because this
+# base ships the full CUDA 13 toolchain (nvcc 13.0). sm90-only halves the
+# compile; MAX_JOBS=8 bounds builder RAM (the FA2 compile is memory-hungry and
+# this workstation's OOM reaper is real). Restores remove_padding + ulysses
+# SP=2, i.e. the exact actor configuration of every earlier pair.
+RUN pip install --no-cache-dir ninja packaging \
+    && MAX_JOBS=8 FLASH_ATTN_CUDA_ARCHS=90 \
+       pip install --no-cache-dir --no-build-isolation -c /tmp/pins.txt \
+       "flash-attn==2.8.3.post1" \
+    && python3 -c "import flash_attn, flash_attn.bert_padding; print('flash-attn', flash_attn.__version__)"
+
+# The SWE loop drives sandboxes over the k8s API and reads parquet datasets.
+RUN pip install --no-cache-dir -c /tmp/pins.txt kubernetes pandas pyarrow datasets
+
+# The dataset must be baked, not mounted: verl loads it in an actor on the Ray
+# WORKER, but the swe-data PVC is RWO so only the head can mount it. See
+# Dockerfile.dataset - copying to the worker's /tmp silently cost five runs
+# when the pod was replaced. Baking also pins the exact dataset a result set
+# came from.
+COPY integration/verl/image/dataset/train.parquet /opt/swe-data/train.parquet
+COPY integration/verl/image/dataset/test.parquet /opt/swe-data/test.parquet
+RUN python3 -c "\
+import pyarrow.parquet as pq; \
+t = pq.read_table('/opt/swe-data/train.parquet'); \
+e = pq.read_table('/opt/swe-data/test.parquet'); \
+print('DATASET GATE OK train=%d eval=%d' % (t.num_rows, e.num_rows))"
+
+COPY . /opt/py-inference-scheduler
+RUN pip install --no-cache-dir -c /tmp/pins.txt -e /opt/py-inference-scheduler
+
+# vLLM 0.29.0 cannot mount verl's LoRA adapter at tp=2 (IndexError in
+# slice_lora_b). Cherry-pick of the open upstream fix; see the patch header.
+RUN python3 /opt/py-inference-scheduler/integration/verl/image/patches/vllm_lora_merged_set_lora.py
+
+# verl 0.9.0's PPO loop imports flash_attn.bert_padding unconditionally
+# (fit -> _compute_old_log_prob -> unpad_input), and no flash-attn wheel
+# exists for torch 2.13/cu130. Cherry-pick of verl main's own pure-torch
+# fallbacks; see the patch header.
+RUN python3 /opt/py-inference-scheduler/integration/verl/image/patches/verl_attn_fallback.py
+
+# integration/ is repo-root code, not part of the installed package, and the
+# SWE loop is addressed by dotted path (integration.verl.swe...) from both the
+# agent-loop config and the trainer.
+ENV PYTHONPATH=/opt/py-inference-scheduler
+
+# Fail the build, not an 18-hour GPU run, if any contract the comparison rests
+# on is absent.
+RUN python3 - <<'PYEOF'
+import importlib, sys
+
+for mod in (
+    "vllm",
+    "vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store.connector",
+    "vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store.data",
+    "py_inference_scheduler.datalayer.connectors.mooncake.rl_pull_policy",
+    "verl",
+    "verl.experimental.agent_loop",
+    "integration.verl.swe.sandbox",
+    "integration.verl.swe.grader",
+    "integration.verl.swe.scaffold",
+    "kubernetes",
+    "mooncake",
+):
+    importlib.import_module(mod)
+
+import torch, vllm, verl
+from verl.experimental.agent_loop import AgentLoopBase, AgentLoopOutput
+from vllm.distributed.kv_transfer.kv_connector.v1.base import KVConnectorBase_V1
+from vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store.connector import (
+    MooncakeStoreConnector,
+)
+from py_inference_scheduler.datalayer.connectors.mooncake.rl_pull_policy import (
+    RLPullPolicyConnector,
+)
+
+problems = []
+
+# The loop returns these; a missing field means a silent contract break.
+missing = {"reward_score", "extra_fields"} - set(
+    getattr(AgentLoopOutput, "model_fields", {})
+)
+if missing:
+    problems.append(f"AgentLoopOutput missing fields: {missing}")
+
+# The whole point of this image: upstream must really implement reset_cache,
+# not inherit the base no-op. On 0.22.1 it inherited, which is why our override
+# existed and why verl's documented per-weight-update flush silently did
+# nothing. Assert the fix is present rather than trusting the release notes.
+if MooncakeStoreConnector.reset_cache is KVConnectorBase_V1.reset_cache:
+    problems.append(
+        "MooncakeStoreConnector.reset_cache is still the base no-op - "
+        "the stock arm would carry stale KV and arm (ii) is not testable"
+    )
+
+# save_decode_cache is how the stock arm gets decode KV, the other feature our
+# connector used to be the only source of.
+import inspect
+src = inspect.getsource(
+    importlib.import_module(
+        "vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store.connector"
+    )
+)
+if "save_decode_cache" not in src:
+    problems.append("no save_decode_cache knob upstream - arm (ii) is not testable")
+
+if not issubclass(RLPullPolicyConnector, MooncakeStoreConnector):
+    problems.append("RLPullPolicyConnector no longer subclasses the upstream connector")
+
+# Arm (iii) must differ from arm (ii) by the pull policy alone. If our subclass
+# ever stops overriding these, the two arms are the same run.
+for name in ("get_num_new_matched_tokens", "build_connector_meta"):
+    if getattr(RLPullPolicyConnector, name) is getattr(MooncakeStoreConnector, name):
+        problems.append(f"RLPullPolicyConnector no longer overrides {name}")
+
+if problems:
+    sys.exit("GATE FAILED:\n  - " + "\n  - ".join(problems))
+
+print(
+    f"GATE OK  vllm={vllm.__version__}  verl={verl.__version__}  "
+    f"torch={torch.__version__}  upstream reset_cache=present  save_decode_cache=present"
+)
+PYEOF
+
+WORKDIR /opt/py-inference-scheduler
