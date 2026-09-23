@@ -32,8 +32,8 @@ Two v0.5.20 changes sit outside the router but affect a slime job:
   raises `TypeError` on a v0.5.20 install. The `slimerl/slime` images pin SGLang v0.5.15.post1, so
   this only bites if you upgrade SGLang inside the image yourself. slime `main` still honours
   `--sglang-router-ip` (`slime/backends/sglang_utils/deployment.py`); miles has ported the
-  `ServerArgs` change but **dropped external-router mode** — see the
-  [miles compatibility notice](./Miles_README.md#compatibility-notice).
+  `ServerArgs` change but has **temporarily dropped external-router mode** pending its k8s-native
+  backend — see the [miles compatibility notice](./Miles_README.md#compatibility-notice).
 - **Engine-side scheduling does not shift on upgrade.** The new `--schedule-policy hrrn` is opt-in
   (the default stays `fcfs`), so the queue and KV signals the `backpressure` profile routes on behave
   as before unless you set it.

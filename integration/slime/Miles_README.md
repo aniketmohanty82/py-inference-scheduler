@@ -10,12 +10,13 @@ slime router (`python -m integration.slime`) unchanged**. To learn how it works,
 ## Compatibility Notice
 
 > [!WARNING]
-> **miles removed external-router mode on 2026-09-04**
+> **miles temporarily removed external-router mode on 2026-09-04**
 > ([radixark/miles#1996](https://github.com/radixark/miles/pull/1996), commit `43fc74fa0`).
-> `miles/ray/rollout/rollout_server.py` now asserts that `--sglang-router-ip` is unset ("miles always
-> starts its own routers, expected to return with the k8s-native mode"). The two-flag recipe below
-> therefore only works on miles checkouts and images **older than that commit**; it is kept for those
-> pins until miles' k8s-native router mode lands.
+> `miles/ray/rollout/rollout_server.py` now asserts that `--sglang-router-ip` is unset, and miles'
+> own message says the mode is "expected to return with the k8s-native mode" — the Kubernetes-native
+> backend tracked under [#1837](https://github.com/radixark/miles/issues/1837) (e.g.
+> [#2188](https://github.com/radixark/miles/pull/2188), unmerged as of 2026-09-23). Until it returns,
+> the two-flag recipe below only works on miles checkouts and images **older than that commit**.
 
 miles publishes no releases, so this integration is pinned by validation rather than by tag:
 
@@ -24,7 +25,7 @@ miles publishes no releases, so this integration is pinned by validation rather 
 | miles commit | `713d99d` | `b3c8f9c` (908 commits later) |
 | SGLang engine | 0.5.14 | 0.5.21.dev55 (`sglang-miles` branch on v0.5.20; image `radixark/miles:latest`) |
 | sglang-router | 0.3.2 | 0.3.2 |
-| `--sglang-router-ip/port` | honoured | **rejected** ([#1996](https://github.com/radixark/miles/pull/1996)) |
+| `--sglang-router-ip/port` | honoured | **rejected until the k8s-native backend lands** ([#1996](https://github.com/radixark/miles/pull/1996)) |
 
 The SGLang side of that drift does not affect the router. On 2026-09-23 it was run on an 8×H100 node
 against two engines launched from `radixark/miles:latest` (SGLang 0.5.21.dev55, the v0.5.20 line):
