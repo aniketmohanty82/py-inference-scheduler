@@ -1,0 +1,53 @@
+master=10.96.5.16 extra=''
+--- rank0 (swe-ab2-gpu-group-worker-kk8c6) ---
+exit=0
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Using network gIB
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO PROFILER/Plugin: Loaded GCP_NCCL_PROFILER_V4 (v4)
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e52f0004fa0
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e52f0005028
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e52f00050b0
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e52f0005138
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e52f00051c0
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e52f0005248
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e52f00052d0
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e52f0005358
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected all trees
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected binomial trees
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e52f00053e0
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO TUNER/Plugin: Using GcpTunerPlugin_v2 (v2)
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO ncclCommInitRankConfig comm 0x3ebe6930 rank 0 nranks 2 cudaDev 0 nvmlDev 7 busId cc000 commId 0x9f27378f26616557 - Init COMPLETE
+RANK0: init+first all_reduce 0.9s, 5x256MB all_reduce 0.03s -> 86.8 GB/s busbw-ish
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO TUNER/Plugin: Closing tuner: 'GcpTunerPlugin_v2'
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO PROFILER/Plugin: Closing profiler plugin GCP_NCCL_PROFILER_V4
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO ENV/Plugin: Closing env plugin ncclEnvDefault
+---last---
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO PROFILER/Plugin: Closing profiler plugin GCP_NCCL_PROFILER_V4
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO Unloading plugin libnccl-net.so
+swe-ab2-gpu-group-worker-kk8c6:494839:494839 [0] NCCL INFO ENV/Plugin: Closing env plugin ncclEnvDefault
+--- rank1 (swe-ab2-gpu-group-worker-ln7ph) ---
+exit=0
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Using network gIB
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO PROFILER/Plugin: Loaded GCP_NCCL_PROFILER_V4 (v4)
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7cf43c004fa0
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7cf43c005028
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7cf43c0050b0
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7cf43c005138
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7cf43c0051c0
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7cf43c005248
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7cf43c0052d0
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7cf43c005358
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected all trees
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected binomial trees
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7cf43c0053e0
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO TUNER/Plugin: Using GcpTunerPlugin_v2 (v2)
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO ncclCommInitRankConfig comm 0x40cb75f0 rank 1 nranks 2 cudaDev 0 nvmlDev 7 busId cc000 commId 0x9f27378f26616557 - Init COMPLETE
+RANK1: init+first all_reduce 0.9s, 5x256MB all_reduce 0.03s -> 86.8 GB/s busbw-ish
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO TUNER/Plugin: Closing tuner: 'GcpTunerPlugin_v2'
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO PROFILER/Plugin: Closing profiler plugin GCP_NCCL_PROFILER_V4
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO ENV/Plugin: Closing env plugin ncclEnvDefault
+---last---
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO PROFILER/Plugin: Closing profiler plugin GCP_NCCL_PROFILER_V4
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO Unloading plugin libnccl-net.so
+swe-ab2-gpu-group-worker-ln7ph:496218:496218 [0] NCCL INFO ENV/Plugin: Closing env plugin ncclEnvDefault

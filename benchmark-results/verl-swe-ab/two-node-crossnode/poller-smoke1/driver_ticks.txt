@@ -1,0 +1,66 @@
+[00:25:03] head=swe-ab2-head-xvf59 workers: swe-ab2-gpu-group-worker-grgkr swe-ab2-gpu-group-worker-knk6d 
+  head env: ROUTER_CONFIG_PATH=/opt/py-inference-scheduler/configs/swe-crossnode-fc.yaml
+[00:25:05]   swe-ab2-gpu-group-worker-grgkr: hook+connector ok, RDMA devices=8, node=gke-rls-ab-west-rdma-gpu-pool-21f406e9-vdkk
+[00:25:06]   swe-ab2-gpu-group-worker-knk6d: hook+connector ok, RDMA devices=8, node=gke-rls-ab-west-rdma-gpu-pool-21f406e9-6qtn
+[00:25:16] cross-node NCCL ok: Using network gIB; 
+[00:25:44] compat check PASS: affinity turns: srv-1 -> srv-1 -> (holder saturated) srv-2 -> (holder recovered) srv-2 flow control: parked=True then admitted to srv-2 
+[00:26:29] launched smoke (2 steps, NNODES=2); headwatch armed (cap 120min)
+[00:27:34]   x2_smoke_poller t=1min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:28:38]   x2_smoke_poller t=2min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:29:42]   x2_smoke_poller t=3min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:30:46]   x2_smoke_poller t=4min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:31:50]   x2_smoke_poller t=5min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:32:54]   x2_smoke_poller t=6min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=16 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:34:02]   x2_smoke_poller t=7min steps=0/2 views8/8=512 moves=0 cross=0 parks=0 pullsrc_installed=16 pull[w1]=? pull[w2]=? metrics=ok busy=3 live=0 run+wait=0 stall=0min
+[00:35:36]   x2_smoke_poller t=9min steps=0/2 views8/8=512 moves=0 cross=0 parks=0 pullsrc_installed=16 pull[w1]=? pull[w2]=cum_keys=179 cum_cross=89 metrics=ok busy=43 live=40 run+wait=0 stall=0min
+[00:36:47]   x2_smoke_poller t=10min steps=0/2 views8/8=512 moves=497 cross=313 parks=300 pullsrc_installed=16 pull[w1]=cum_keys=27259 cum_cross=13975 pull[w2]=cum_keys=28515 cum_cross=14369 metrics=ok busy=83 live=80 run+wait=37 stall=0min
+[00:37:53]   x2_smoke_poller t=11min steps=0/2 views8/8=512 moves=2011 cross=1156 parks=3212 pullsrc_installed=16 pull[w1]=cum_keys=34002 cum_cross=17094 pull[w2]=cum_keys=36407 cum_cross=18221 metrics=ok busy=123 live=120 run+wait=109 stall=0min
+[00:38:58]   x2_smoke_poller t=12min steps=0/2 views8/8=512 moves=3031 cross=1743 parks=5789 pullsrc_installed=16 pull[w1]=cum_keys=39632 cum_cross=19829 pull[w2]=cum_keys=31772 cum_cross=15852 metrics=ok busy=155 live=152 run+wait=80 stall=0min
+[00:40:03]   x2_smoke_poller t=13min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=187 live=184 run+wait=103 stall=0min
+[00:41:08]   x2_smoke_poller t=14min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=195 live=192 run+wait=21 stall=0min
+[00:42:12]   x2_smoke_poller t=15min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=195 live=192 run+wait=4 stall=0min
+[00:43:17]   x2_smoke_poller t=16min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=192 live=192 run+wait=3 stall=0min
+[00:44:22]   x2_smoke_poller t=17min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=180 live=180 run+wait=1 stall=0min
+[00:45:27]   x2_smoke_poller t=18min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=146 live=146 run+wait=1 stall=0min
+[00:46:31]   x2_smoke_poller t=20min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=103 live=103 run+wait=1 stall=0min
+[00:47:35]   x2_smoke_poller t=21min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=68 live=68 run+wait=1 stall=0min
+[00:48:39]   x2_smoke_poller t=22min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=35 live=35 run+wait=0 stall=0min
+[00:49:44]   x2_smoke_poller t=23min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=7 live=7 run+wait=0 stall=0min
+[00:50:49]   x2_smoke_poller t=24min steps=0/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:51:58]   x2_smoke_poller t=25min steps=1/2 views8/8=512 moves=3530 cross=2055 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=6 live=6 run+wait=0 stall=0min
+[00:53:05]   x2_smoke_poller t=26min steps=1/2 views8/8=512 moves=3532 cross=2057 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=38 live=38 run+wait=6 stall=0min
+[00:54:10]   x2_smoke_poller t=27min steps=1/2 views8/8=512 moves=3532 cross=2057 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=65 live=65 run+wait=33 stall=0min
+[00:55:14]   x2_smoke_poller t=28min steps=1/2 views8/8=512 moves=3532 cross=2057 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=65 live=65 run+wait=14 stall=0min
+[00:56:18]   x2_smoke_poller t=29min steps=1/2 views8/8=512 moves=3532 cross=2057 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=65 live=65 run+wait=1 stall=0min
+[00:57:23]   x2_smoke_poller t=30min steps=1/2 views8/8=512 moves=3532 cross=2057 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=65 live=65 run+wait=0 stall=0min
+[00:58:27]   x2_smoke_poller t=31min steps=1/2 views8/8=512 moves=3532 cross=2057 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=65 live=65 run+wait=0 stall=0min
+[00:59:31]   x2_smoke_poller t=33min steps=1/2 views8/8=512 moves=3532 cross=2057 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=65 live=65 run+wait=0 stall=0min
+[01:00:36]   x2_smoke_poller t=34min steps=1/2 views8/8=512 moves=3532 cross=2057 parks=6195 pullsrc_installed=16 pull[w1]=cum_keys=33822 cum_cross=17232 pull[w2]=cum_keys=28724 cum_cross=14492 metrics=ok busy=65 live=65 run+wait=0 stall=0min
+[01:04:00] finished [rc=0] steps=2 pullsrc lines: driver=1798 w1=900 w2=898
+[01:04:00] === gates ===
+  PASS  cores initialised with shared ledger: 8 worker pid(s)
+  PASS  endpoint view 8/8 in every worker: 8/8 pids
+  PASS  FLEET snapshots: 904
+  PASS  scorer inputs populated: kv max 1.00, running max 64, waiting max 50
+  PASS  per-engine attribution: identical (waiting,running) on all engines in 0/257 busy lines (0%)
+  PASS  shared ledger: median q_sum/(running+waiting) 1.02 over 257 busy lines from 8 pids
+  PASS  decisions reached 8/8 engines: {'10.96.4.7:39825': 1921, '10.96.5.17:36369': 1905, '10.96.5.17:44417': 1886, '10.96.5.17:45543': 1864, '10.96.5.17:38459': 1755, '10.96.4.7:33697': 1851, '10.96.4.7:40055': 1758, '10.96.4.7:34979': 1950}
+  PASS  top engine share 13% <= 45%
+  PASS  affinity: kept 10334 moved 3532 fresh 1024 -> kept share 75% >= 60% (8 pids)
+  PASS  fallbacks to verl LB: 0
+
+SCHED GATE: PASS
+  PASS  moves observed: 3532 across hosts ['10.96.4.7', '10.96.5.17']
+  PASS  cross-node moves (holder on one host, next turn on the other): 2057
+  PASS  flow control live: parks 6195, drops 5334
+  PASS  no fallbacks to verl's balancer
+  PASS  PULLSRC hosts reporting: ['10.96.4.7', '10.96.5.17']
+  PASS  host 10.96.4.7: 40834 keys pulled (max over ranks)
+  PASS  host 10.96.4.7: 20432 keys pulled from the OTHER host (50%), unknown 0
+  PASS  host 10.96.5.17: 38216 keys pulled (max over ranks)
+  PASS  host 10.96.5.17: 19095 keys pulled from the OTHER host (50%), unknown 0
+  PASS  fcstore_scrape_w1.log: engines serving tier tokens 4/4 (19,811,216 tokens)
+  PASS  fcstore_scrape_w2.log: engines serving tier tokens 4/4 (19,857,616 tokens)
+  INFO  mooncake master saw segment hosts: ['10.96.4.7', '10.96.5.17']
+
+CROSS-NODE GATE: PASS

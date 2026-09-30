@@ -1,0 +1,26 @@
+  PASS  cores initialised with shared ledger: 8 worker pid(s)
+  PASS  endpoint view 8/8 in every worker: 8/8 pids
+  PASS  FLEET snapshots: 410
+  PASS  scorer inputs populated: kv max 1.00, running max 66, waiting max 74
+  PASS  per-engine attribution: identical (waiting,running) on all engines in 0/240 busy lines (0%)
+  PASS  shared ledger: median q_sum/(running+waiting) 1.01 over 240 busy lines from 8 pids
+  PASS  decisions reached 8/8 engines: {'10.96.5.16:40841': 2013, '10.96.4.12:37929': 1863, '10.96.4.12:42305': 1529, '10.96.5.16:38943': 1831, '10.96.5.16:34001': 2285, '10.96.5.16:38671': 1793, '10.96.4.12:38427': 2029, '10.96.4.12:41019': 1482}
+  PASS  top engine share 15% <= 45%
+  PASS  affinity: kept 9249 moved 4526 fresh 1024 -> kept share 67% >= 60% (8 pids)
+  PASS  fallbacks to verl LB: 0
+
+SCHED GATE: PASS
+  PASS  moves observed: 4526 across hosts ['10.96.4.12', '10.96.5.16']
+  PASS  cross-node moves (holder on one host, next turn on the other): 2597
+  PASS  flow control live: parks 9137, drops 6624
+  PASS  no fallbacks to verl's balancer
+  PASS  PULLSRC hosts reporting: ['10.96.4.12', '10.96.5.16']
+  PASS  host 10.96.4.12: 49981 keys pulled (max over ranks)
+  PASS  host 10.96.4.12: 24739 keys pulled from the OTHER host (49%), unknown 0
+  PASS  host 10.96.5.16: 41086 keys pulled (max over ranks)
+  PASS  host 10.96.5.16: 20489 keys pulled from the OTHER host (50%), unknown 0
+  PASS  fcstore_scrape_w1.log: engines serving tier tokens 4/4 (24,003,904 tokens)
+  PASS  fcstore_scrape_w2.log: engines serving tier tokens 4/4 (22,117,376 tokens)
+  INFO  mooncake master saw segment hosts: ['10.96.4.10', '10.96.4.11', '10.96.4.12', '10.96.4.9', '10.96.5.13', '10.96.5.14', '10.96.5.15', '10.96.5.16']
+
+CROSS-NODE GATE: PASS

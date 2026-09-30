@@ -1,0 +1,45 @@
+# Router profile for the two-node cross-node KV benchmark: the store (Mooncake
+# host-memory tier over RDMA) plus flow control, 8 engines on 2 nodes.
+#
+# Differs from swe-backpressure.yaml in one block: flow control. The 12-step
+# routing arm (twelve-step-routing-arm/) showed that under local-only KV a
+# move costs a full-context re-prefill, so the saturation filter could only
+# shuffle work between equally saturated engines. With the tier, a moved
+# trajectory's context comes back from host memory over RDMA, from whichever
+# node wrote it, so the same move is cheap - and a move across nodes is the
+# proof this benchmark exists for (see the MOVE / PULLSRC instruments).
+profile_handler:
+  type: single_profile
+profiles:
+  backpressure:
+    # Admission: while every engine is over these thresholds the request is
+    # parked and re-admitted as live metrics allow (FlowControlManager). The
+    # 32B flow-control replication kept kv 0.90 / waiting 4: preemptions -34
+    # to -40% per Mtok, engine queue wait -74%.
+    flow_control:
+      type: simple_backpressure
+      kv_threshold: 0.90
+      waiting_threshold: 4
+    filters:
+      # Candidacy: a saturated engine leaves the ballot, which is the only way
+      # a trajectory leaves the engine holding its KV. With the tier that is a
+      # pull, not a re-prefill, so the thresholds sit at the routing arm's
+      # values rather than higher.
+      - type: saturation
+        kv_threshold: 0.98
+        waiting_threshold: 8
+    scorers:
+      # Stay with the holder whenever it is a candidate (above the 7.05 sum
+      # of the load scorers); first turns and moved turns are placed by load.
+      - type: request_affinity
+        weight: 8.0
+      - type: waiting_queue
+        weight: 4.0
+      - type: kv_cache
+        weight: 2.0
+      - type: least_queue
+        weight: 1.0
+      - type: jitter
+        weight: 0.05
+    picker:
+      type: max_score

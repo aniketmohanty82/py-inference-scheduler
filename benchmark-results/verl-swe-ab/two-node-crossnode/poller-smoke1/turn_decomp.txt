@@ -1,0 +1,5 @@
+== /usr/local/google/home/aniketmohanty/.claude/jobs/7c396abe/tmp/pressure/x2_smoke_poller/fcstore.log
+step  turns  LLM-path/traj  tool/traj  score/traj | LLM-path/turn  tool/turn | gen(step)  resp_len  LLM-path max  tool max
+   1   42.2          114.3       95.8         0.0 |          2.71       2.27 |       824      9428           629       468
+   2   16.6           16.4       28.4         0.0 |          0.99       1.71 |       494      2876           468       404
+mean steps 2..2 (n=1): turns 16.6  LLM-path/traj 16.4 s  tool/traj 28.4 s  LLM-path/turn 0.99 s  tool/turn 1.71 s

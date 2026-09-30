@@ -1,0 +1,6 @@
+[01:04:24] swe-ab2-head-xvf59: counts=1 effwait=1
+[01:04:26] swe-ab2-gpu-group-worker-knk6d: counts=1 effwait=1
+[01:04:28] swe-ab2-gpu-group-worker-grgkr: counts=1 effwait=1
+[01:04:28] launching smoke 2 (poller + admission accounting, TAG_SUFFIX=_poller2)
+[01:51:33] smoke 2: gates PASS lines=2 partial views=0 stale/failed=4 max engine waiting=9  parks/moves: moves=4494 cross=2585 parks=11887
+[01:51:33] smoke 2 did not clear the bar; not launching the 12-step run

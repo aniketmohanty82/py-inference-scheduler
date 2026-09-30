@@ -65,10 +65,24 @@ You can use our default [runtime-env.yaml](./examples/runtime-env.yaml) file:
 working_dir: "https://github.com/llm-d-incubation/py-inference-scheduler/archive/refs/heads/main.zip"
 env_vars:
   PYTHONPATH: "."
-  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml" # Relative to CWD (repo root)
 ```
 Ray unpacks the zip, sets the CWD to the repo root, and resolves the relative path to the default config.
+
+Do not set `PROMETHEUS_MULTIPROC_DIR`. The hook reads each engine's `/metrics`, which vLLM serves from a per-process registry; a directory shared by the engines on a node turns every `/metrics` into the node aggregate, and the scorers then see the same load on every engine.
+
+Environment knobs read by the hook and the connector (all optional):
+
+| variable | read by | default | effect |
+|---|---|---|---|
+| `ROUTER_CONFIG_PATH` | hook | required | scheduler profile (scorers, filters, flow control) |
+| `RLS_ADMISSION_ONLY` | hook | `0` | `1` = gate and park requests with the profile's flow control but leave placement to verl's balancer; isolates flow control in an A/B |
+| `FLOW_CONTROL_POLL_S` | hook | `0.1` | seconds between metric polls while requests are parked |
+| `RLS_MIN_PULL_TOKENS` | `RLPullPolicyConnector` | `0` | decline a KV-tier fetch below this many matched tokens and recompute locally |
+| `RLS_MAX_INFLIGHT_LOADS` | `RLPullPolicyConnector` | `0` (off) | cap concurrent async tier pulls per engine |
+| `RLS_LOG_PULL_SOURCE` | `RLPullPolicyConnector` | `0` | `1` = print a `PULLSRC` line per load batch naming the segment host each pull came from, with cumulative cross-host counts; the evidence for cross-node KV sharing |
+
+`integration/verl/examples/run_swe_ab.sh` also reads `NNODES` (default `1`) for `trainer.nnodes`, and `ARM=fcstore` runs the store connector together with the hook.
 
 ### Custom Configuration on Kubernetes (K8s)
 If you want to customize the scheduler settings on K8s:
@@ -98,7 +112,6 @@ If you want to customize the scheduler settings in a VM-based cluster:
       - "verl==0.7.1"
     env_vars:
       PYTHONPATH: "."
-      PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
       ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml" # Relative to CWD (repo root)
     ```
 *   **Submit the job from the repository root** (see Section 3). Running from the root with `working_dir: "."` ensures Ray packages the entire repository (including the `scheduling` source code and your modified config), preventing import errors on the workers.

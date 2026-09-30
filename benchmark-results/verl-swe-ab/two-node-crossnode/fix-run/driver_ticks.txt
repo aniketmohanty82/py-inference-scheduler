@@ -1,0 +1,72 @@
+[00:48:09] head=swe-ab2-head-l2rfk workers: swe-ab2-gpu-group-worker-knk6d swe-ab2-gpu-group-worker-wr8ms 
+  head env: ROUTER_CONFIG_PATH=/opt/py-inference-scheduler/configs/swe-crossnode-fc.yaml
+[00:48:12]   swe-ab2-gpu-group-worker-knk6d: hook+connector ok, RDMA devices=8, node=gke-rls-ab-west-rdma-gpu-pool-21f406e9-6qtn
+[00:48:13]   swe-ab2-gpu-group-worker-wr8ms: hook+connector ok, RDMA devices=8, node=gke-rls-ab-west-rdma-gpu-pool-21f406e9-4vhq
+[00:48:21] cross-node NCCL ok: Using network gIB; 
+[00:48:49] compat check PASS: affinity turns: srv-1 -> srv-1 -> (holder saturated) srv-2 -> (holder recovered) srv-2 flow control: parked=True then admitted to srv-2 
+[00:49:34] launched smoke (2 steps, NNODES=2); headwatch armed (cap 120min)
+[00:50:39]   x2_smoke_qlfix t=1min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:51:44]   x2_smoke_qlfix t=2min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:52:49]   x2_smoke_qlfix t=3min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:53:53]   x2_smoke_qlfix t=4min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:54:57]   x2_smoke_qlfix t=5min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=16 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[00:56:04]   x2_smoke_qlfix t=6min steps=0/2 views8/8=317 moves=0 cross=0 parks=0 pullsrc_installed=16 pull[w1]=? pull[w2]=? metrics=ok busy=3 live=2 run+wait=0 stall=0min
+[00:57:46]   x2_smoke_qlfix t=8min steps=0/2 views8/8=324 moves=0 cross=0 parks=0 pullsrc_installed=16 pull[w1]=cum_keys=9964 cum_cross=4976 pull[w2]=cum_keys=2795 cum_cross=1400 metrics=ok busy=22 live=21 run+wait=0 stall=0min
+[00:59:39]   x2_smoke_qlfix t=10min steps=0/2 views8/8=330 moves=71 cross=57 parks=0 pullsrc_installed=16 pull[w1]=cum_keys=36524 cum_cross=18466 pull[w2]=cum_keys=21506 cum_cross=10895 metrics=ok busy=75 live=74 run+wait=13 stall=0min
+[01:00:53]   x2_smoke_qlfix t=11min steps=0/2 views8/8=330 moves=485 cross=278 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=36154 cum_cross=18228 pull[w2]=cum_keys=30637 cum_cross=15472 metrics=ok busy=114 live=113 run+wait=56 stall=0min
+[01:02:01]   x2_smoke_qlfix t=12min steps=0/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=136 run+wait=19 stall=0min
+[01:03:05]   x2_smoke_qlfix t=13min steps=0/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=136 run+wait=8 stall=0min
+[01:04:10]   x2_smoke_qlfix t=14min steps=0/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=136 run+wait=4 stall=0min
+[01:05:15]   x2_smoke_qlfix t=15min steps=0/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=136 run+wait=4 stall=0min
+[01:06:19]   x2_smoke_qlfix t=16min steps=0/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=136 run+wait=2 stall=0min
+[01:07:24]   x2_smoke_qlfix t=17min steps=0/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=136 run+wait=0 stall=0min
+[01:08:29]   x2_smoke_qlfix t=18min steps=0/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=136 run+wait=0 stall=0min
+[01:09:34]   x2_smoke_qlfix t=19min steps=0/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=136 run+wait=0 stall=0min
+[01:10:39]   x2_smoke_qlfix t=21min steps=0/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=136 run+wait=0 stall=0min
+[01:11:50]   x2_smoke_qlfix t=22min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=144 live=137 run+wait=0 stall=0min
+[01:13:00]   x2_smoke_qlfix t=23min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=176 live=169 run+wait=0 stall=0min
+[01:14:05]   x2_smoke_qlfix t=24min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=202 live=196 run+wait=28 stall=0min
+[01:15:10]   x2_smoke_qlfix t=25min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=178 live=172 run+wait=21 stall=0min
+[01:16:18]   x2_smoke_qlfix t=26min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=155 live=149 run+wait=7 stall=0min
+[01:17:23]   x2_smoke_qlfix t=27min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=137 live=131 run+wait=0 stall=0min
+[01:18:27]   x2_smoke_qlfix t=28min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=127 live=121 run+wait=1 stall=0min
+[01:19:32]   x2_smoke_qlfix t=29min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=124 live=118 run+wait=0 stall=0min
+[01:20:37]   x2_smoke_qlfix t=31min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:21:41]   x2_smoke_qlfix t=32min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:22:47]   x2_smoke_qlfix t=33min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:23:52]   x2_smoke_qlfix t=34min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:24:57]   x2_smoke_qlfix t=35min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:26:02]   x2_smoke_qlfix t=36min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:27:06]   x2_smoke_qlfix t=37min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:28:11]   x2_smoke_qlfix t=38min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:29:16]   x2_smoke_qlfix t=39min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:30:20]   x2_smoke_qlfix t=40min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:31:25]   x2_smoke_qlfix t=41min steps=1/2 views8/8=330 moves=493 cross=283 parks=3 pullsrc_installed=16 pull[w1]=cum_keys=43269 cum_cross=21767 pull[w2]=cum_keys=29674 cum_cross=14717 metrics=ok busy=122 live=116 run+wait=0 stall=0min
+[01:34:19] finished [rc=0] steps=2 pullsrc lines: driver=1702 w1=2540 w2=848
+[01:34:19] === gates ===
+  PASS  cores initialised with shared ledger: 8 worker pid(s)
+  PASS  endpoint view 8/8 in every worker: 8/8 pids
+  PASS  FLEET snapshots: 398
+  PASS  scorer inputs populated: kv max 1.00, running max 46, waiting max 16
+  PASS  per-engine attribution: identical (waiting,running) on all engines in 0/201 busy lines (0%)
+  PASS  shared ledger: median q_sum/(running+waiting) 1.03 over 201 busy lines from 8 pids
+  PASS  decisions reached 8/8 engines: {'10.96.4.13:44337': 2007, '10.96.5.17:33715': 1935, '10.96.4.13:42787': 1240, '10.96.5.17:46531': 1830, '10.96.4.13:41341': 1622, '10.96.4.13:33267': 1770, '10.96.5.17:35603': 1540, '10.96.5.17:37897': 1680}
+  PASS  top engine share 15% <= 45%
+  PASS  affinity: kept 12078 moved 493 fresh 1024 -> kept share 96% >= 60% (8 pids)
+  PASS  fallbacks to verl LB: 0
+
+SCHED GATE: PASS
+  PASS  moves observed: 493 across hosts ['10.96.4.13', '10.96.5.17']
+  PASS  cross-node moves (holder on one host, next turn on the other): 283
+  PASS  flow control live: parks 3, drops 2128
+  PASS  no fallbacks to verl's balancer
+  PASS  PULLSRC hosts reporting: ['10.96.4.13', '10.96.5.17']
+  PASS  host 10.96.4.13: 48589 keys pulled (max over ranks)
+  PASS  host 10.96.4.13: 24062 keys pulled from the OTHER host (50%), unknown 0
+  PASS  host 10.96.5.17: 49214 keys pulled (max over ranks)
+  PASS  host 10.96.5.17: 24370 keys pulled from the OTHER host (50%), unknown 0
+  PASS  fcstore_scrape_w1.log: engines serving tier tokens 4/4 (11,662,720 tokens)
+  PASS  fcstore_scrape_w2.log: engines serving tier tokens 4/4 (9,959,104 tokens)
+  INFO  mooncake master saw segment hosts: ['10.96.4.13', '10.96.5.17']
+
+CROSS-NODE GATE: PASS

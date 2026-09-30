@@ -1,0 +1,46 @@
+[20:16:13] head=swe-ab2-head-xvf59 workers: swe-ab2-gpu-group-worker-grgkr swe-ab2-gpu-group-worker-knk6d 
+[20:16:15]   swe-ab2-gpu-group-worker-grgkr: hook+connector ok, RDMA devices=8, node=gke-rls-ab-west-rdma-gpu-pool-21f406e9-vdkk
+[20:16:16]   swe-ab2-gpu-group-worker-knk6d: hook+connector ok, RDMA devices=8, node=gke-rls-ab-west-rdma-gpu-pool-21f406e9-6qtn
+[20:16:25] cross-node NCCL ok: Using network gIB; 
+[20:17:11] launched smoke (2 steps, NNODES=2); headwatch armed (cap 120min)
+[20:18:16]   x2_smoke_recompute_ctrl t=1min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:19:20]   x2_smoke_recompute_ctrl t=2min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:20:25]   x2_smoke_recompute_ctrl t=3min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:21:29]   x2_smoke_recompute_ctrl t=4min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:22:38]   x2_smoke_recompute_ctrl t=5min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:24:04]   x2_smoke_recompute_ctrl t=6min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:25:10]   x2_smoke_recompute_ctrl t=7min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:26:15]   x2_smoke_recompute_ctrl t=9min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:27:20]   x2_smoke_recompute_ctrl t=10min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=151 stall=0min
+[20:28:24]   x2_smoke_recompute_ctrl t=11min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=159 stall=0min
+[20:29:29]   x2_smoke_recompute_ctrl t=12min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=139 stall=0min
+[20:30:33]   x2_smoke_recompute_ctrl t=13min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=125 stall=0min
+[20:31:38]   x2_smoke_recompute_ctrl t=14min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=120 stall=0min
+[20:32:43]   x2_smoke_recompute_ctrl t=15min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=101 stall=0min
+[20:33:47]   x2_smoke_recompute_ctrl t=16min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=65 stall=0min
+[20:34:51]   x2_smoke_recompute_ctrl t=17min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=27 stall=0min
+[20:35:56]   x2_smoke_recompute_ctrl t=18min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:37:00]   x2_smoke_recompute_ctrl t=19min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:38:04]   x2_smoke_recompute_ctrl t=20min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:39:09]   x2_smoke_recompute_ctrl t=21min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:40:13]   x2_smoke_recompute_ctrl t=23min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:41:18]   x2_smoke_recompute_ctrl t=24min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:42:22]   x2_smoke_recompute_ctrl t=25min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:43:27]   x2_smoke_recompute_ctrl t=26min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:44:31]   x2_smoke_recompute_ctrl t=27min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:45:35]   x2_smoke_recompute_ctrl t=28min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:46:40]   x2_smoke_recompute_ctrl t=29min steps=0/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:47:50]   x2_smoke_recompute_ctrl t=30min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:49:00]   x2_smoke_recompute_ctrl t=31min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=1 stall=0min
+[20:50:09]   x2_smoke_recompute_ctrl t=32min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=42 stall=0min
+[20:51:14]   x2_smoke_recompute_ctrl t=34min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=20 stall=0min
+[20:52:19]   x2_smoke_recompute_ctrl t=35min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=6 stall=0min
+[20:53:23]   x2_smoke_recompute_ctrl t=36min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=3 stall=0min
+[20:54:28]   x2_smoke_recompute_ctrl t=37min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=1 stall=0min
+[20:55:32]   x2_smoke_recompute_ctrl t=38min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=1 stall=0min
+[20:56:36]   x2_smoke_recompute_ctrl t=39min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:57:41]   x2_smoke_recompute_ctrl t=40min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:58:45]   x2_smoke_recompute_ctrl t=41min steps=1/2 views8/8=0 moves=0 cross=0 parks=0 pullsrc_installed=0 pull[w1]=? pull[w2]=? metrics=ok busy=0 live=0 run+wait=0 stall=0min
+[20:59:49] finished [rc=0] steps=2 pullsrc lines: driver=0 w1=0 w2=0
+[20:59:49] === gates ===
+[20:59:49] gates skipped for ARM=recompute (control arm: no hook, no tier)

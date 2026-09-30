@@ -1,0 +1,172 @@
+INFO 09-25 23:58:26 [importing.py:74] Triton is installed but 0 active driver(s) found (expected 1). Disabling Triton to prevent runtime errors.
+INFO 09-25 23:58:26 [importing.py:98] Triton not installed or not compatible; certain GPU-related functions will not be available.
+WARNING 09-25 23:58:29 [interface.py:368] Failed to import from vllm._C: ModuleNotFoundError("No module named 'vllm._C'")
+WARNING 09-25 23:58:29 [interface.py:368] Failed to import from vllm._C: ModuleNotFoundError("No module named 'vllm._C'")
+WARNING 09-25 23:58:29 [interface.py:368] Failed to import from vllm._C: ModuleNotFoundError("No module named 'vllm._C'")
+layout: modern
+Reloading scheduler config from /opt/py-inference-scheduler/configs/swe-crossnode-fc.yaml
+RLS[30827] core init: shared inflight ledger enabled; flow control plugins=1 admission_only=0
+Reloading scheduler config from /opt/py-inference-scheduler/configs/swe-crossnode-fc.yaml
+RLS[30827] core init: shared inflight ledger enabled; flow control plugins=1 admission_only=0
+RLS[30827] endpoint view: 3/3 servers
+FLEET[30827] srv-0=kv0.97/w20/r12/p0/q0 srv-1=kv0.05/w0/r0/p0/q0 srv-2=kv0.55/w3/r6/p0/q0
+AFFINITY[30827] kept=0 moved=0 fresh=0
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-1': 0.8062773446955221, 'srv-2': 0.6741539352639146}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+RLS[30827] endpoint view: 3/3 servers
+FLEET[30827] srv-0=kv0.97/w20/r12/p0/q0 srv-1=kv0.05/w0/r0/p0/q0 srv-2=kv0.55/w3/r6/p0/q0
+AFFINITY[30827] kept=0 moved=0 fresh=0
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef567a40> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565a00> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565c70> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565be0> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565f70> raw scores: {'srv-1': 0.1517640783051586, 'srv-2': 0.3843284099698413}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-1': 0.8279419990997454, 'srv-2': 0.14078634987654093}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef567a40> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565a00> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565c70> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565be0> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565f70> raw scores: {'srv-1': 0.7553923322401463, 'srv-2': 0.21021406798203457}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-1': 0.9519547273880925, 'srv-2': 0.04040137422859502}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef567a40> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565a00> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565c70> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565be0> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565f70> raw scores: {'srv-1': 0.35723040205840706, 'srv-2': 0.4754783401923742}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-1': 0.010055311194528738, 'srv-2': 0.3706998340528569}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef567a40> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565a00> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565c70> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565be0> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565f70> raw scores: {'srv-1': 0.7802524813064252, 'srv-2': 0.3123399690160872}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-1': 0.4247148376573575, 'srv-2': 0.35629491124093216}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef567a40> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565a00> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565c70> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565be0> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565f70> raw scores: {'srv-1': 0.9427366860829539, 'srv-2': 0.8462833678357239}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-1': 0.13465994387331615, 'srv-2': 0.9858392572013563}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef567a40> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565a00> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565c70> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565be0> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565f70> raw scores: {'srv-1': 0.3257330729820602, 'srv-2': 0.12402342158146884}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-1': 0.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-1': 0.0017596361431194696, 'srv-2': 0.471678808466253}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)], metadata={})
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-1': 0.1843921962680577, 'srv-2': 0.7143931067598315}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-1', attributes={'replica_obj': Actor(FakeServer, 53ad0139ddfcec00042c06c104000000), 'routing_stats': {'num_waiting_reqs': 0, 'num_running_reqs': 0, 'kv': 0.05, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.0)], metadata={})
+FLOWCONTROL drop 2/3: ['srv-0(kv=0.97,waiting=20)', 'srv-1(kv=0.99,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-2': 0.7198788069296563}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-2', attributes={'replica_obj': Actor(FakeServer, 355e19b08a6bbb773170506204000000), 'routing_stats': {'num_waiting_reqs': 3, 'num_running_reqs': 6, 'kv': 0.55, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-2', attributes={'replica_obj': Actor(FakeServer, 355e19b08a6bbb773170506204000000), 'routing_stats': {'num_waiting_reqs': 3, 'num_running_reqs': 6, 'kv': 0.55, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+MOVE[30827] rid=traj-aff from=srv-1 to=srv-2 cross_node=1
+FLOWCONTROL drop 1/3: ['srv-0(kv=0.97,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-1': 0.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-1': 1.0, 'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-1': 1.0, 'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-1': 0.9124805812990981, 'srv-2': 0.5369293417786379}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-2', attributes={'replica_obj': Actor(FakeServer, 355e19b08a6bbb773170506204000000), 'routing_stats': {'num_waiting_reqs': 3, 'num_running_reqs': 6, 'kv': 0.55, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=9.0)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-2', attributes={'replica_obj': Actor(FakeServer, 355e19b08a6bbb773170506204000000), 'routing_stats': {'num_waiting_reqs': 3, 'num_running_reqs': 6, 'kv': 0.55, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=9.0)], metadata={})
+affinity turns: srv-1 -> srv-1 -> (holder saturated) srv-2 -> (holder recovered) srv-2
+affinity counters: {'kept': 2, 'moved': 1, 'fresh': 7}
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL park: all 3 endpoints saturated ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)', 'srv-2(kv=0.99,waiting=20)']
+FLOWCONTROL drop 2/3: ['srv-0(kv=0.99,waiting=20)', 'srv-1(kv=0.99,waiting=20)']
+Scorer <py_inference_scheduler.plugins.scorers.request_affinity.RequestAffinityScorer object at 0x7d92ef565af0> raw scores: {'srv-2': 0.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.WaitingQueueScorer object at 0x7d92ef565c10> raw scores: {'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.KVCacheScorer object at 0x7d92ef565b20> raw scores: {'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.backpressure.LeastQueueScorer object at 0x7d92ef565c40> raw scores: {'srv-2': 1.0}
+Scorer <py_inference_scheduler.plugins.scorers.generic.JitterScorer object at 0x7d92ef565dc0> raw scores: {'srv-2': 0.04979341256937975}
+Selected endpoint [ScoredEndpoint(endpoint=Endpoint(name='srv-2', attributes={'replica_obj': Actor(FakeServer, 355e19b08a6bbb773170506204000000), 'routing_stats': {'num_waiting_reqs': 3, 'num_running_reqs': 6, 'kv': 0.55, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)]
+Profile backpressure results: ProfileRunResult(endpoint_list=[ScoredEndpoint(endpoint=Endpoint(name='srv-2', attributes={'replica_obj': Actor(FakeServer, 355e19b08a6bbb773170506204000000), 'routing_stats': {'num_waiting_reqs': 3, 'num_running_reqs': 6, 'kv': 0.55, 'num_preempted': 0, 'error': None}, 'queue_len': 0}), score=15.05)], metadata={})
+flow control: parked=True then admitted to srv-2
+endpoints bootstrapped: client1=3 client2=3
+routing distribution (loaded srv-0 / idle srv-1 / mid srv-2): {'srv-1': 12}
+scheduler inflight residual (local): 0
+shared ledger residual: 0  snapshot={'srv-1': 0, 'srv-2': 0}
+LB total_inflight after run: 0
+HOOK COMPAT CHECK: PASS

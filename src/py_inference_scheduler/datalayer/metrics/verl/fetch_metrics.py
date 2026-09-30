@@ -35,6 +35,7 @@ async def fetch_worker_metrics(ep: Endpoint, inflight_store: InflightStore) -> N
             "num_waiting_reqs": stats.get("num_waiting_reqs", 0),
             "num_running_reqs": stats.get("num_running_reqs", 0),
             "kv": stats.get("kv", 0.0),
+            "num_preempted": stats.get("num_preempted", 0),
             "error": stats.get("error", None),
         }
     except Exception:

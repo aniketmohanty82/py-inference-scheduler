@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import random
 import threading
 from typing import Mapping
 
@@ -61,3 +62,19 @@ class RoundRobinScorer(ScorerPlugin):
         selected_name = names[idx]
 
         return {selected_name: 1.0}
+
+
+@register_scorer("jitter")
+class JitterScorer(ScorerPlugin):
+    """Uniform random noise, for breaking exact ties in the weighted sum.
+
+    The profile sorts stably and max_score takes the first element, so when
+    every real scorer ties (four idle engines at rollout start) the same
+    endpoint wins every decision until load differentiates it. Weight this
+    well below one real weight unit so it only ever decides ties.
+    """
+
+    def score(
+        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
+    ) -> dict[str, float]:
+        return {name: random.random() for name in pods}  # noqa: S311

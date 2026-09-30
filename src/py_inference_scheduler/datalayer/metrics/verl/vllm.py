@@ -27,6 +27,7 @@ async def get_vllm_routing_stats(server) -> dict:
         "num_waiting_reqs": 0,
         "num_running_reqs": 0,
         "kv": 0.0,
+        "num_preempted": 0,
         "error": None,
     }
     try:
@@ -41,6 +42,11 @@ async def get_vllm_routing_stats(server) -> dict:
                     waiting = re.search(r'^(?:vllm:|vllm_)num_requests_waiting(?:\{.*?\})?\s+([\d.]+)', text, re.MULTILINE)  # noqa: E501
                     running = re.search(r'^(?:vllm:|vllm_)num_requests_running(?:\{.*?\})?\s+([\d.]+)', text, re.MULTILINE)  # noqa: E501
                     kv_matches = re.findall(r'^(?:vllm:|vllm_)kv_cache_usage_perc(?:\{.*?\})?\s+([\d.]+)', text, re.MULTILINE)  # noqa: E501
+                    # Cumulative counter since engine start, so a run's preemptions
+                    # are max-minus-min across the run, not this reading. max() over
+                    # samples mirrors the kv handling and avoids double-counting a
+                    # multiprocess duplicate of the same series.
+                    preempt_matches = re.findall(r'^(?:vllm:|vllm_)num_preemptions(?:_total)?(?:\{.*?\})?\s+([\d.]+)', text, re.MULTILINE)  # noqa: E501
 
                     if waiting:
                         stats["num_waiting_reqs"] = int(float(waiting.group(1)))
@@ -48,6 +54,8 @@ async def get_vllm_routing_stats(server) -> dict:
                         stats["num_running_reqs"] = int(float(running.group(1)))
                     if kv_matches:
                         stats["kv"] = max(float(m) for m in kv_matches)
+                    if preempt_matches:
+                        stats["num_preempted"] = int(max(float(m) for m in preempt_matches))
                 else:
                     stats["error"] = f"HTTP error {response.status}"
     except Exception as e:  # noqa: BLE001

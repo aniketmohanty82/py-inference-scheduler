@@ -1,0 +1,328 @@
+# RayCluster for the two-node cross-node KV benchmark (ARM=fcstore, NNODES=2).
+# Derived from swe-raycluster.yaml: two GPU workers instead of one, the
+# cross-node profile, and pull-source logging in the connector. Everything
+# else (mooncake env, RDMA claims, sandbox env, image) is identical.
+#
+# One cluster hosts BOTH arms (submitted sequentially via `ray job submit`),
+# which is what makes the pairing honest: same node, same engines' hardware,
+# same sandbox pool. Mooncake wiring is present in the cluster for both arms;
+# the store is only *used* by the arm that passes kv_transfer_config, so the
+# recompute arm is unaffected by its presence.
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: swe-ab2
+spec:
+  rayVersion: "2.56.0"
+  headGroupSpec:
+    rayStartParams:
+      num-cpus: "0"
+      num-gpus: "0"
+      dashboard-host: "0.0.0.0"
+    template:
+      spec:
+        # Keep the head off the sandbox pools: their 100 GB disks sit under
+        # the image prepull's storage pressure (a 6-minute swe14 pull there on
+        # 09-24), and the GPU pool belongs to the engines.
+        nodeSelector:
+          cloud.google.com/gke-nodepool: default-pool
+        serviceAccountName: rllm-sandbox-runner
+        containers:
+        - name: ray-head
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe14
+          imagePullPolicy: Always
+          ports:
+          - containerPort: 6379
+            name: gcs
+          - containerPort: 8265
+            name: dashboard
+          env:
+          - name: PYTHONPATH
+            value: "/opt/py-inference-scheduler"
+          - name: PYTHONHASHSEED
+            value: "0"
+          - name: ROUTER_CONFIG_PATH
+            value: "/opt/py-inference-scheduler/configs/swe-crossnode-fc.yaml"
+          - name: RAY_DEDUP_LOGS
+            value: "0"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          resources:
+            requests:
+              cpu: "3"
+              memory: 16Gi
+            limits:
+              cpu: "3"
+              memory: 16Gi
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+        volumes:
+        - name: ray-tmp
+          emptyDir: {}
+  workerGroupSpecs:
+  - replicas: 2
+    minReplicas: 2
+    maxReplicas: 2
+    groupName: gpu-group
+    rayStartParams:
+      num-gpus: "8"
+    template:
+      spec:
+        serviceAccountName: rllm-sandbox-runner
+        nodeSelector:
+          cloud.google.com/gke-networking-dra-driver: "true"
+        tolerations:
+        - key: cloud.google.com/gke-queued
+          operator: Exists
+          effect: NoSchedule
+        - key: cloud.google.com/gke-spot
+          operator: Exists
+          effect: NoSchedule
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        containers:
+        - name: ray-worker
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe14
+          imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add: ["IPC_LOCK"]
+          env:
+          - name: PYTHONPATH
+            value: "/opt/py-inference-scheduler"
+          # Hash stability across processes - store keys are content hashes.
+          - name: PYTHONHASHSEED
+            value: "0"
+          # A single straggler burning 60s hangs set the rollout wall in
+          # pressure-pair-v2: slowest/tool_calls reached 1,139s against a
+          # 360s engine-busy window, so 35-69% of every rollout was engine
+          # idle. A shell command in a SWE task that runs past 15s is a hang,
+          # not work; capping it keeps the cohort synchronized, which is what
+          # holds the KV pool oversubscribed.
+          - name: SWE_CMD_TIMEOUT_S
+            value: "15"
+          # Upstream-matched regime (pair 3): fatter tool observations
+          # lengthen contexts toward the response cap.
+          - name: SWE_OBS_MAX_CHARS
+            value: "20000"
+          # The only knob still ours on vLLM 0.29: decline an external pull
+          # below this many matched tokens and recompute locally instead
+          # (see src/.../mooncake/rl_pull_policy.py). Read only by the
+          # `store` arm; inert for `stock` and `recompute`.
+          - name: RLS_MIN_PULL_TOKENS
+            value: "1024"
+          # Cross-node proof: the connector prints PULLSRC lines naming the
+          # segment endpoint each pull came from (see rl_pull_policy.py).
+          - name: RLS_LOG_PULL_SOURCE
+            value: "1"
+          # Routing arm (ARM=sched). The profile is baked into the image at this
+          # path; it is inert for every arm that does not install the hook.
+          - name: ROUTER_CONFIG_PATH
+            value: "/opt/py-inference-scheduler/configs/swe-crossnode-fc.yaml"
+          # Ray collapses identical stdout lines across actors; the FLEET and
+          # RLS[pid] lines ARE the routing measurement, so keep every one.
+          - name: RAY_DEDUP_LOGS
+            value: "0"
+          # PROMETHEUS_MULTIPROC_DIR must NOT be set here. All four engines
+          # share this container's env, so one directory makes vLLM 0.29 serve
+          # a multiprocess aggregate on every /metrics port: gauges are
+          # whichever engine wrote last, counters are the fleet sum. The
+          # 2026-09-23 scheduler smoke ran with it set and every engine
+          # reported identical kv/waiting/running, which blinded the load
+          # scorers. Unset, vLLM gives each engine a private registry.
+          # 0 = disabled, and disabled is correct here. The cap existed for a
+          # 34k-token pool where one max-length waiter held 85% of it. At
+          # gmu 0.38 the pool is ~106k and that waiter holds 27%, where the
+          # cap instead serialised fetches and cost most of the tier's value
+          # (43.8% of prompt tokens served externally, against 73.5%
+          # uncapped). Size the pool; do not cap admission.
+          - name: RLS_MAX_INFLIGHT_LOADS
+            value: "0"
+          # Two nodes: the actor's FSDP collectives cross the RoCE fabric.
+          # Plain NCCL hangs at connect on A3 Ultra RoCE (measured 09-24 with
+          # default, GID-3 and TC-52 settings); Google's gIB plugin is the
+          # supported transport. The nccl-rdma-installer DaemonSet puts the
+          # plugin in the node's nvidia lib dir (mounted at /usr/local/nvidia)
+          # and its config under /home/kubernetes/bin/gib, mounted below.
+          - name: NCCL_CONF_FILE
+            value: "/usr/local/gib/scripts/nccl.conf"
+          # The same settings as nccl.conf, set explicitly so no process can
+          # miss them (verl re-exports its own env to every Ray actor).
+          - name: NCCL_NET
+            value: "gIB"
+          # 09-24: with cuMem-based P2P (the NCCL default) every two-node run
+          # wedged at the first optimizer step: one rank's 2-rank sequence-
+          # parallel communicator never finished lazy channel setup "via
+          # P2P/CUMEM", on gIB and on sockets alike, while fresh 2-process
+          # all-reduces on the same GPU pairs passed. Legacy CUDA IPC completes
+          # the step (step 1 in 1,013 s on 2 nodes).
+          - name: NCCL_CUMEM_ENABLE
+            value: "0"
+          - name: NCCL_TUNER_CONFIG_PATH
+            value: "/usr/local/gib/configs"
+          - name: NCCL_IB_GID_INDEX
+            value: "3"
+          - name: NCCL_IB_TC
+            value: "52"
+          - name: NCCL_IB_FIFO_TC
+            value: "84"
+          - name: NCCL_IB_ADAPTIVE_ROUTING
+            value: "1"
+          - name: NCCL_IB_QPS_PER_CONNECTION
+            value: "4"
+          - name: NCCL_PXN_C2C
+            value: "1"
+          - name: NCCL_IB_MERGE_VFS
+            value: "1"
+          - name: NCCL_NCHANNELS_PER_NET_PEER
+            value: "1"
+          - name: NCCL_P2P_NET_CHUNKSIZE
+            value: "262144"
+          - name: NCCL_SOCKET_IFNAME
+            value: "eth0"
+          - name: GLOO_SOCKET_IFNAME
+            value: "eth0"
+          # Diagnostics for the two-node update: which network each rank
+          # picked, and PyTorch's flight recorder dumping per-rank collective
+          # traces to /tmp/nccl_trace_rank_<n> if a collective times out.
+          - name: NCCL_DEBUG
+            value: "INFO"
+          - name: NCCL_DEBUG_SUBSYS
+            value: "INIT,NET,ENV"
+          - name: TORCH_NCCL_TRACE_BUFFER_SIZE
+            value: "2000"
+          - name: TORCH_NCCL_DUMP_ON_TIMEOUT
+            value: "1"
+          - name: TORCH_NCCL_DEBUG_INFO_TEMP_FILE
+            value: "/tmp/nccl_trace_rank_"
+          - name: MOONCAKE_CONFIG_PATH
+            value: "/etc/mooncake/mooncake_config.json"
+          - name: MC_FORCE_HCA
+            value: "1"
+          - name: WITH_NVIDIA_PEERMEM
+            value: "0"
+          # Fragmentation remedy; expandable_segments is BANNED here - it is
+          # IPC-incompatible with the checkpoint-engine weight sync.
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: "max_split_size_mb:512"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          - name: HUGGING_FACE_HUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: hf_api_token
+          resources:
+            requests:
+              cpu: "100"
+              memory: 2200Gi
+              nvidia.com/gpu: "8"
+            limits:
+              cpu: "100"
+              memory: 2200Gi
+              nvidia.com/gpu: "8"
+            claims:
+            - name: rdma
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+          - mountPath: /dev/shm
+            name: dshm
+          - mountPath: /etc/mooncake
+            name: mooncake-vol
+          - mountPath: /usr/local/gib
+            name: gib
+            readOnly: true
+        # Archival counter scrape: engines die with the job, so
+        # prompt_tokens_by_source must be captured live. Output goes to this
+        # container's log, hence to Cloud Logging - the only sink that has
+        # survived the GPU node dying at store teardown.
+        - name: metrics-scraper
+          image: python:3.11-slim
+          command: ["python", "-u", "-c"]
+          env:
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          args:
+            - |
+              import os, time, urllib.request
+              # verl's run_uvicorn binds each vLLM server to the POD IP on an
+              # ephemeral port, never to loopback - probing 127.0.0.1 is why
+              # this sidecar recorded nothing for the first two pairs. Pod
+              # containers share a netns, so /proc/net/tcp here does list the
+              # engines' listeners.
+              HOST = os.environ["POD_IP"]
+
+              def listening_ports():
+                  ports = set()
+                  for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+                      try:
+                          lines = open(path).read().splitlines()[1:]
+                      except OSError:
+                          continue
+                      for ln in lines:
+                          f = ln.split()
+                          if len(f) > 3 and f[3] == "0A":  # LISTEN
+                              ports.add(int(f[1].rsplit(":", 1)[1], 16))
+                  return sorted(p for p in ports if 1024 < p < 65535)
+
+              known: set[int] = set()
+              while True:
+                  for port in listening_ports():
+                      try:
+                          with urllib.request.urlopen(
+                              f"http://{HOST}:{port}/metrics", timeout=4
+                          ) as r:
+                              text = r.read().decode()
+                      except Exception:
+                          continue
+                      if "vllm:" not in text:
+                          continue
+                      if port not in known:
+                          known.add(port)
+                          print("ENGINE", port, flush=True)
+                      print("TS", int(time.time()), "PORT", port, flush=True)
+                      for line in text.splitlines():
+                          if not line.startswith("#"):
+                              print("M", port, line, flush=True)
+                  time.sleep(30)
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-tmp
+        resourceClaims:
+        - name: rdma
+          resourceClaimTemplateName: mooncake-rdma-8
+        volumes:
+        - name: ray-tmp
+          emptyDir: {}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            # vLLM's native CPU KV offload (kv_offloading_size) keeps its buffer
+            # in /dev/shm, shared by the TP workers: 128 GiB per engine, four
+            # engines per pod, plus Ray's object store. 128Gi failed at engine
+            # start with "Insufficient space in /dev/shm" on 09-24.
+            sizeLimit: 700Gi
+        - name: mooncake-vol
+          configMap:
+            name: mooncake-config
+        # gIB NCCL plugin config + tuner tables, installed on the node by the
+        # nccl-rdma-installer DaemonSet (kube-system).
+        - name: gib
+          hostPath:
+            path: /home/kubernetes/bin/gib
+            type: Directory

@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 # Store-vs-recompute A/B on verl's native SWE agent loop.
 #
-# ARM=recompute -> no KV offload (baseline)
+# ARM=recompute -> no KV offload (baseline): verl's own sticky/least-inflight router
 # ARM=stock     -> upstream MooncakeStoreConnector, what verl's docs prescribe
 # ARM=store     -> ours: upstream + the pull-admission policy
+# ARM=sched     -> no KV offload, routing by py-inference-scheduler (the hook)
+#                  under ROUTER_CONFIG_PATH; differs from recompute by routing ALONE
+# ARM=fcstore   -> our store PLUS the hook: the cross-node KV benchmark
+# SAVE_DECODE_CACHE=false turns off the store arms' per-step decode-KV saves
+#                   (upstream's save_decode_cache), to price that path on its own.
+# ARM=cpuoffload -> vLLM's own CPU KV offload (kv_offloading_size GiB per engine,
+#                   native backend), verl's router, no Mooncake: a per-node tier
+#                   that cannot serve another node. CPU_OFFLOAD_GIB sets the size.
+#                  (NNODES=2). Routing + flow control from ROUTER_CONFIG_PATH.
 #
 # The arms differ by EXACTLY the kv_transfer_config block below (plus the
 # experiment name); everything else is shared, which is the invariant the
@@ -17,9 +26,10 @@
 # page remapping corrupts the engine under the connector's one-time pinned
 # RDMA registration - see benchmark-results/verl-swe-ab/entropy-diagnosis.
 #
-# Routing is held constant: the scheduler hook is deliberately NOT installed
-# in either arm, so this measures KV offload alone and avoids PR #62's
-# "verl 0.8.x untested" hook caveat.
+# Routing is held constant across the three KV arms: the scheduler hook is
+# NOT installed in recompute/stock/store, so those measure KV offload alone.
+# ARM=sched is the one arm that installs it; against recompute it measures
+# routing alone (same no-offload engines, same everything else).
 #
 # flash-attn is COMPILED FROM SOURCE in the swe13 image (no wheel exists for
 # torch 2.13/cu130), so the actor runs the same configuration as every earlier
@@ -38,7 +48,7 @@
 # vLLM upgrade we are actually measuring.
 set -euo pipefail
 
-ARM=${ARM:?set ARM=store|stock|recompute}
+ARM=${ARM:?set ARM=store|stock|recompute|sched|fcstore|cpuoffload}
 STEPS=${STEPS:-12}
 SWE_DATA_DIR=${SWE_DATA_DIR:-/home/ray/data/swe}
 MODEL=${MODEL:-Qwen/Qwen2.5-7B-Instruct}
@@ -47,6 +57,9 @@ MODEL=${MODEL:-Qwen/Qwen2.5-7B-Instruct}
 GMU=${GMU:-0.30}
 BATCH=${BATCH:-16}
 GROUP_N=${GROUP_N:-4}
+# Nodes in the Ray cluster the trainer may use; 8 GPUs each. 2 = the
+# cross-node KV benchmark (8 engines at tp=2 over two a3-ultra nodes).
+NNODES=${NNODES:-1}
 
 # Both offload arms enable save_decode_cache, upstream's own decode-KV knob,
 # so arm store differs from arm stock by the pull-admission policy ALONE -
@@ -55,18 +68,38 @@ STORE_ARGS=()
 case "$ARM" in
   stock)
     STORE_ARGS=(
-      "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config={kv_connector: MooncakeStoreConnector, kv_role: kv_both, kv_connector_extra_config: {save_decode_cache: true}}"
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config={kv_connector: MooncakeStoreConnector, kv_role: kv_both, kv_connector_extra_config: {save_decode_cache: ${SAVE_DECODE_CACHE:-true}}}"
       "+actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor"
     )
     ;;
   store)
     STORE_ARGS=(
-      "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config={kv_connector: RLPullPolicyConnector, kv_connector_module_path: py_inference_scheduler.datalayer.connectors.mooncake.rl_pull_policy, kv_role: kv_both, kv_connector_extra_config: {save_decode_cache: true}}"
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config={kv_connector: RLPullPolicyConnector, kv_connector_module_path: py_inference_scheduler.datalayer.connectors.mooncake.rl_pull_policy, kv_role: kv_both, kv_connector_extra_config: {save_decode_cache: ${SAVE_DECODE_CACHE:-true}}}"
       "+actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor"
     )
     ;;
   recompute) ;;
-  *) echo "unknown ARM=$ARM (want store|stock|recompute)" >&2; exit 2 ;;
+  cpuoffload)
+    STORE_ARGS=(
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_offloading_size=${CPU_OFFLOAD_GIB:-128}"
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_offloading_backend=native"
+    )
+    ;;
+  sched)
+    : "${ROUTER_CONFIG_PATH:?ARM=sched needs ROUTER_CONFIG_PATH in the pod env}"
+    STORE_ARGS=(
+      "+actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager"
+    )
+    ;;
+  fcstore)
+    : "${ROUTER_CONFIG_PATH:?ARM=fcstore needs ROUTER_CONFIG_PATH in the pod env}"
+    STORE_ARGS=(
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config={kv_connector: RLPullPolicyConnector, kv_connector_module_path: py_inference_scheduler.datalayer.connectors.mooncake.rl_pull_policy, kv_role: kv_both, kv_connector_extra_config: {save_decode_cache: ${SAVE_DECODE_CACHE:-true}}}"
+      "+actor_rollout_ref.rollout.engine_kwargs.vllm.prefix_caching_hash_algo=sha256_cbor"
+      "+actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager"
+    )
+    ;;
+  *) echo "unknown ARM=$ARM (want store|stock|recompute|sched|fcstore|cpuoffload)" >&2; exit 2 ;;
 esac
 
 set -x
@@ -113,7 +146,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.project_name='swe-store-ab' \
     trainer.experiment_name="swe_${ARM}" \
     trainer.n_gpus_per_node=8 \
-    trainer.nnodes=1 \
+    trainer.nnodes="$NNODES" \
     trainer.save_freq=-1 \
     trainer.test_freq=-1 \
     trainer.val_before_train=False \

@@ -1,0 +1,70 @@
+# Router profile for the verl SWE agent workload (long-context, multi-turn,
+# 512 trajectories/rollout, 4 engines at tp=2).
+#
+# Designed from the 12-step verl-alone arm's per-engine scrape
+# (benchmark-results/verl-swe-ab/twelve-step-three-arm/): running-count
+# spread across engines was 2.1x the mean, and in 14 of 24 busy snapshots
+# one engine sat idle (kv 0.00-0.19) while others held 15-42 waiting at kv
+# 0.81-0.99. verl's balancer only sees its own in-flight count and never
+# re-pins off a queue, so those idle engines stayed idle. (That scrape reads
+# the four engines minutes apart; the FLEET lines this profile's hook prints
+# read them together and are the instrument that settles it.)
+#
+# And from the 2-step scheduler smoke (2026-09-23): routing every turn by
+# load alone cut the local prefix-cache hit ratio to 0.116, against 0.196
+# for verl's sticky balancer at the same point, because each turn's context
+# was re-prefilled on whichever engine was lightest.
+profile_handler:
+  type: single_profile
+profiles:
+  backpressure:
+    filters:
+      # Candidacy, not scoring: a saturated engine leaves the ballot, and that
+      # is the ONLY way a trajectory leaves its holder (see request_affinity).
+      # waiting 8, not the shipped 16: a 16 threshold would have removed the
+      # loaded engine in only 4 of the 14 idle-while-queued snapshots; 8 fires
+      # in all 14. kv 0.98, not the baseline's p75 of 0.95: with affinity in
+      # the profile a kv-only trip moves a trajectory (a full-context prefill)
+      # off an engine that has no queue, and engines straddling the threshold
+      # would trade trajectories back and forth. A queue is the symptom that
+      # pays for a move; a pool this full is about to make one. The filter
+      # never empties the ballot (falls through when every engine is over).
+      - type: saturation
+        kv_threshold: 0.98
+        waiting_threshold: 8
+    scorers:
+      # Stay where the previous turn ran: that engine holds the context's KV
+      # and any other must prefill it from scratch. Weight above the sum of
+      # the load scorers (7.05) so the holder wins whenever it is on the
+      # ballot; a first turn casts no vote and is placed by load. verl's
+      # balancer pins request_id -> engine for life; this differs only in that
+      # the saturation filter can move a trajectory off a queued engine.
+      - type: request_affinity
+        weight: 8.0
+      # The observed symptom, weighted highest among the load scorers.
+      - type: waiting_queue
+        weight: 4.0
+      # The leading indicator: saturation precedes queueing, and 30% of
+      # baseline per-engine samples sat at kv >= 0.95.
+      - type: kv_cache
+        weight: 2.0
+      # Fleet-wide in-flight dispatches from the shared ledger; smooths the
+      # burst between metric refreshes. Meaningless without the shared ledger
+      # (per-worker counts see 1/8th of dispatches).
+      - type: least_queue
+        weight: 1.0
+      # Neither prefix_cache nor sticky_session. prefix_cache hashes the
+      # request body, so at turn 1 all 512 trajectories match the shared
+      # system prompt on whichever engine saw it first and pile onto it, and
+      # it hashes up to 16 KiB per decision under the scheduling lock.
+      # sticky_session is a rendezvous hash of a header (verl sends none) to a
+      # fixed home engine, which after one migration is no longer where the
+      # KV is. request_affinity is the exact form of what both approximate.
+      # Tie-break. The profile sorts stably and the picker takes the first
+      # element, so at rollout start (all engines tied) engine 0 would win
+      # every decision until load differentiates it. 0.05 of a weight unit
+      # can only ever decide exact ties.
+      - type: jitter
+        weight: 0.05
+    picker:
+      type: max_score

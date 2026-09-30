@@ -1,0 +1,2 @@
+gke-rls-ab-west-rdma-gpu-pool-21f406e9-vdkk 10.96.4.7
+gke-rls-ab-west-rdma-gpu-pool-21f406e9-6qtn 10.96.5.17

@@ -21,7 +21,7 @@ spec:
         serviceAccountName: rllm-sandbox-runner
         containers:
         - name: ray-head
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe13
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe14
           imagePullPolicy: Always
           ports:
           - containerPort: 6379
@@ -32,6 +32,10 @@ spec:
           - name: PYTHONPATH
             value: "/opt/py-inference-scheduler"
           - name: PYTHONHASHSEED
+            value: "0"
+          - name: ROUTER_CONFIG_PATH
+            value: "/opt/py-inference-scheduler/configs/swe-backpressure.yaml"
+          - name: RAY_DEDUP_LOGS
             value: "0"
           - name: HF_TOKEN
             valueFrom:
@@ -81,7 +85,7 @@ spec:
           effect: NoSchedule
         containers:
         - name: ray-worker
-          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe13
+          image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe14
           imagePullPolicy: Always
           securityContext:
             capabilities:
@@ -110,6 +114,21 @@ spec:
           # `store` arm; inert for `stock` and `recompute`.
           - name: RLS_MIN_PULL_TOKENS
             value: "1024"
+          # Routing arm (ARM=sched). The profile is baked into the image at this
+          # path; it is inert for every arm that does not install the hook.
+          - name: ROUTER_CONFIG_PATH
+            value: "/opt/py-inference-scheduler/configs/swe-backpressure.yaml"
+          # Ray collapses identical stdout lines across actors; the FLEET and
+          # RLS[pid] lines ARE the routing measurement, so keep every one.
+          - name: RAY_DEDUP_LOGS
+            value: "0"
+          # PROMETHEUS_MULTIPROC_DIR must NOT be set here. All four engines
+          # share this container's env, so one directory makes vLLM 0.29 serve
+          # a multiprocess aggregate on every /metrics port: gauges are
+          # whichever engine wrote last, counters are the fleet sum. The
+          # 2026-09-23 scheduler smoke ran with it set and every engine
+          # reported identical kv/waiting/running, which blinded the load
+          # scorers. Unset, vLLM gives each engine a private registry.
           # 0 = disabled, and disabled is correct here. The cap existed for a
           # 34k-token pool where one max-length waiter held 85% of it. At
           # gmu 0.38 the pool is ~106k and that waiter holds 27%, where the

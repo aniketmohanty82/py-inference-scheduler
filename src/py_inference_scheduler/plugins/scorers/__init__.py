@@ -17,6 +17,7 @@
 from . import backpressure as backpressure
 from . import generic as generic
 from . import prefix_plugin as prefix_plugin
+from . import request_affinity as request_affinity
 from . import sticky_session as sticky_session
 from .backpressure import (
     KVCacheScorer as KVCacheScorer,
@@ -36,4 +37,5 @@ from .backpressure import (
 from .generic import ConstantScorer as ConstantScorer
 from .generic import RoundRobinScorer as RoundRobinScorer
 from .prefix_plugin import PrefixCacheScorer as PrefixCacheScorer
+from .request_affinity import RequestAffinityScorer as RequestAffinityScorer
 from .sticky_session import StickySessionScorer as StickySessionScorer

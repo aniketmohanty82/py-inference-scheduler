@@ -57,11 +57,11 @@ profiles:
       type: <picker_type_name>
       # (Picker-specific parameters)
       
-    # (Optional) Flow control plugins to budget resources and prevent saturation.
+    # (Optional) One flow-control plugin to gate admission before routing.
     # Omit if you do not want flow-control/preemption gating.
-    flow_controls:
-      - type: <flow_control_type_name>
-        # (Flow-control-specific parameters)
+    flow_control:
+      type: <flow_control_type_name>
+      # (Flow-control-specific parameters)
 ```
 
 ---
@@ -96,8 +96,12 @@ Scorers assign scores to replicas. Multiple scorers are normalized and weighted.
     *   `lru_capacity_per_server` (int, default: `31250`): Cache capacity per replica.
     *   `min_match_ratio` (float, default: `0.0`): Minimum fraction of prompt blocks the best replica must have cached for prefix scores to be used; below it, the request is treated as novel and routed to the least-loaded replicas. The default of `0` disables the threshold, so the least-loaded fallback only fires when no replica has any matching block.
 
+*   **`request_affinity`**: Scores the replica that served the previous request with the same `request_id` at `1.0` and every other replica at `0.0`; a `request_id` with no history scores every replica `0.0`, which the profile treats as a tie. Built for multi-turn RL rollouts, where every turn resubmits the whole context and the KV for it lives on the engine that ran the last turn. Unlike a sticky pin, a filter can still drop the holder, and the next turn then follows the replica that actually served this one. Give it a weight above the sum of the load scorers so the holder wins whenever it is a candidate.
+    *   `capacity` (int, default: `20000`): Number of request ids remembered; the least recently routed is evicted first.
+
 #### C. Generic Scorers (for benchmarking against current RL sampling routing)
 *   **`round_robin`**: Cycles through replicas sequentially.
+*   **`jitter`**: Scores every replica with a uniform random value in `[0, 1)`. At a small weight it only decides exact ties, which otherwise always go to the first replica in candidate order.
 *   **`constant`**: Assigns a static score to all replicas.
     *   `value` (float, required): The score to assign.
 
@@ -109,6 +113,9 @@ Pickers choose the final replica from the scored list.
 
 ### Flow Control (Gatekeeping)
 Flow control plugins prevent replica overload and mid-decoding preemptions by controlling the flow to affected replicas.
+*   **`simple_backpressure`**: Admits a request only to replicas below both saturation thresholds, read from live engine metrics. When every replica is over, the integration's flow-control manager parks the request and re-admits it, one at a time at an AIMD-paced rate, as fresh metrics show capacity. Stateless: completions do not drive re-admission, metrics do. Validated on a 32B agentic RL rollout at `kv_threshold: 0.90`, `waiting_threshold: 4` (preemptions -34 to -40% per million tokens, engine queue wait -74%).
+    *   `kv_threshold` (float, default: `0.95`): KV-cache utilization at or above which a replica is inadmissible.
+    *   `waiting_threshold` (int, default: `6`): waiting-request count at or above which a replica is inadmissible.
 *   **`kv_saturation`**: Estimates the KV cache impact of incoming requests. If routing a request to a replica would exceed its physical KV cache capacity (causing vLLM to preempt/drop other active requests), it blocks admission.
     *   `enable_drip` (bool, default: `false`): Enables slow "drip" admission when all replicas are saturated, rather than blocking completely.
     *   `drip_threshold_kv` (float, default: `0.1`): Max physical KV utilization for drip eligibility.

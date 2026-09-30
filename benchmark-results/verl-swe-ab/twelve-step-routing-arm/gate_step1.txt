@@ -1,0 +1,12 @@
+  PASS  cores initialised with shared ledger: 8 worker pid(s)
+  PASS  endpoint view 4/4 in every worker: 8/8 pids
+  PASS  FLEET snapshots: 650
+  PASS  scorer inputs populated: kv max 1.00, running max 65, waiting max 81
+  PASS  per-engine attribution: identical (waiting,running) on all engines in 0/593 busy lines (0%)
+  PASS  shared ledger: median q_sum/(running+waiting) 1.02 over 593 busy lines from 8 pids
+  PASS  decisions reached 4/4 engines: {'10.112.20.12:45697': 3248, '10.112.20.12:37879': 2823, '10.112.20.12:41463': 2966, '10.112.20.12:34633': 2874}
+  PASS  top engine share 27% <= 45%
+  PASS  affinity: kept 10202 moved 398 fresh 896 -> kept share 96% >= 60% (8 pids)
+  PASS  fallbacks to verl LB: 0
+
+SCHED GATE: PASS

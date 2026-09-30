@@ -68,7 +68,13 @@ class Scheduler:
         return bool(self.get_flow_control_plugins())
 
     def get_flow_control_plugins(self) -> list[FlowControlPlugin]:
-        """Returns all flow control plugins from all profiles."""
+        """Returns all flow control plugins from all profiles.
+
+        Loads the config if it has not been loaded yet: callers such as the
+        FlowControlManager ask before the first schedule() call, and an empty
+        answer there would silently disable admission for the first request.
+        """
+        self._maybe_reload_config()
         all_plugins = []
         if hasattr(self, "profiles") and self.profiles:
             for profile in self.profiles.values():
@@ -91,9 +97,7 @@ class Scheduler:
             self.profiles = config.profiles
             self.last_mtime = mtime
 
-    def schedule(
-        self, request: LLMRequest, candidates: Sequence[Endpoint]
-    ) -> SchedulingResult:
+    def schedule(self, request: LLMRequest, candidates: Sequence[Endpoint]) -> SchedulingResult:
         self._maybe_reload_config()
         if not candidates:
             raise ValueError("no scheduling candidates provided")
@@ -102,14 +106,10 @@ class Scheduler:
         profile_results: dict[str, ProfileRunResult | None] = {}
 
         # ask profile handler which profiles to run
-        selected = self.profile_handler.pick(
-            cycle_state, request, self.profiles, profile_results
-        )
+        selected = self.profile_handler.pick(cycle_state, request, self.profiles, profile_results)
         assert selected is not None  # noqa: S101
 
-        def run_profile(
-            profile_name: str, profile: SchedulerProfile
-        ) -> ProfileRunResult | None:
+        def run_profile(profile_name: str, profile: SchedulerProfile) -> ProfileRunResult | None:
             try:
                 return profile.run(request, cycle_state, candidates)
             except Exception as e:  # noqa: BLE001
@@ -120,9 +120,7 @@ class Scheduler:
         for name, profile in selected.items():
             profile_results[name] = run_profile(name, profile)
 
-        primary = self.profile_handler.process_results(
-            cycle_state, request, profile_results
-        )
+        primary = self.profile_handler.process_results(cycle_state, request, profile_results)
 
         # Build SchedulingResult
         result = SchedulingResult(
@@ -142,15 +140,11 @@ class Scheduler:
                     w.scorer.pre_request(cycle_state, request, selected_eps[0].endpoint)  # type: ignore[attr-defined]
         return result
 
-    def run(
-        self, request: LLMRequest, candidates: Sequence[Endpoint]
-    ) -> Sequence[ScoredEndpoint]:
+    def run(self, request: LLMRequest, candidates: Sequence[Endpoint]) -> Sequence[ScoredEndpoint]:
         scheduler_output = self.schedule(request, candidates)
         profile_name = scheduler_output.primary_profile_name
         profile_results = (
-            scheduler_output.profile_results.get(profile_name)
-            if profile_name is not None
-            else None
+            scheduler_output.profile_results.get(profile_name) if profile_name is not None else None
         )
 
         print(f"Profile {profile_name} results: {profile_results}")

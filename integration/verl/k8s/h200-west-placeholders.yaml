@@ -1,0 +1,58 @@
+# Two placeholder pods per H200 pool on rls-ab-west (us-west1-c), so the
+# cluster autoscaler keeps asking each pool for two a3-ultragpu-8g nodes.
+# Same shape as the swe-ab worker; pause containers. Delete the Deployment
+# whose pool filled and land the real RayCluster worker within the
+# scale-down delay.
+#
+#   kubectl --context gke_aniket-gke-dev_us-west1-c_rls-ab-west apply -f integration/verl/k8s/h200-west-placeholders.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: h200-spot-placeholder
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: h200-spot-placeholder}
+  template:
+    metadata:
+      labels: {app: h200-spot-placeholder}
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: rdma-gpu-pool
+      tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      - {key: cloud.google.com/gke-spot, operator: Exists, effect: NoSchedule}
+      - {key: cloud.google.com/gke-queued, operator: Exists, effect: NoSchedule}
+      containers:
+      - name: hold
+        image: registry.k8s.io/pause:3.9
+        resources:
+          requests: {cpu: "100", memory: 2200Gi, nvidia.com/gpu: "8"}
+          limits: {cpu: "100", memory: 2200Gi, nvidia.com/gpu: "8"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: h200-flex-placeholder
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: h200-flex-placeholder}
+  template:
+    metadata:
+      labels: {app: h200-flex-placeholder}
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: rdma-gpu-flex
+      tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      - {key: cloud.google.com/gke-spot, operator: Exists, effect: NoSchedule}
+      - {key: cloud.google.com/gke-queued, operator: Exists, effect: NoSchedule}
+      containers:
+      - name: hold
+        image: registry.k8s.io/pause:3.9
+        resources:
+          requests: {cpu: "100", memory: 2200Gi, nvidia.com/gpu: "8"}
+          limits: {cpu: "100", memory: 2200Gi, nvidia.com/gpu: "8"}

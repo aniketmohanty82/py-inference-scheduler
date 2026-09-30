@@ -1,0 +1,11 @@
+[19:23:23] swe-ab2-head-xvf59: mirror=0 bump=3 effwait=0
+[19:23:25] swe-ab2-gpu-group-worker-knk6d: mirror=0 bump=3 effwait=0
+[19:23:28] swe-ab2-gpu-group-worker-grgkr: mirror=0 bump=3 effwait=0
+[19:23:28] launching control 1: old metrics path (TAG_SUFFIX=_oldpath_ctrl)
+[20:15:52] control 1 done: moves=2777 cross=1551 parks=5003
+[20:16:12] launching control 2: verl alone (ARM=recompute, TAG_SUFFIX=_ctrl)
+[20:59:49] control 2 done
+[20:59:51] swe-ab2-head-xvf59: mirror=2 bump=3 effwait=1
+[20:59:53] swe-ab2-gpu-group-worker-knk6d: mirror=2 bump=3 effwait=1
+[20:59:55] swe-ab2-gpu-group-worker-grgkr: mirror=2 bump=3 effwait=1
+[20:59:55] poller files restored on the pods

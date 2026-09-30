@@ -17,6 +17,7 @@
 # Re-export plugins from sub-packages to maintain backward compatibility
 from .filters import SaturationFilter as SaturationFilter
 from .flow_control import KVSaturationPlugin as KVSaturationPlugin
+from .flow_control import SimpleBackpressurePlugin as SimpleBackpressurePlugin
 from .handlers import SimpleFilter as SimpleFilter
 from .handlers import SingleProfileHandler as SingleProfileHandler
 from .pickers import MaxScorePicker as MaxScorePicker
@@ -26,6 +27,7 @@ from .scorers import KVCacheScorer as KVCacheScorer
 from .scorers import LeastQueueScorer as LeastQueueScorer
 from .scorers import PrefixCacheScorer as PrefixCacheScorer
 from .scorers import QueueLengthScorer as QueueLengthScorer
+from .scorers import RequestAffinityScorer as RequestAffinityScorer
 from .scorers import RoundRobinScorer as RoundRobinScorer
 from .scorers import RunningQueueScorer as RunningQueueScorer
 from .scorers import StickySessionScorer as StickySessionScorer
