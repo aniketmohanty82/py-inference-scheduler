@@ -26,11 +26,24 @@ def validate_saturation_thresholds(kv_threshold: float, waiting_threshold: int) 
 
 
 def endpoint_load(ep: Endpoint) -> tuple[float, int]:
-    """KV utilization and waiting-request count; missing stats read as unloaded."""
+    """KV utilization and effective waiting count; missing stats read as unloaded.
+
+    Waiting is the larger of the engine's reported queue and the router's own
+    in-flight count beyond the engine's running requests, so dispatches the
+    engine has not reported yet (in transit, or admitted since the last metrics
+    poll) count against it at once and a burst of admissions between polls
+    cannot herd onto one replica.
+    """
     stats = ep.attributes.get("routing_stats", {})
     if not isinstance(stats, dict):
         stats = {}
-    return float(stats.get("kv", 0.0)), int(stats.get("num_waiting_reqs", 0))
+    try:
+        inflight = int(ep.attributes.get("queue_len", 0))  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        inflight = 0
+    waiting = int(stats.get("num_waiting_reqs", 0))
+    running = int(stats.get("num_running_reqs", 0))
+    return float(stats.get("kv", 0.0)), max(waiting, inflight - running)
 
 
 def saturation_reason(

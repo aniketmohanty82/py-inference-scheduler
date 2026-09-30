@@ -63,11 +63,9 @@ except ImportError:  # modern layout (verl v0.9.x)
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from integration.verl.shared_inflight import SharedInflightLedger
+from integration.verl.shared_inflight import METRICS_INTERVAL_MS, SharedInflightLedger
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.core.flow_control import FlowControlClosedError, FlowControlManager
-from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
-from py_inference_scheduler.datalayer.metrics.verl.fetch_metrics import fetch_worker_metrics
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 logger = logging.getLogger(__name__)
@@ -78,6 +76,13 @@ logger = logging.getLogger(__name__)
 _FLEET_LOG_INTERVAL_S = 15.0
 # request ids remembered for the AFFINITY line; a rollout has 512.
 _CONTINUITY_CAPACITY = 20000
+# Mirror reads that may race the poller's first tick, and the snapshot age, in
+# poll intervals, past which a worker reports that it is routing on stale metrics.
+_WARMUP_APPLIES = 2
+_STALE_INTERVALS = 5
+# How long the first decision waits for the fleet poller's first snapshot before
+# scoring on empty stats (every engine would look idle).
+_FIRST_POLL_WAIT_S = 2.0
 logger.info("py-inference-scheduler verl hook: %s layout detected", _VERL_LAYOUT)
 
 # Must apply at module level to patch classes before use across distributed
@@ -97,7 +102,10 @@ class _SchedulerCore:
 
     def __init__(self) -> None:
         self.scheduler = Scheduler()
-        self.inflight_store = InflightStore()
+        self._mirror: asyncio.Task[None] | None = None
+        self._applies = 0
+        self._fleet_staleness = float("inf")
+        self._last_stale_warn = 0.0
         self.shared_inflight = SharedInflightLedger()
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
@@ -130,27 +138,48 @@ class _SchedulerCore:
         )
 
     async def _refresh_endpoints(self) -> Sequence[Endpoint]:
-        """Scrape every engine and republish fleet-wide inflight counts.
+        """The fleet view the mirror keeps current; no scrape on this path.
 
-        Takes the lock itself: it is also the flow-control watcher's poll
-        source, which runs while a scheduling task is parked in admit().
+        Also the flow-control watcher's poll source while a task is parked.
         """
+        if self._mirror is None or self._mirror.done():
+            self._mirror = asyncio.create_task(self._mirror_fleet())
+            await self._apply_fleet(wait_for_first_poll=True)
+        return self.endpoints
+
+    async def _mirror_fleet(self) -> None:
+        while True:
+            await asyncio.sleep(METRICS_INTERVAL_MS / 1000.0)
+            try:
+                await self._apply_fleet()
+            except Exception as exc:  # noqa: BLE001 - keep mirroring; the next tick may succeed
+                self._warn_stale(f"fleet read failed: {exc!r}")
+
+    async def _apply_fleet(self, *, wait_for_first_poll: bool = False) -> None:
         async with self.lock:
-            await asyncio.gather(
-                *(fetch_worker_metrics(ep, self.inflight_store) for ep in self.endpoints)
-            )
-            shared = await self.shared_inflight.snapshot()
+            fleet = await self.shared_inflight.fleet()
+            deadline = time.monotonic() + _FIRST_POLL_WAIT_S
+            while (
+                wait_for_first_poll
+                and fleet["staleness"] == float("inf")
+                and time.monotonic() < deadline
+            ):
+                await asyncio.sleep(0.02)
+                fleet = await self.shared_inflight.fleet()
+            stats: dict[str, dict[str, object]] = fleet["stats"]  # type: ignore[assignment]
+            inflight: dict[str, int] = fleet["inflight"]  # type: ignore[assignment]
             for ep in self.endpoints:
-                # Fleet-wide counts, not this worker's slice: verl fans the
-                # batch over several AgentLoopWorkers, each holding its own
-                # core, so the local store understates engine load N-fold.
-                ep.attributes["queue_len"] = (
-                    shared.get(ep.name, 0)
-                    if shared is not None
-                    else self.inflight_store.get(ep.name)
-                )
-            self._log_fleet()
-            return self.endpoints
+                ep.attributes["routing_stats"] = stats.get(ep.name, {})
+                ep.attributes["queue_len"] = inflight.get(ep.name, 0)
+        self._fleet_staleness = float(fleet["staleness"])  # type: ignore[arg-type]
+        self._applies += 1
+        self._log_fleet()
+
+    def _warn_stale(self, message: str) -> None:
+        now = time.monotonic()
+        if now - self._last_stale_warn > _FLEET_LOG_INTERVAL_S:
+            self._last_stale_warn = now
+            print(f"RLS[{os.getpid()}] {message}")
 
     def _log_fleet(self) -> None:
         """Periodic snapshot of EVERY engine, the per-engine balance instrument.
@@ -181,16 +210,20 @@ class _SchedulerCore:
         print(f"AFFINITY[{os.getpid()}] kept={a['kept']} moved={a['moved']} fresh={a['fresh']}")
 
     async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
-        """Refresh metrics, gate, and pick an endpoint; None means verl's LB.
+        """Gate and pick an endpoint from the mirrored fleet view; None means verl's LB.
 
-        Metric refresh is part of the scheduling task itself: verl composes
-        the whole batch before any task runs, so an independent poller task
-        would never be interleaved by the FIFO event loop. Parking happens
-        OUTSIDE the lock: the watcher refreshes through the same lock, and
-        yielding here is what lets it run at all.
+        Parking happens OUTSIDE the lock so the mirror and the watcher keep
+        running while a task waits.
         """
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         candidates: Sequence[Endpoint] = await self._refresh_endpoints()
+        # Staleness only matters when a decision uses the snapshot: an old poll
+        # during the weight update, with nothing to route, is not worth a line.
+        if (
+            self._applies > _WARMUP_APPLIES
+            and self._fleet_staleness > _STALE_INTERVALS * METRICS_INTERVAL_MS / 1000.0
+        ):
+            self._warn_stale(f"routing on stale metrics: snapshot {self._fleet_staleness:.2f}s old")
         if candidates and self.flow_control.has_plugins():
             try:
                 candidates = await self.flow_control.admit(request, candidates)
@@ -202,6 +235,13 @@ class _SchedulerCore:
             # Admission was gated; placement stays with verl's balancer.
             return None
         async with self.lock:
+            # Exact fleet counts for this decision, read under the lock so no
+            # dispatch counted by another task is overwritten in between (the
+            # mirror's copy is up to one interval old, and a parked request may
+            # have waited far longer).
+            counts = await self.shared_inflight.counts()
+            for ep in self.endpoints:
+                ep.attributes["queue_len"] = counts.get(ep.name, 0)
             selected = self.scheduler.run(request, candidates=candidates)
             if not selected:
                 return None
@@ -229,22 +269,20 @@ class _SchedulerCore:
             self._last_endpoint.popitem(last=False)
 
     def note_dispatch(self, endpoint_name: str) -> None:
-        """Count a dispatch in both ledgers and on the endpoint itself."""
-        self.inflight_store.increment(endpoint_name)
+        """Count a dispatch in the fleet ledger and on the endpoint itself."""
         self.shared_inflight.increment(endpoint_name)
         self._bump_queue_len(endpoint_name, +1)
 
     def _bump_queue_len(self, endpoint_name: str, delta: int) -> None:
-        # Only the next refresh rewrites queue_len, and a burst's decisions all
-        # score one snapshot: without counting here, the engine it ranks lowest
-        # takes the whole batch (118 vs 34 first turns per engine, 09-26).
+        # The mirror rewrites queue_len once per interval; without counting
+        # here, a burst's decisions all score one snapshot and the engine it
+        # ranks lowest takes the whole batch (118 vs 34 first turns, 09-26).
         for ep in self.endpoints:
             if ep.name == endpoint_name:
                 ep.attributes["queue_len"] = max(0, int(ep.attributes.get("queue_len", 0)) + delta)
                 return
 
     def release(self, server_id: str, request_id: str | None = None) -> None:
-        self.inflight_store.decrement(server_id)
         self.shared_inflight.decrement(server_id)
         self._bump_queue_len(server_id, -1)
         self.flow_control.release(LLMRequest(request_id=request_id or "", body=None), server_id)
@@ -372,6 +410,11 @@ else:  # modern layout
             handles = await self.core.shared_inflight.discover_servers(
                 self._load_balancer, len(server_ids)
             )
+            # A step's first decisions all get here together; re-read so only
+            # the one that actually changes the view says so.
+            known = {ep.name: ep for ep in self.core.endpoints}
+            if set(handles) == set(known):
+                return
             self.core.endpoints = [
                 known.get(server_id)
                 or Endpoint(name=server_id, attributes={"replica_obj": handle, "routing_stats": {}})

@@ -39,6 +39,11 @@ from omegaconf import OmegaConf
 # srv-0 looks loaded, srv-1 idle, srv-2 middling: a load-aware profile must
 # route away from srv-0; a blind one would not.
 LOADS = {"srv-0": (12, 20, 0.97), "srv-1": (0, 0, 0.05), "srv-2": (6, 3, 0.55)}
+# Two poll intervals plus a mirror tick: a load change must have reached the workers.
+_SETTLE_S = 0.5
+# Burst scenario: first turns started at once, and the widest per-engine spread allowed.
+_BURST_N = 48
+_BURST_SPREAD_MAX = 6
 
 
 @ray.remote
@@ -47,10 +52,16 @@ class FakeServer:
         self.name = name
         self.calls = 0
         self.load = LOADS[name]
+        self.hold_s = 0.0
 
     async def generate(self, **kwargs):  # noqa: ANN201
         self.calls += 1
+        if self.hold_s:
+            await asyncio.sleep(self.hold_s)
         return {"token_ids": [1, 2, 3], "server": self.name}
+
+    def set_hold(self, seconds: float) -> None:
+        self.hold_s = seconds
 
     def set_load(self, running: int, waiting: int, kv: float) -> None:
         self.load = (running, waiting, kv)
@@ -67,6 +78,37 @@ class FakeServer:
         return self.calls
 
 
+async def _burst_scenario(client, servers) -> bool:
+    """A step's first turns arrive together; they must spread, not herd.
+
+    Every engine idle, 48 fresh requests started at once through one worker,
+    each held for a second so in-flight counts accumulate. Twice this year a
+    burst went to one engine: decisions scoring a shared snapshot without the
+    worker's own dispatches counted, and later a fleet-count read outside the
+    scheduling lock overwriting those counts.
+    """
+    for server in servers.values():
+        await server.set_load.remote(0, 0, 0.0)
+        await server.set_hold.remote(1.0)
+    await asyncio.sleep(_SETTLE_S)
+    outs = await asyncio.gather(
+        *(
+            client.generate(request_id=f"burst-{i}", prompt_ids=[7, i], sampling_params={})
+            for i in range(_BURST_N)
+        )
+    )
+    spread = collections.Counter(str(o["server"]) for o in outs)
+    for name, server in servers.items():
+        await server.set_hold.remote(0.0)
+        await server.set_load.remote(*LOADS[name])
+    await asyncio.sleep(_SETTLE_S)
+    print(f"burst spread over idle engines: {dict(spread)}")
+    return (
+        len(spread) == len(servers)
+        and max(spread.values()) - min(spread.values()) <= _BURST_SPREAD_MAX
+    )
+
+
 async def _parking_scenario(client, servers, turn) -> bool:
     """Park under fleet-wide saturation, admit when one engine recovers.
 
@@ -79,6 +121,7 @@ async def _parking_scenario(client, servers, turn) -> bool:
         return True
     for server in servers.values():
         await server.set_load.remote(12, 20, 0.99)
+    await asyncio.sleep(_SETTLE_S)
     parked = asyncio.ensure_future(turn("traj-park"))
     await asyncio.sleep(1.0)
     was_parked = not parked.done()
@@ -142,8 +185,10 @@ async def main() -> int:  # noqa: PLR0914
     first = await turn("traj-aff")
     second = await turn("traj-aff")
     await servers[first].set_load.remote(12, 20, 0.99)
+    await asyncio.sleep(_SETTLE_S)
     third = await turn("traj-aff")
     await servers[first].set_load.remote(*LOADS[first])
+    await asyncio.sleep(_SETTLE_S)
     fourth = await turn("traj-aff")
     affinity_ok = second == first and third != first and fourth == third
     print(
@@ -152,22 +197,20 @@ async def main() -> int:  # noqa: PLR0914
     )
     print(f"affinity counters: {client.core.affinity}")
 
+    burst_ok = await _burst_scenario(client, servers)
     parked_ok = await _parking_scenario(client, servers, turn)
 
     n_endpoints = len(client.core.endpoints)
     n_endpoints2 = len(client2.core.endpoints)
-    residual_inflight = sum(client.core.inflight_store.get(ep.name) for ep in client.core.endpoints)
-    residual_inflight += sum(
-        client2.core.inflight_store.get(ep.name) for ep in client2.core.endpoints
-    )
-    shared_snapshot = await client.core.shared_inflight.snapshot()
-    shared_residual = sum((shared_snapshot or {}).values())
+    fleet = await client.core.shared_inflight.fleet()
+    shared_snapshot = fleet["inflight"]
+    shared_residual = sum(shared_snapshot.values())
     lb_status = await lb.get_status.remote()
 
     print(f"endpoints bootstrapped: client1={n_endpoints} client2={n_endpoints2}")
     print(f"routing distribution (loaded srv-0 / idle srv-1 / mid srv-2): {dict(routed)}")
-    print(f"scheduler inflight residual (local): {residual_inflight}")
     print(f"shared ledger residual: {shared_residual}  snapshot={shared_snapshot}")
+    print(f"fleet metrics staleness at the end: {float(fleet['staleness']):.2f}s")
     print(f"LB total_inflight after run: {lb_status['total_inflight']}")
 
     ok = (
@@ -175,14 +218,14 @@ async def main() -> int:  # noqa: PLR0914
         and n_endpoints2 == len(servers)  # both workers see the whole fleet
         and routed.get("srv-0", 0) == 0  # saturated engine (kv .97 / waiting 20) never chosen
         and routed.get("srv-1", 0) >= routed.get("srv-2", 0)  # idle engine preferred
-        and residual_inflight == 0
         and shared_residual == 0  # fleet ledger returns to zero: every dispatch released
-        and shared_snapshot is not None  # the ledger actor was reachable
+        and float(fleet["staleness"]) < 1.0  # the background poller is alive
         and lb_status["total_inflight"] == 0  # LB counters untouched by scheduler-routed traffic
         and affinity_ok  # stay with the holder; leave only when filtered; do not bounce back
         and client.core.affinity["kept"] == 2  # noqa: PLR2004 - traj-aff turns 2 and 4
         and client.core.affinity["moved"] == 1  # traj-aff turn 3
         and parked_ok  # flow control parks when saturated, admits on recovery
+        and burst_ok  # a burst of first turns spreads over idle engines
     )
     print("HOOK COMPAT CHECK:", "PASS" if ok else "FAIL")
     return 0 if ok else 1

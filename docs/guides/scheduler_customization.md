@@ -115,7 +115,7 @@ Pickers choose the final replica from the scored list.
 Flow control plugins prevent replica overload and mid-decoding preemptions by controlling the flow to affected replicas.
 *   **`simple_backpressure`**: Admits a request only to replicas below both saturation thresholds, read from live engine metrics. When every replica is over, the integration's flow-control manager parks the request and re-admits it, one at a time at an AIMD-paced rate, as fresh metrics show capacity. Stateless: completions do not drive re-admission, metrics do. Validated on a 32B agentic RL rollout at `kv_threshold: 0.90`, `waiting_threshold: 4` (preemptions -34 to -40% per million tokens, engine queue wait -74%).
     *   `kv_threshold` (float, default: `0.95`): KV-cache utilization at or above which a replica is inadmissible.
-    *   `waiting_threshold` (int, default: `6`): waiting-request count at or above which a replica is inadmissible.
+    *   `waiting_threshold` (int, default: `6`): waiting-request count at or above which a replica is inadmissible. The count is the larger of the engine's reported queue and the router's own in-flight requests beyond the engine's running count, so admissions the engine has not reported yet count immediately.
 *   **`kv_saturation`**: Estimates the KV cache impact of incoming requests. If routing a request to a replica would exceed its physical KV cache capacity (causing vLLM to preempt/drop other active requests), it blocks admission.
     *   `enable_drip` (bool, default: `false`): Enables slow "drip" admission when all replicas are saturated, rather than blocking completely.
     *   `drip_threshold_kv` (float, default: `0.1`): Max physical KV utilization for drip eligibility.

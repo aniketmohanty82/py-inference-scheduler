@@ -78,6 +78,7 @@ Environment knobs read by the hook and the connector (all optional):
 | `ROUTER_CONFIG_PATH` | hook | required | scheduler profile (scorers, filters, flow control) |
 | `RLS_ADMISSION_ONLY` | hook | `0` | `1` = gate and park requests with the profile's flow control but leave placement to verl's balancer; isolates flow control in an A/B |
 | `FLOW_CONTROL_POLL_S` | hook | `0.1` | seconds between metric polls while requests are parked |
+| `RLS_METRICS_INTERVAL_MS` | fleet actor + hook | `100` | interval of the background metrics poller in the shared fleet actor (one scrape of every engine per tick, off the request path) and of each worker's mirror of that view; decisions read the mirrored stats |
 | `RLS_MIN_PULL_TOKENS` | `RLPullPolicyConnector` | `0` | decline a KV-tier fetch below this many matched tokens and recompute locally |
 | `RLS_MAX_INFLIGHT_LOADS` | `RLPullPolicyConnector` | `0` (off) | cap concurrent async tier pulls per engine |
 | `RLS_LOG_PULL_SOURCE` | `RLPullPolicyConnector` | `0` | `1` = print a `PULLSRC` line per load batch naming the segment host each pull came from, with cumulative cross-host counts; the evidence for cross-node KV sharing |

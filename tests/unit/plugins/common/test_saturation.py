@@ -59,3 +59,16 @@ def test_validation_rejects_vacuous_thresholds():
         validate_saturation_thresholds(0.9, 0)
     validate_saturation_thresholds(1.0, 1)
 
+
+def test_endpoint_load_counts_unreported_inflight():
+    ep = Endpoint(
+        name="e",
+        attributes={
+            "routing_stats": {"kv": 0.5, "num_waiting_reqs": 1, "num_running_reqs": 10},
+            "queue_len": 16,
+        },
+    )
+    # 16 in flight against 10 running: 6 are queued or in transit, more than the engine reports.
+    assert endpoint_load(ep) == (0.5, 6)
+    ep.attributes["queue_len"] = 10
+    assert endpoint_load(ep) == (0.5, 1)
