@@ -57,11 +57,11 @@ profiles:
       type: <picker_type_name>
       # (Picker-specific parameters)
       
-    # (Optional) Flow control plugins to budget resources and prevent saturation.
+    # (Optional) Flow control plugin to budget resources and prevent saturation.
     # Omit if you do not want flow-control/preemption gating.
-    flow_controls:
-      - type: <flow_control_type_name>
-        # (Flow-control-specific parameters)
+    flow_control:
+      type: <flow_control_type_name>
+      # (Flow-control-specific parameters)
 ```
 
 ---
@@ -141,10 +141,10 @@ profiles:
         weight: 1.0
     picker:
       type: max_score
-    flow_controls:
+    flow_control:
       # Protect against KV saturation and preemption storms
-      - type: kv_saturation
-        enable_drip: true
-        drip_threshold_kv: 0.15
-        default_osl: 512
+      type: kv_saturation
+      enable_drip: true
+      drip_threshold_kv: 0.15
+      default_osl: 512
 ```
