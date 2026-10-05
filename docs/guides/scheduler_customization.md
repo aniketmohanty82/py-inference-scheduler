@@ -95,6 +95,8 @@ Scorers assign scores to replicas. Multiple scorers are normalized and weighted.
     *   `max_prefix_blocks` (int, default: `256`): Max blocks to index.
     *   `lru_capacity_per_server` (int, default: `31250`): Cache capacity per replica.
     *   `min_match_ratio` (float, default: `0.0`): Minimum fraction of prompt blocks the best replica must have cached for prefix scores to be used; below it, the request is treated as novel and routed to the least-loaded replicas. The default of `0` disables the threshold, so the least-loaded fallback only fires when no replica has any matching block.
+*   **`request_affinity`**: Scores the replica that served the previous request with the same `request_id` at `1.0` and every other replica at `0.0`, so a request with no history is placed by the other scorers. Built for verl, which keeps one `request_id` per trajectory; slime and vime give every request a fresh id, so it has no effect there. A filter can still drop the holder, and later turns then follow the replica that served. Give it a weight above the sum of all other scorers' weights so the holder wins whenever it is a candidate.
+    *   `capacity` (int, default: `20000`): Number of request ids remembered; the least recently routed is forgotten first.
 
 #### C. Generic Scorers (for benchmarking against current RL sampling routing)
 *   **`round_robin`**: Cycles through replicas sequentially.
