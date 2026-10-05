@@ -24,7 +24,5 @@ class VllmEnginePatch:
             )
             return
 
-        # vLLM serves each engine's /metrics from its own registry. Forcing one
-        # PROMETHEUS_MULTIPROC_DIR on the engines of a node makes every port
-        # report the node aggregate, so no environment is propagated here.
+        # No PROMETHEUS_MULTIPROC_DIR: shared by a node's engines, it aggregates every /metrics.
         vLLMHttpServer.get_routing_stats = get_vllm_routing_stats
