@@ -63,10 +63,7 @@ Before deep-diving into logs, verify the environment meets these requirements:
         2. Whether `servers` is passed as a list of raw handles or `(id, handle)` tuples.
         You must then adapt the overrides in [verl_hook.py](../../../integration/verl/verl_hook.py) to match those exact signatures.
 2.  **Supported Images**: `verlai/verl:vllm011.latest` or `verlai/verl:sgl059.latest`.
-3.  **Shared Metrics Directory**: 
-    - **K8s**: An `emptyDir` volume must be mounted at `/tmp/metrics` on **both** head and worker pods.
-    - **VM**: `/tmp/metrics` must exist and be writable by Ray on all nodes.
-4.  **ConfigMap (K8s Only)**: The `scheduler-config` ConfigMap must be applied *before* the Ray cluster is deployed.
+3.  **ConfigMap (K8s Only)**: The `scheduler-config` ConfigMap must be applied *before* the Ray cluster is deployed.
 
 ---
 
