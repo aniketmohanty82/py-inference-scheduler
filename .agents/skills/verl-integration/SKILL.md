@@ -100,7 +100,7 @@ Follow this progressive diagnostic tree to isolate and fix the exact failure poi
 
 ### Step 4.4: Are metrics missing or stuck at 0? (Scraping Phase)
 *   **Symptom**: `routing_stats` in logs show 0 waiting/running requests, or KV cache usage is always 0.
-*   **Diagnostic 1 (Check Env Vars)**: Verify `PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"` is set in `runtime-env.yaml`. If missing, Prometheus cannot aggregate metrics across multiproc workers.
+*   **Diagnostic 1 (Check Env Vars)**: Verify `PROMETHEUS_MULTIPROC_DIR` is **not** set in `runtime-env.yaml` or the pod env. vLLM serves each engine's `/metrics` from its own registry; a directory shared by the engines on a node makes every `/metrics` report the node aggregate, so every engine shows the same load.
 *   **Diagnostic 2 (Test Local Scrape)**: Exec into a worker pod and run `curl http://localhost:{port}/metrics` (find port in worker logs).
     *   *If connection refused*: The engine's Prometheus server is not running (verify SGLang prometheus flag is enabled).
     *   *If 200 OK but metrics missing in scheduler*: The monkey patch did not apply. Verify `verl_hook.py` is being loaded and `apply()` is called.

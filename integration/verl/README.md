@@ -16,7 +16,7 @@ Both expose the same entrypoint flag (`agent_loop_manager_class=integration.verl
 Key components:
 - [verl_hook.py](./verl_hook.py): Contains `InferenceSchedulerServerManager` and `PyInferenceAgentLoopManager` which are injected into the `verl` training loop.
 - `InflightStore`: Tracks active requests per worker in real-time to augment slow Prometheus metrics.
-- `backends/verl/`: Contains monkey-patches for `vllm` and `sglang` to enable metrics extraction and correct environment propagation.
+- `backends/verl/`: Contains monkey-patches for `vllm` and `sglang` to expose engine metrics to the hook.
 - `datalayer/metrics/verl/`: Contains backend-specific logic (HTTP scraping) to fetch and parse metrics from the workers.
 
 ---
@@ -65,10 +65,11 @@ You can use our default [runtime-env.yaml](./examples/runtime-env.yaml) file:
 working_dir: "https://github.com/llm-d-incubation/py-inference-scheduler/archive/refs/heads/main.zip"
 env_vars:
   PYTHONPATH: "."
-  PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml" # Relative to CWD (repo root)
 ```
 Ray unpacks the zip, sets the CWD to the repo root, and resolves the relative path to the default config.
+
+Do not set `PROMETHEUS_MULTIPROC_DIR`. vLLM serves each engine's `/metrics` from its own registry; a directory shared by the engines on a node turns every `/metrics` into the node aggregate, and the scorers then see the same load on every engine.
 
 ### Custom Configuration on Kubernetes (K8s)
 If you want to customize the scheduler settings on K8s:
@@ -98,7 +99,6 @@ If you want to customize the scheduler settings in a VM-based cluster:
       - "verl==0.7.1"
     env_vars:
       PYTHONPATH: "."
-      PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
       ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml" # Relative to CWD (repo root)
     ```
 *   **Submit the job from the repository root** (see Section 3). Running from the root with `working_dir: "."` ensures Ray packages the entire repository (including the `scheduling` source code and your modified config), preventing import errors on the workers.
