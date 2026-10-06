@@ -67,8 +67,8 @@ def _verify_report() -> None:  # VERIFY-ONLY
             plugins = manager._get_plugins() if manager else []
             reserved = dict(getattr(plugins[0], '_reserved', {})) if plugins else {}
             waiting = len(manager.admission_queue) if manager else 0
-            report = (f"VERIFY_RS {dict(VERIFY)} waiting={waiting} reserved_total={sum(reserved.values())} "
-                      f"capacity={VERIFY_STATE.get('capacity')}")
+            report = (f"VERIFY_RS {dict(manager.v)} waiting={waiting} reserved_total={sum(reserved.values())} "
+                      f"capacity={manager.v_capacity}")
             print(report, flush=True)
             with open('/tmp/verify_rs.log', 'a') as out:
                 out.write(report + '\n')
@@ -83,6 +83,9 @@ class FlowControlManager:
         self.admission_queue: list[asyncio.Future] = []
         self.loop: asyncio.AbstractEventLoop | None = None
         VERIFY_STATE['manager'] = self  # VERIFY-ONLY
+        self.v = {'admits': 0, 'waits': 0, 'wait_s': 0.0, 'commits': 0, 'recommits': 0, 'releases': 0}  # VERIFY-ONLY
+        self.v_held: dict[str, int] = {}  # VERIFY-ONLY
+        self.v_capacity: dict[str, object] = {}  # VERIFY-ONLY
         if not VERIFY_STATE.get('reporting'):  # VERIFY-ONLY: start where the router lives
             VERIFY_STATE['reporting'] = True
             _verify_report()
@@ -104,9 +107,9 @@ class FlowControlManager:
         if not plugins:
             return candidate_replicas, endpoints
 
-        VERIFY['admits'] += 1  # VERIFY-ONLY
+        self.v['admits'] += 1  # VERIFY-ONLY
         while True:
-            VERIFY_STATE['capacity'] = {e.name[-6:]: e.attributes.get('kv_cache_size') for e in endpoints}  # VERIFY-ONLY  # noqa: E501
+            self.v_capacity = {e.name[-6:]: e.attributes.get('kv_cache_size') for e in endpoints}  # VERIFY-ONLY
             allowed_eps: Sequence[Endpoint] = endpoints
             for plugin in plugins:
                 allowed_eps = plugin.get_allowed_candidates(request, allowed_eps)
@@ -120,24 +123,24 @@ class FlowControlManager:
 
             fut = self.loop.create_future()
             self.admission_queue.append(fut)
-            VERIFY['waits'] += 1  # VERIFY-ONLY
+            self.v['waits'] += 1  # VERIFY-ONLY
             _v_started = self.loop.time()  # VERIFY-ONLY
             await fut
-            VERIFY['wait_s'] += self.loop.time() - _v_started  # VERIFY-ONLY
+            self.v['wait_s'] += self.loop.time() - _v_started  # VERIFY-ONLY
 
             # Refetch stats because we blocked and conditions changed
             endpoints = await self.router.build_endpoints(candidate_replicas, pending_request)
 
     def commit(self, request: LLMRequest, selected: Endpoint) -> None:
-        VERIFY['commits'] += 1  # VERIFY-ONLY
-        VERIFY_HELD[request.request_id] = VERIFY_HELD.get(request.request_id, 0) + 1  # VERIFY-ONLY
-        if VERIFY_HELD[request.request_id] > 1:  # VERIFY-ONLY
-            VERIFY['recommits'] += 1
+        self.v['commits'] += 1  # VERIFY-ONLY
+        self.v_held[request.request_id] = self.v_held.get(request.request_id, 0) + 1  # VERIFY-ONLY
+        if self.v_held[request.request_id] > 1:  # VERIFY-ONLY
+            self.v['recommits'] += 1
         for plugin in self._get_plugins():
             plugin.reserve(request, selected)
 
     def release(self, request: LLMRequest, replica_id: str) -> None:
-        VERIFY['releases'] += 1  # VERIFY-ONLY
+        self.v['releases'] += 1  # VERIFY-ONLY
         plugins = self._get_plugins()
         for plugin in plugins:
             plugin.release(request, replica_id)
@@ -338,6 +341,7 @@ llm_config = LLMConfig(  # VERIFY-ONLY: small model, four replicas, pinned 6,144
     },
     deployment_config={
         "autoscaling_config": {"min_replicas": 4, "max_replicas": 4},
+        "max_ongoing_requests": 2,  # replicas reject past two, so Ray Serve re-routes requests
         "request_router_config": {"request_router_class": IGWRouter},
         "ray_actor_options": {"num_cpus": 1},
     },
