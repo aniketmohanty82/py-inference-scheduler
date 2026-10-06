@@ -188,6 +188,7 @@ if _VERL_LAYOUT == "legacy":
             # Yield CPU so queued metric/scheduling tasks can interleave.
             await asyncio.sleep(0)
             _v_t0 = time.monotonic()  # VERIFY-ONLY
+            _v_wall = time.time()  # VERIFY-ONLY
             try:  # VERIFY-ONLY
                 server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
             except Exception as e:
@@ -221,7 +222,7 @@ if _VERL_LAYOUT == "legacy":
                 return output
             finally:
                 print(  # VERIFY-ONLY
-                    f'VERIFY_CALL wait={_v_t1 - _v_t0:.3f} gen={time.monotonic() - _v_t1:.3f} '
+                    f'VERIFY_CALL at={_v_wall:.2f} wait={_v_t1 - _v_t0:.3f} gen={time.monotonic() - _v_t1:.3f} '
                     f'prompt={len(prompt_ids)} out={output_tokens}',
                     flush=True,
                 )
@@ -309,6 +310,7 @@ else:  # modern layout
         ) -> object:
             await asyncio.sleep(0)
             _v_t0 = time.monotonic()  # VERIFY-ONLY
+            _v_wall = time.time()  # VERIFY-ONLY
             try:  # VERIFY-ONLY
                 server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
             except Exception as e:
@@ -344,7 +346,7 @@ else:  # modern layout
                 return output
             finally:
                 print(  # VERIFY-ONLY
-                    f'VERIFY_CALL wait={_v_t1 - _v_t0:.3f} gen={time.monotonic() - _v_t1:.3f} '
+                    f'VERIFY_CALL at={_v_wall:.2f} wait={_v_t1 - _v_t0:.3f} gen={time.monotonic() - _v_t1:.3f} '
                     f'prompt={len(prompt_ids)} out={output_tokens}',
                     flush=True,
                 )
