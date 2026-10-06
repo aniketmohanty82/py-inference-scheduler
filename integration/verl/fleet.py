@@ -153,7 +153,11 @@ class Fleet(InflightStore):
 
     async def admit(self, request: LLMRequest) -> tuple[str, ray.actor.ActorHandle]:
         """Place a request on an engine with room, waiting in line until one has it."""
-        winner = await self._admission_or_load().admit(request)
+        try:  # VERIFY-ONLY
+            winner = await self._admission_or_load().admit(request)
+        except Exception as e:
+            print(f'VERIFY_ADMIT_ERROR {e!r}', flush=True)
+            raise
         return winner.name, winner.attributes["replica_obj"]
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:

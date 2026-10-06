@@ -56,6 +56,9 @@ async def get_vllm_routing_stats(server) -> dict:
                     cache_config = re.search(r'^(?:vllm:|vllm_)cache_config_info\{([^}]*)\}', text, re.MULTILINE)  # noqa: E501
                     if cache_config:
                         stats["kv_cache_size"] = kv_capacity_tokens(cache_config.group(1))
+                        stats["cache_labels"] = cache_config.group(1)[:600]  # VERIFY-ONLY
+                    else:
+                        stats["cache_labels"] = "MISSING"  # VERIFY-ONLY
                 else:
                     stats["error"] = f"HTTP error {response.status}"
     except Exception as e:  # noqa: BLE001

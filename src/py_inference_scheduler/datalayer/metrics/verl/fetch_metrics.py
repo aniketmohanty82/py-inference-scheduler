@@ -18,6 +18,7 @@ from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.framework import Endpoint
 
 logger = logging.getLogger(__name__)
+_VERIFY_SEEN: set[str] = set()  # VERIFY-ONLY
 
 
 async def fetch_worker_metrics(ep: Endpoint, inflight_store: InflightStore) -> None:
@@ -38,6 +39,9 @@ async def fetch_worker_metrics(ep: Endpoint, inflight_store: InflightStore) -> N
             "error": stats.get("error", None),
             "preempt": stats.get("preempt", 0),  # VERIFY-ONLY
         }
+        if ep.name not in _VERIFY_SEEN:  # VERIFY-ONLY
+            _VERIFY_SEEN.add(ep.name)
+            print(f'VERIFY_STATS {ep.name} {stats}', flush=True)
         # Capacity is fixed for an engine's life, so a failed scrape keeps the last value.
         if stats.get("kv_cache_size"):
             ep.attributes["kv_cache_size"] = stats["kv_cache_size"]
