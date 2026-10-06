@@ -31,6 +31,7 @@ async def get_vllm_routing_stats(server) -> dict:
         "error": None,
     }
     try:
+        stats["kv_cache_size"] = kv_capacity_tokens(server)
         host, port = server.get_server_address()
         url = f"http://{host}:{port}/metrics"
 
@@ -49,9 +50,6 @@ async def get_vllm_routing_stats(server) -> dict:
                         stats["num_running_reqs"] = int(float(running.group(1)))
                     if kv_matches:
                         stats["kv"] = max(float(m) for m in kv_matches)
-                    cache_config = re.search(r'^(?:vllm:|vllm_)cache_config_info\{([^}]*)\}', text, re.MULTILINE)  # noqa: E501
-                    if cache_config:
-                        stats["kv_cache_size"] = kv_capacity_tokens(cache_config.group(1))
                 else:
                     stats["error"] = f"HTTP error {response.status}"
     except Exception as e:  # noqa: BLE001
@@ -60,11 +58,7 @@ async def get_vllm_routing_stats(server) -> dict:
     return stats
 
 
-def kv_capacity_tokens(cache_config_labels: str) -> int:
-    """KV capacity in tokens from vLLM's cache_config_info labels; 0 when not reported."""
-    labels = dict(re.findall(r'(\w+)="([^"]*)"', cache_config_labels))
-    # Newer vLLM reports the size directly; older releases only give blocks and block size.
-    if labels.get("kv_cache_size_tokens", "").isdigit():
-        return int(labels["kv_cache_size_tokens"])
-    blocks, block_size = labels.get("num_gpu_blocks", ""), labels.get("block_size", "")
-    return int(blocks) * int(block_size) if blocks.isdigit() and block_size.isdigit() else 0
+def kv_capacity_tokens(server) -> int:
+    """KV capacity in tokens of the server's vLLM engine; 0 until the engine has sized its cache."""
+    cache_config = server.engine.vllm_config.cache_config
+    return int((cache_config.num_gpu_blocks or 0) * cache_config.block_size)

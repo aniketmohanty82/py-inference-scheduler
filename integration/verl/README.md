@@ -110,7 +110,7 @@ If you want to customize the scheduler settings in a VM-based cluster:
 The fleet actor polls every engine's routing stats in the background, so no routing decision waits on a scrape. To change the interval, set `RLS_METRICS_INTERVAL_MS` in the runtime env's `env_vars` (default `100`). With flow control, requests waiting for room are also retried at this interval.
 
 ### Flow control
-With a `flow_control` plugin in the profile, such as [`kv_saturation`](../../docs/kv_saturation.md), the fleet actor makes every placement: it reserves each request's tokens, runs the profile's scorers, and holds requests that fit nowhere in one queue for all agent-loop workers. The actor reads the profile once, at the first request, so restart the job to change it. `kv_saturation` reads each engine's KV capacity from vLLM's metrics, so it needs vLLM engines.
+With a `flow_control` plugin in the profile, such as [`kv_saturation`](../../docs/kv_saturation.md), the fleet actor makes every placement: it reserves each request's tokens, runs the profile's scorers, and holds requests that fit nowhere in one queue for all agent-loop workers. The actor reads the profile once, at the first request, so restart the job to change it. `kv_saturation` reads each engine's KV capacity from its vLLM cache config, so it needs vLLM engines.
 
 ---
 
