@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rls-legacy-verify
+  namespace: default
+  labels:
+    app: rls-legacy-verify
+spec:
+  restartPolicy: Never
+  tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+  containers:
+  - name: verl
+    image: verlai/verl:vllm011.latest
+    command: ["/bin/bash", "-c"]
+    args:
+    - |
+      set -x
+      pip install "verl==0.7.1" > /tmp/pip.log 2>&1; tail -3 /tmp/pip.log
+      python3 -c "import verl, vllm, torch; print('VERSIONS', verl.__version__, vllm.__version__, torch.__version__)"
+      mkdir -p /work/gsm8k && cd /work
+      curl -sL -o repo.zip https://codeload.github.com/aniketmohanty82/py-inference-scheduler/zip/879856ddbcc463f9f2e6afaa77f7d5d77a09c16b
+      python3 -c "import zipfile; zipfile.ZipFile('repo.zip').extractall('/work')"
+      mv /work/py-inference-scheduler-879856ddbcc463f9f2e6afaa77f7d5d77a09c16b /work/repo
+      python3 - <<'EOF'
+      import re
+      import datasets
+      ds = datasets.load_dataset("openai/gsm8k", "main")
+      suffix = 'Let\'s think step by step and output the final answer after "####".'
+      def make(split):
+          def fn(ex, idx):
+              answer = re.search(r"#### (\-?[0-9\.\,]+)", ex["answer"]).group(1).replace(",", "")
+              return {
+                  "data_source": "openai/gsm8k",
+                  "prompt": [{"role": "user", "content": ex["question"] + " " + suffix}],
+                  "ability": "math",
+                  "reward_model": {"style": "rule", "ground_truth": answer},
+                  "extra_info": {"split": split, "index": idx},
+              }
+          return fn
+      for split in ("train", "test"):
+          d = ds[split].map(make(split), with_indices=True, remove_columns=ds[split].column_names)
+          d.to_parquet(f"/work/gsm8k/{split}.parquet")
+      print("GSM8K READY")
+      EOF
+      cd /work/repo
+      export PYTHONPATH=/work/repo:/work/repo/src
+      export ROUTER_CONFIG_PATH=/work/repo/integration/verl/examples/scheduler.yaml
+      python3 -m verl.trainer.main_ppo \
+        algorithm.adv_estimator=grpo \
+        data.train_files=/work/gsm8k/train.parquet \
+        data.val_files=/work/gsm8k/test.parquet \
+        data.train_batch_size=64 \
+        data.max_prompt_length=512 \
+        data.max_response_length=1024 \
+        data.return_raw_chat=True \
+        actor_rollout_ref.model.path=Qwen/Qwen2.5-0.5B-Instruct \
+        actor_rollout_ref.actor.ppo_mini_batch_size=32 \
+        actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
+        actor_rollout_ref.actor.use_kl_loss=False \
+        actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=8 \
+        actor_rollout_ref.rollout.name=vllm \
+        actor_rollout_ref.rollout.mode=async \
+        actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+        actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
+        actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=8 \
+        actor_rollout_ref.rollout.n=4 \
+        actor_rollout_ref.rollout.disable_log_stats=False \
+        actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager \
+        algorithm.use_kl_in_reward=False \
+        trainer.logger=[console] \
+        trainer.project_name=rls-legacy-verify \
+        trainer.experiment_name=legacy \
+        trainer.n_gpus_per_node=8 \
+        trainer.nnodes=1 \
+        trainer.save_freq=-1 \
+        trainer.test_freq=-1 \
+        trainer.val_before_train=False \
+        trainer.total_training_steps=2
+      echo "LEGACY RUN EXIT $?"
+    env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: hf_api_token
+    - name: HUGGING_FACE_HUB_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: hf_api_token
+    - name: LD_LIBRARY_PATH
+      value: /usr/local/nvidia/lib64
+    - name: RAY_DEDUP_LOGS
+      value: "0"
+    - name: PYTHONUNBUFFERED
+      value: "1"
+    resources:
+      requests:
+        cpu: "48"
+        memory: 400Gi
+        nvidia.com/gpu: "8"
+      limits:
+        cpu: "48"
+        memory: 400Gi
+        nvidia.com/gpu: "8"
+    volumeMounts:
+    - name: dshm
+      mountPath: /dev/shm
+    - name: nvidia
+      mountPath: /usr/local/nvidia
+  volumes:
+  - name: dshm
+    emptyDir:
+      medium: Memory
+  - name: nvidia
+    hostPath:
+      path: /home/kubernetes/bin/nvidia
