@@ -68,7 +68,8 @@ class Scheduler:
         return bool(self.get_flow_control_plugins())
 
     def get_flow_control_plugins(self) -> list[FlowControlPlugin]:
-        """Returns all flow control plugins from all profiles."""
+        """Returns all flow control plugins from all profiles, loading the config if needed."""
+        self._maybe_reload_config()
         all_plugins = []
         if hasattr(self, "profiles") and self.profiles:
             for profile in self.profiles.values():

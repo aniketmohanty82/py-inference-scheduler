@@ -14,18 +14,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
+import pathlib
 import uuid
 from dataclasses import dataclass
 from typing import cast
 
 import aiohttp
 import ray
+import yaml
 
+from integration.verl.admission import Admission
+from py_inference_scheduler import Scheduler
+from py_inference_scheduler.core.config import SchedulerConfig
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.datalayer.metrics.poller import MetricsPoller
 from py_inference_scheduler.datalayer.metrics.verl.fetch_metrics import fetch_worker_metrics
-from py_inference_scheduler.framework import Endpoint
+from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 _ACTOR_NAME = "rls_fleet"
 _METRICS_INTERVAL_MS = int(os.environ.get("RLS_METRICS_INTERVAL_MS", "100"))
@@ -45,6 +51,7 @@ class Fleet(InflightStore):
     - Counts in-flight requests per engine across all workers.
     - Recovers the engine handles from verl's balancer once for the whole fleet.
     - Polls engine metrics in the background, so no decision scrapes an engine.
+    - With flow control in the profile, places every request and queues those that fit nowhere.
     """
 
     def __init__(self, interval_ms: int) -> None:
@@ -54,6 +61,10 @@ class Fleet(InflightStore):
             lambda: list(self._endpoints.values()), self, _fetch, interval_ms=interval_ms
         )
         self._poller.start()
+        self._interval_s = interval_ms / 1000
+        self._discovery = asyncio.Lock()
+        self._admission: Admission | None = None
+        self._retrying: asyncio.Task[None] | None = None
 
     def watch(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
         """Add these engines to the background poll."""
@@ -63,35 +74,81 @@ class Fleet(InflightStore):
                     name=name, attributes={"replica_obj": handle, "routing_stats": {}}
                 )
 
-    def discover(
+    async def discover(
         self, balancer: ray.actor.ActorHandle, expected: int
     ) -> dict[str, ray.actor.ActorHandle]:
         """Recover the engine handles from verl's balancer, which enumerates only ids.
 
         - Acquires with unique request ids until every engine is visited, then releases them.
-        - Runs in this actor, so concurrent workers never drain the balancer at the same time.
+        - Runs one drain at a time for the whole fleet, so workers never drain it concurrently.
         """
-        handles = {name: ep.attributes["replica_obj"] for name, ep in self._endpoints.items()}
-        acquired: list[str] = []
-        # Live traffic skews the balancer's counters, so an engine can be visited twice.
-        for _ in range(expected * 3):
-            if len(handles) >= expected:
-                break
-            server_id, handle = ray.get(
-                balancer.acquire_server.remote(request_id=f"rls-discover-{uuid.uuid4().hex}")
-            )
-            acquired.append(server_id)
-            handles[server_id] = handle
-        for server_id in acquired:
-            balancer.release_server.remote(server_id=server_id)
-        self.watch(handles)
-        return handles
+        async with self._discovery:
+            handles = {name: ep.attributes["replica_obj"] for name, ep in self._endpoints.items()}
+            acquired: list[str] = []
+            # Live traffic skews the balancer's counters, so an engine can be visited twice.
+            for _ in range(expected * 3):
+                if len(handles) >= expected:
+                    break
+                server_id, handle = await balancer.acquire_server.remote(
+                    request_id=f"rls-discover-{uuid.uuid4().hex}"
+                )
+                acquired.append(server_id)
+                handles[server_id] = handle
+            for server_id in acquired:
+                balancer.release_server.remote(server_id=server_id)
+            self.watch(handles)
+            return handles
 
     def snapshot(self) -> FleetSnapshot:
         stats = {
             name: ep.attributes.get("routing_stats", {}) for name, ep in self._endpoints.items()
         }
         return FleetSnapshot(cast("dict[str, dict[str, object]]", stats), self.get_all())
+
+    async def admit(self, request: LLMRequest) -> str:
+        """Place a request on an engine with room, waiting in line until one has it."""
+        admission = self._admission_or_load()
+        winner = admission.place(request, self._candidates())
+        if winner is not None:
+            self.increment(winner.name)
+            return winner.name
+        future = admission.wait(request)
+        if self._retrying is None or self._retrying.done():
+            self._retrying = asyncio.get_running_loop().create_task(self._retry_until_empty())
+        return (await future).name
+
+    def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
+        """Free an admitted request's place and retry the requests waiting for one."""
+        self.decrement(endpoint_name)
+        self._admission_or_load().release(request_id, endpoint_name, output_tokens)
+        self._retry()
+
+    def _candidates(self) -> list[Endpoint]:
+        for name, ep in self._endpoints.items():
+            ep.attributes["queue_len"] = self.get(name)
+        return list(self._endpoints.values())
+
+    def _retry(self) -> None:
+        for winner in self._admission_or_load().retry(self._candidates()):
+            self.increment(winner.name)
+
+    async def _retry_until_empty(self) -> None:
+        # Also covers capacity that arrives with the first poll, when no finish is coming.
+        while self._admission_or_load().waiting:
+            await asyncio.sleep(self._interval_s)
+            self._retry()
+
+    def _admission_or_load(self) -> Admission:
+        if self._admission is None:
+            # Loaded once: a hot reload would replace the plugin and drop its reservations.
+            path = pathlib.Path(os.environ["ROUTER_CONFIG_PATH"])
+            config = SchedulerConfig.from_dict(yaml.safe_load(path.read_text(encoding="utf-8")))
+            scheduler = Scheduler.new_with_config(config)
+            plugins = scheduler.get_flow_control_plugins()
+            if len(plugins) != 1:
+                raise ValueError("verl admission needs exactly one flow_control plugin.")
+            self._admission = Admission(scheduler, plugins[0])
+        return self._admission
 
 
 async def _fetch(ep: Endpoint, inflight: InflightStore, session: aiohttp.ClientSession) -> None:

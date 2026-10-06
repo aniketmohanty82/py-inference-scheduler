@@ -82,13 +82,14 @@ def _rollout_config(config: DictConfig):
 class _SchedulerCore:
     """Per-worker routing on state shared by the whole fleet.
 
-    - Reads engine metrics and fleet-wide in-flight counts from the fleet actor once per decision.
-    - Holds a lock so a decision and the dispatch it counts never interleave with another.
+    - Without flow control, routes on one fleet snapshot per decision, under a lock.
+    - With flow control, asks the fleet actor, which places and queues for every worker.
     """
 
     def __init__(self) -> None:
         self.scheduler = Scheduler()
         self.fleet = fleet_actor()
+        self.admits = self.scheduler.has_flow_control()
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
@@ -101,28 +102,39 @@ class _SchedulerCore:
             ]
 
     async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
-        """Pick an endpoint on the latest fleet snapshot; None means fall back to verl's LB."""
+        """Pick an endpoint; None means fall back to verl's LB."""
+        request = LLMRequest(request_id=request_id, body=prompt_ids)
+        if self.admits:
+            name = await self.fleet.admit.remote(request)
+            return next(ep for ep in self.endpoints if ep.name == name)
         async with self.lock:
-            # Ray runs one caller's actor calls in order, so this worker's last
-            # dispatch is already counted in the snapshot.
             snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
             endpoints = self.endpoints
             for ep in endpoints:
                 ep.attributes["routing_stats"] = snapshot.stats.get(ep.name, {})
                 ep.attributes["queue_len"] = snapshot.inflight.get(ep.name, 0)
-            request = LLMRequest(request_id=request_id, body=prompt_ids)
             selected = self.scheduler.run(request, candidates=endpoints)
             if not selected:
                 return None
             winner: Endpoint = selected[0].endpoint
-            self.note_dispatch(winner.name)
+            # Awaited so the next decision's snapshot already counts this dispatch.
+            await self.fleet.increment.remote(winner.name)
             return winner
 
     def note_dispatch(self, endpoint_name: str) -> None:
         self.fleet.increment.remote(endpoint_name)
 
-    def release(self, endpoint_name: str) -> None:
-        self.fleet.decrement.remote(endpoint_name)
+    def release(self, endpoint_name: str, request_id: str, output_tokens: int | None) -> None:
+        if self.admits:
+            self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
+        else:
+            self.fleet.decrement.remote(endpoint_name)
+
+
+def _generated_tokens(output: object) -> int | None:
+    """Tokens the engine generated, from verl's TokenOutput or a bare token id list."""
+    token_ids = getattr(output, "token_ids", output)
+    return len(token_ids) if isinstance(token_ids, list) else None
 
 
 if _VERL_LAYOUT == "legacy":
@@ -160,9 +172,11 @@ if _VERL_LAYOUT == "legacy":
                 return server_id, handle
             return winner.name, winner.attributes["replica_obj"]
 
-        def _release_server(self, server_id: str, request_id: str | None = None) -> None:
-            self.core.release(server_id)
-            if request_id and request_id in self.core.lb_acquired_requests:
+        def _release_server(
+            self, server_id: str, request_id: str = "", output_tokens: int | None = None
+        ) -> None:
+            self.core.release(server_id, request_id, output_tokens)
+            if request_id in self.core.lb_acquired_requests:
                 super()._release_server(server_id)
                 self.core.lb_acquired_requests.remove(request_id)
 
@@ -188,16 +202,19 @@ if _VERL_LAYOUT == "legacy":
             elif hasattr(sampling_params, "ignore_eos"):
                 sampling_params.ignore_eos = ignore_eos
 
+            output_tokens = None
             try:
-                return await server.generate.remote(
+                output = await server.generate.remote(
                     request_id=uuid.uuid4().hex,
                     prompt_ids=prompt_ids,
                     sampling_params=sampling_params,
                     image_data=image_data,
                     video_data=video_data,
                 )
+                output_tokens = _generated_tokens(output)
+                return output
             finally:
-                self._release_server(server_id, request_id)
+                self._release_server(server_id, request_id, output_tokens)
 
     class PyInferenceAgentLoopWorker(AgentLoopWorker):  # type: ignore[misc]
         """Inject the custom ServerManager before calling super().__init__."""
@@ -259,9 +276,11 @@ else:  # modern layout
                 return server_id, handle
             return winner.name, winner.attributes["replica_obj"]
 
-        def _release_server(self, server_id: str, request_id: str | None = None) -> None:
-            self.core.release(server_id)
-            if request_id and request_id in self.core.lb_acquired_requests:
+        def _release_server(
+            self, server_id: str, request_id: str = "", output_tokens: int | None = None
+        ) -> None:
+            self.core.release(server_id, request_id, output_tokens)
+            if request_id in self.core.lb_acquired_requests:
                 super()._release_server(server_id)
                 self.core.lb_acquired_requests.remove(request_id)
 
@@ -289,8 +308,9 @@ else:  # modern layout
                 multimodal_kwargs["audio_data"] = audio_data
             if mm_processor_kwargs:
                 multimodal_kwargs["mm_processor_kwargs"] = mm_processor_kwargs
+            output_tokens = None
             try:
-                return await server.generate.remote(
+                output = await server.generate.remote(
                     request_id=uuid.uuid4().hex,  # fresh id per turn, mirrors upstream
                     prompt_ids=prompt_ids,
                     sampling_params=sampling_params,
@@ -299,8 +319,10 @@ else:  # modern layout
                     **multimodal_kwargs,
                     **kwargs,
                 )
+                output_tokens = _generated_tokens(output)
+                return output
             finally:
-                self._release_server(server_id, request_id)
+                self._release_server(server_id, request_id, output_tokens)
 
     class PyInferenceAgentLoopWorker(AgentLoopWorker):  # type: ignore[misc,no-redef]
         """Swap the incoming LLMServerClient for the scheduler-backed client."""

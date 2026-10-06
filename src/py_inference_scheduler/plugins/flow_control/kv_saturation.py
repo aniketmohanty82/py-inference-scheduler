@@ -14,8 +14,8 @@
 
 from __future__ import annotations
 
-import time
-from typing import Any, Sequence
+from collections import OrderedDict
+from typing import Sequence, TypeVar
 
 from py_inference_scheduler.framework import (
     Endpoint,
@@ -24,153 +24,91 @@ from py_inference_scheduler.framework import (
     register_flow_control,
 )
 
+# Trajectories remembered for their last engine and output; a rollout's worth many times over.
+_REMEMBERED = 65536
+# Text prompts carry no token ids, so their size is estimated from their length.
+_CHARS_PER_TOKEN = 4
+
+_V = TypeVar("_V")
+
 
 @register_flow_control("kv_saturation")
 class KVSaturationPlugin(FlowControlPlugin):
-    def __init__(self, **config: Any) -> None:  # noqa: ANN401
-        self.config = config
-        # rollout_request_id -> {isl, max_osl}
-        self._rollout_request_stats: dict[str, dict[str, int]] = {}
-        # replica_id -> token_usage_at_replica
-        self._replica_token_usage: dict[str, int] = {}
-        # request_id -> (replica_id, tokens)
-        self._request_at_replica: dict[str, tuple[str, int]] = {}
-        # request_id -> set of budgeted requests
-        self._budgeted_requests: set[str] = set()
-        self._last_drip_at = 0.0
+    """Admits a request only where its tokens fit in an engine's KV budget.
+
+    - A request needs its prefill plus its trajectory's last output, default_osl on turn one.
+    - An engine's budget is its KV capacity minus what unfinished admitted requests reserved.
+    - Offers the engine that served the trajectory's last turn if it fits, else all that fit.
+    - Offers nothing when no engine fits, so the caller queues the request.
+    """
+
+    def __init__(self, default_osl: int = 1024) -> None:
+        if default_osl < 0:
+            raise ValueError("default_osl must be >= 0.")
+        self.default_osl = default_osl
+        self._reserved: dict[str, int] = {}
+        self._held: dict[str, tuple[str, int]] = {}
+        self._holder: OrderedDict[str, str] = OrderedDict()
+        self._last_output: OrderedDict[str, int] = OrderedDict()
 
     def get_allowed_candidates(
         self, request: LLMRequest, candidates: Sequence[Endpoint]
     ) -> Sequence[Endpoint]:
-        fc = self.config
-
-        if request.request_id in self._budgeted_requests:
-            return candidates
-
-        rollout_id, char_len = self._get_rollout_request_id(request.body)
-        tokens_required = self._estimate_tokens_required(rollout_id, char_len, fc)
-
-        allowed = []
-        for c in candidates:
-            kv_cache_size = c.attributes.get("kv_cache_size", -1)
-            if kv_cache_size <= 0:  # type: ignore[operator]
-                continue
-
-            current_usage = self._replica_token_usage.get(c.name, 0)
-            if current_usage + tokens_required <= kv_cache_size:  # type: ignore[operator]
-                allowed.append(c)
-
-        if allowed:
-            return allowed
-
-        return self._get_drip_candidates(candidates, fc)
-
-    def _get_drip_candidates(self, candidates: Sequence[Endpoint], fc: dict) -> Sequence[Endpoint]:
-        enable_drip = fc.get("enable_drip", False)
-        if not enable_drip:
-            return []
-
-        drip_threshold_kv = fc.get("drip_threshold_kv", 0.1)
-        now = time.time()
-        drip_interval_s = fc.get("drip_interval_s", 2.0)
-        if (now - self._last_drip_at) >= drip_interval_s:
-            for c in candidates:
-                routing_stats = c.attributes.get("routing_stats", {})
-                physical_kv = routing_stats.get("kv", 1.0)  # type: ignore[attr-defined]
-                if physical_kv < drip_threshold_kv:
-                    self._last_drip_at = now
-                    print(f"[BUDGET] Drip Admission to {c.name} (Physical KV: {physical_kv:.2f})")
-                    return [c]
-        return []
+        need = self._need(request)
+        fitting = [ep for ep in candidates if self._fits(ep, need)]
+        holder = self._holder.get(request.request_id)
+        for ep in fitting:
+            if ep.name == holder:
+                return [ep]
+        return fitting
 
     def reserve(self, request: LLMRequest, selected: Endpoint) -> None:
-        fc = self.config
+        tokens = min(self._need(request), _capacity(selected))
+        self._reserved[selected.name] = self._reserved.get(selected.name, 0) + tokens
+        self._held[request.request_id] = (selected.name, tokens)
+        _remember(self._holder, request.request_id, selected.name)
 
-        if request.request_id in self._budgeted_requests:
-            return
+    def release(
+        self, request: LLMRequest, endpoint_name: str, output_tokens: int | None = None
+    ) -> None:
+        held = self._held.pop(request.request_id, None)
+        if held is not None:
+            engine, tokens = held
+            self._reserved[engine] -= tokens
+        if output_tokens is not None:
+            _remember(self._last_output, request.request_id, output_tokens)
 
-        rollout_id, char_len = self._get_rollout_request_id(request.body)
-        tokens_required = self._estimate_tokens_required(rollout_id, char_len, fc)
+    def _need(self, request: LLMRequest) -> int:
+        output = self._last_output.get(request.request_id, self.default_osl)
+        return prefill_tokens(request.body) + output
 
-        self._replica_token_usage[selected.name] = (
-            self._replica_token_usage.get(selected.name, 0) + tokens_required
+    def _fits(self, ep: Endpoint, need: int) -> bool:
+        capacity = _capacity(ep)
+        # An oversize request reserves the whole engine, so it waits for an idle one.
+        return capacity > 0 and self._reserved.get(ep.name, 0) + min(need, capacity) <= capacity
+
+
+def prefill_tokens(body: object) -> int:
+    """Tokens a request's prompt occupies: exact for token ids, estimated for text."""
+    if isinstance(body, list) and body and isinstance(body[0], int):
+        return len(body)
+    if isinstance(body, (str, bytes)):
+        return len(body) // _CHARS_PER_TOKEN
+    if isinstance(body, list):
+        contents = (
+            m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "") for m in body
         )
-        self._request_at_replica[request.request_id] = (
-            selected.name,
-            tokens_required,
-        )
-        self._budgeted_requests.add(request.request_id)
-        print(
-            f"[BUDGET] Admission committed for req={request.request_id} to replica={selected.name} "
-            f"(New Usage: {self._replica_token_usage[selected.name]})"
-        )
+        return sum(len(str(c)) for c in contents) // _CHARS_PER_TOKEN
+    return 0
 
-    def release(self, request: LLMRequest, endpoint_name: str) -> None:
-        if request.request_id in self._request_at_replica:
-            replica_id_to_reclaim, tokens = self._request_at_replica.pop(request.request_id)
-            self._replica_token_usage[replica_id_to_reclaim] = max(
-                0,
-                self._replica_token_usage.get(replica_id_to_reclaim, 0) - tokens,
-            )
-            print(
-                f"[BUDGET] Released req={request.request_id} from replica={replica_id_to_reclaim} "
-                f"(New Usage: {self._replica_token_usage[replica_id_to_reclaim]})"
-            )
-            self._budgeted_requests.discard(request.request_id)
 
-    def update_learned_stats(self, rollout_request_id: str, isl: int, osl: int) -> None:
-        self._rollout_request_stats[rollout_request_id] = {
-            "isl": isl,
-            "osl": osl,
-        }
-        print(f"[BUDGET] Learned stats for rollout={rollout_request_id}: ISL={isl}, OSL={osl}")
+def _capacity(ep: Endpoint) -> int:
+    value = ep.attributes.get("kv_cache_size")
+    return int(value) if isinstance(value, (int, float)) else 0
 
-    def _get_rollout_request_id(self, body: Any) -> tuple[str, int]:  # noqa: ANN401
-        import struct
-        import uuid
 
-        NAMESPACE_FOR_UUID = uuid.uuid5(uuid.NAMESPACE_DNS, "llmd.inference.scheduler")  # noqa: N806
-
-        if not body:
-            return "", 0
-
-        try:
-            if isinstance(body, list) and len(body) > 0 and isinstance(body[0], int):
-                prompt_bytes = struct.pack(f"{len(body)}i", *body)
-                return (
-                    uuid.uuid5(NAMESPACE_FOR_UUID, prompt_bytes.hex()).hex,
-                    len(body) * 4,
-                )
-
-            if isinstance(body, (str, bytes)):
-                prompt_str = body if isinstance(body, str) else body.hex()
-                return (
-                    uuid.uuid5(NAMESPACE_FOR_UUID, prompt_str).hex,
-                    len(body),
-                )
-
-            if isinstance(body, list):
-                extracted_text = ""
-                for m in body:
-                    if isinstance(m, dict):
-                        extracted_text += str(m.get("content", ""))
-                    else:
-                        extracted_text += str(getattr(m, "content", ""))
-                char_len = len(extracted_text)
-                return (
-                    uuid.uuid5(NAMESPACE_FOR_UUID, extracted_text).hex,
-                    char_len,
-                )
-
-        except Exception as e:  # noqa: BLE001
-            print(f"[PLUGIN ERROR] Failed to parse request ID securely: {e}")
-
-        return "", 0
-
-    def _estimate_tokens_required(self, rollout_id: str, char_len: int, fc: dict) -> int:
-        stats = self._rollout_request_stats.get(rollout_id)
-        if stats:
-            return stats["isl"] + stats["osl"]
-
-        default_osl: int = fc.get("default_osl", 1024)
-        return (char_len // 4) + default_osl
+def _remember(table: OrderedDict[str, _V], key: str, value: _V) -> None:
+    table[key] = value
+    table.move_to_end(key)
+    if len(table) > _REMEMBERED:
+        table.popitem(last=False)
