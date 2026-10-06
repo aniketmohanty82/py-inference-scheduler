@@ -18,10 +18,8 @@ import pytest
 
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 from py_inference_scheduler.framework.registry import build_flow_control
-from py_inference_scheduler.plugins.flow_control.kv_saturation import (
-    KVSaturationPlugin,
-    prefill_tokens,
-)
+from py_inference_scheduler.plugins.flow_control import kv_saturation
+from py_inference_scheduler.plugins.flow_control.kv_saturation import KVSaturationPlugin
 
 
 def _engine(name: str, capacity: int) -> Endpoint:
@@ -60,9 +58,20 @@ def test_needs_prompt_plus_default_output():
     assert _offered(plugin, _turn("t1", 90), [fits, short]) == ["fits"]
 
 
-def test_never_offers_an_engine_without_known_capacity():
+def test_waits_for_engines_without_a_successful_poll():
     plugin = KVSaturationPlugin(default_osl=0)
-    assert _offered(plugin, _turn("t1", 1), [Endpoint(name="unknown")]) == []
+    unpolled = Endpoint(name="unpolled", attributes={"routing_stats": {}})
+    failed = Endpoint(name="failed", attributes={"routing_stats": {"error": "timeout"}})
+
+    assert _offered(plugin, _turn("t1", 1), [unpolled, failed]) == []
+
+
+def test_fails_when_polled_engines_report_no_capacity():
+    plugin = KVSaturationPlugin(default_osl=0)
+    engine = Endpoint(name="e1", attributes={"routing_stats": {"num_running_reqs": 0}})
+
+    with pytest.raises(RuntimeError, match="KV capacity"):
+        plugin.get_allowed_candidates(_turn("t1", 1), [engine])
 
 
 def test_reservations_consume_the_budget_until_released():
@@ -77,11 +86,24 @@ def test_reservations_consume_the_budget_until_released():
     assert _offered(plugin, second, [engine]) == ["e1"]
 
 
+def test_a_retried_decision_reuses_its_own_hold():
+    plugin = KVSaturationPlugin(default_osl=0)
+    e1, e2 = _engine("e1", 100), _engine("e2", 100)
+    plugin.reserve(_turn("t1", 60), e1)
+
+    assert _offered(plugin, _turn("t1", 60), [e1]) == ["e1"]
+    plugin.reserve(_turn("t1", 60), e2)
+
+    assert _offered(plugin, _turn("t2", 100), [e1, e2]) == ["e1"]
+    plugin.release(_turn("t1", 60), "e2")
+    assert _offered(plugin, _turn("t2", 100), [e1, e2]) == ["e1", "e2"]
+
+
 def test_offers_the_last_engine_alone_when_it_fits():
     plugin = KVSaturationPlugin(default_osl=0)
     engines = [_engine("e1", 100), _engine("e2", 100)]
     plugin.reserve(_turn("t1", 10), engines[1])
-    plugin.release(_turn("t1", 10), "e2")
+    plugin.release(_turn("t1", 10), "e2", output_tokens=5)
 
     assert _offered(plugin, _turn("t1", 20), engines) == ["e2"]
 
@@ -90,7 +112,7 @@ def test_offers_every_fitting_engine_when_the_last_engine_is_full():
     plugin = KVSaturationPlugin(default_osl=0)
     engines = [_engine("e1", 100), _engine("e2", 100), _engine("e3", 100)]
     plugin.reserve(_turn("t1", 10), engines[1])
-    plugin.release(_turn("t1", 10), "e2")
+    plugin.release(_turn("t1", 10), "e2", output_tokens=5)
     plugin.reserve(_turn("other", 95), engines[1])
 
     assert _offered(plugin, _turn("t1", 20), engines) == ["e1", "e3"]
@@ -117,20 +139,23 @@ def test_oversize_request_reserves_a_whole_idle_engine():
     plugin.reserve(big, engine)
     assert _offered(plugin, small, [engine]) == []
 
-    plugin.reserve(small, _engine("e2", 100))
-    plugin.release(small, "e2")
     plugin.release(big, "e1")
     assert _offered(plugin, big, [engine]) == ["e1"]
+
+
+def test_forgets_the_oldest_trajectories(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(kv_saturation, "_REMEMBERED", 1)
+    plugin = KVSaturationPlugin(default_osl=0)
+    engines = [_engine("e1", 100), _engine("e2", 100)]
+    for trajectory in ("t1", "t2"):
+        plugin.reserve(_turn(trajectory, 10), engines[1])
+        plugin.release(_turn(trajectory, 10), "e2", output_tokens=5)
+
+    assert _offered(plugin, _turn("t1", 10), engines) == ["e1", "e2"]
+    assert _offered(plugin, _turn("t2", 10), engines) == ["e2"]
 
 
 def test_releasing_an_unknown_request_changes_nothing():
     plugin = KVSaturationPlugin(default_osl=0)
     plugin.release(_turn("never-reserved", 10), "e1")
     assert _offered(plugin, _turn("t1", 100), [_engine("e1", 100)]) == ["e1"]
-
-
-def test_prefill_tokens_counts_ids_and_estimates_text():
-    assert prefill_tokens([5, 6, 7]) == 3
-    assert prefill_tokens("x" * 40) == 10
-    assert prefill_tokens([{"role": "user", "content": "x" * 40}]) == 10
-    assert prefill_tokens(None) == 0

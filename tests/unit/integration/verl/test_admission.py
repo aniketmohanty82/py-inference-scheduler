@@ -16,13 +16,16 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from integration.verl.admission import Admission
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.core.config import SchedulerConfig
+from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 
-def _admission() -> Admission:
+def _admission(engines: list[Endpoint]) -> tuple[Admission, InflightStore]:
     config = {
         "profile_handler": {"type": "single_profile"},
         "profiles": {
@@ -34,73 +37,109 @@ def _admission() -> Admission:
         },
     }
     scheduler = Scheduler.new_with_config(SchedulerConfig.from_dict(config))
-    return Admission(scheduler, scheduler.get_flow_control_plugins()[0])
+    plugin = scheduler.get_flow_control_plugins()[0]
+    counts = InflightStore()
+    return Admission(scheduler, plugin, counts, lambda: engines, retry_interval_s=0.01), counts
 
 
-def _engine(name: str, capacity: int, queue_len: int = 0) -> Endpoint:
-    return Endpoint(name=name, attributes={"kv_cache_size": capacity, "queue_len": queue_len})
+def _engine(name: str, capacity: int | None = None) -> Endpoint:
+    attributes: dict[str, object] = {"routing_stats": {}}
+    if capacity is not None:
+        attributes["kv_cache_size"] = capacity
+    return Endpoint(name=name, attributes=attributes)
 
 
 def _turn(trajectory: str, prompt_tokens: int) -> LLMRequest:
     return LLMRequest(request_id=trajectory, body=list(range(prompt_tokens)))
 
 
-def test_scorers_pick_among_engines_with_room():
-    admission = _admission()
-    busy, idle, full = _engine("busy", 100, 5), _engine("idle", 100), _engine("full", 100)
-    admission.place(_turn("filler", 100), [full])
-
-    winner = admission.place(_turn("t1", 50), [busy, idle, full])
-
-    assert winner is idle
+async def _queued(admission: Admission, request: LLMRequest) -> asyncio.Task[Endpoint]:
+    task = asyncio.create_task(admission.admit(request))
+    await asyncio.sleep(0)
+    assert not task.done()
+    return task
 
 
-def test_nothing_is_reserved_when_no_engine_has_room():
-    admission = _admission()
+async def test_scorers_pick_among_engines_with_room():
+    full, busy, idle = _engine("full", 100), _engine("busy", 100), _engine("idle", 100)
+    admission, counts = _admission([full, busy, idle])
+    for name in ("busy", "busy", "busy", "idle", "idle"):
+        counts.increment(name)
+    assert await admission.admit(_turn("filler", 60)) is full
+
+    # full still has the shortest queue but only 40 tokens free.
+    assert await admission.admit(_turn("t1", 50)) is idle
+    assert counts.get("idle") == 3
+
+
+async def test_a_request_waits_until_space_frees():
     engine = _engine("e1", 100)
-    admission.place(_turn("a", 60), [engine])
+    admission, counts = _admission([engine])
+    await admission.admit(_turn("a", 60))
+    waiter = await _queued(admission, _turn("b", 60))
 
-    assert admission.place(_turn("b", 60), [engine]) is None
-    admission.release("a", "e1", None)
-    assert admission.place(_turn("b", 60), [engine]) is engine
+    admission.finish("a", "e1", None)
+
+    assert await waiter is engine
+    assert counts.get("e1") == 1
 
 
-async def test_waiting_requests_go_longest_prompt_first_as_space_frees():
-    admission = _admission()
+async def test_waiting_requests_go_longest_prompt_first():
     engine = _engine("e1", 1000)
-    admission.place(_turn("a", 900), [engine])
-    shorter = admission.wait(_turn("b", 400))
-    longer = admission.wait(_turn("c", 700))
+    admission, _ = _admission([engine])
+    await admission.admit(_turn("a", 900))
+    shorter = await _queued(admission, _turn("b", 400))
+    longer = await _queued(admission, _turn("c", 700))
 
-    admission.release("a", "e1", None)
-    assert admission.retry([engine]) == [engine]
-    assert longer.done()
+    admission.finish("a", "e1", None)
+    assert await longer is engine
     assert not shorter.done()
-    assert admission.waiting == 1
 
-    admission.release("c", "e1", None)
-    assert admission.retry([engine]) == [engine]
-    assert shorter.result() is engine
+    admission.finish("c", "e1", None)
+    assert await shorter is engine
 
 
-def test_a_trajectory_returns_to_its_engine_over_a_less_loaded_one():
-    admission = _admission()
-    home, other = _engine("home", 100, 0), _engine("other", 100, 0)
-    assert admission.place(_turn("t1", 10), [home]) is home
-    admission.release("t1", "home", 5)
-    home.attributes["queue_len"] = 3
+async def test_a_trajectory_returns_to_its_engine_over_a_less_loaded_one():
+    home, other = _engine("home", 100), _engine("other", 100)
+    admission, counts = _admission([home, other])
+    counts.increment("other")
+    assert await admission.admit(_turn("t1", 10)) is home
+    admission.finish("t1", "home", 5)
+    for _ in range(3):
+        counts.increment("home")
 
-    assert admission.place(_turn("t1", 30), [home, other]) is home
+    assert await admission.admit(_turn("t1", 30)) is home
 
 
-async def test_a_cancelled_waiter_is_dropped():
-    admission = _admission()
+async def test_a_cancelled_waiter_gives_up_its_place():
     engine = _engine("e1", 100)
-    admission.place(_turn("a", 100), [engine])
-    waiter = admission.wait(_turn("b", 10))
+    admission, counts = _admission([engine])
+    await admission.admit(_turn("a", 100))
+    waiter = await _queued(admission, _turn("b", 10))
     waiter.cancel()
 
-    admission.release("a", "e1", None)
-    assert admission.retry([engine]) == []
-    assert admission.waiting == 0
-    await asyncio.sleep(0)
+    admission.finish("a", "e1", None)
+
+    assert counts.get("e1") == 0
+    assert await admission.admit(_turn("c", 100)) is engine
+
+
+async def test_capacity_from_the_first_poll_admits_waiting_requests():
+    engine = _engine("e1")
+    admission, _ = _admission([engine])
+    waiter = await _queued(admission, _turn("t1", 10))
+
+    engine.attributes["kv_cache_size"] = 100
+
+    assert await asyncio.wait_for(waiter, timeout=1) is engine
+
+
+async def test_a_waiting_caller_sees_why_placement_failed():
+    engine = _engine("e1")
+    admission, _ = _admission([engine])
+    waiter = await _queued(admission, _turn("t1", 10))
+
+    engine.attributes["routing_stats"] = {"num_running_reqs": 0}
+
+    with pytest.raises(RuntimeError, match="KV capacity"):
+        await asyncio.wait_for(waiter, timeout=1)
