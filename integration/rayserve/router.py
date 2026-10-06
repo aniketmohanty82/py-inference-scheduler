@@ -76,9 +76,6 @@ def _verify_report() -> None:  # VERIFY-ONLY
     threading.Thread(target=loop, daemon=True).start()
 
 
-_verify_report()
-
-
 class FlowControlManager:
     def __init__(self, router: IGWRouter) -> None:
         self.router = router
@@ -86,6 +83,9 @@ class FlowControlManager:
         self.admission_queue: list[asyncio.Future] = []
         self.loop: asyncio.AbstractEventLoop | None = None
         VERIFY_STATE['manager'] = self  # VERIFY-ONLY
+        if not VERIFY_STATE.get('reporting'):  # VERIFY-ONLY: start where the router lives
+            VERIFY_STATE['reporting'] = True
+            _verify_report()
 
     def _get_plugins(self) -> list[FlowControlPlugin]:
         return self.scheduler.get_flow_control_plugins()
