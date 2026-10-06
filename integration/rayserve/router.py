@@ -109,7 +109,7 @@ class FlowControlManager:
 
         self.v['admits'] += 1  # VERIFY-ONLY
         while True:
-            self.v_capacity = {e.name[-6:]: e.attributes.get('kv_cache_size') for e in endpoints}  # VERIFY-ONLY
+            self.v_capacity = sorted(str(e.attributes.get('kv_cache_size')) for e in endpoints)  # VERIFY-ONLY
             allowed_eps: Sequence[Endpoint] = endpoints
             for plugin in plugins:
                 allowed_eps = plugin.get_allowed_candidates(request, allowed_eps)
@@ -327,21 +327,19 @@ class IGWRouter(RequestRouter):
 
 # Hooking into Ray Serve's Request Router
 
-llm_config = LLMConfig(  # VERIFY-ONLY: small model, four replicas, pinned 6,144-token KV pools
+llm_config = LLMConfig(  # VERIFY-ONLY: the example's 32B model, four tp=2 replicas, pinned 32k-token pools
     model_loading_config={
-        "model_id": "qwen-0.5b",
-        "model_source": "Qwen/Qwen2.5-0.5B-Instruct",
+        "model_id": "qwen-32b",
+        "model_source": "Qwen/Qwen2.5-32B-Instruct",
     },
     engine_kwargs={
         "enable_prefix_caching": True,
-        "tensor_parallel_size": 1,
-        "max_model_len": 4096,
-        "num_gpu_blocks_override": 384,
-        "gpu_memory_utilization": 0.5,
+        "tensor_parallel_size": 2,
+        "max_model_len": 8192,
+        "num_gpu_blocks_override": 2048,
     },
     deployment_config={
         "autoscaling_config": {"min_replicas": 4, "max_replicas": 4},
-        "max_ongoing_requests": 2,  # replicas reject past two, so Ray Serve re-routes requests
         "request_router_config": {"request_router_class": IGWRouter},
         "ray_actor_options": {"num_cpus": 1},
     },
