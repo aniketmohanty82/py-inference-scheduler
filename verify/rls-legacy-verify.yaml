@@ -68,7 +68,7 @@ spec:
         actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=8 \
         actor_rollout_ref.rollout.n=4 \
         actor_rollout_ref.rollout.disable_log_stats=False \
-        actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager \
+        +actor_rollout_ref.rollout.agent.agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager \
         algorithm.use_kl_in_reward=False \
         trainer.logger=[console] \
         trainer.project_name=rls-legacy-verify \
