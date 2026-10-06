@@ -60,7 +60,7 @@ except ImportError:  # modern layout (verl v0.9.x)
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from integration.verl.fleet import FleetSnapshot, fleet_actor
+from integration.verl.fleet import FleetSnapshot, fleet_actor, place
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
@@ -101,12 +101,13 @@ class _SchedulerCore:
                 for name, handle in handles.items()
             ]
 
-    async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
-        """Pick an endpoint; None means fall back to verl's LB."""
+    async def schedule(
+        self, request_id: str, prompt_ids: list[int] | None
+    ) -> tuple[str, ray.actor.ActorHandle] | None:
+        """Pick an engine's id and handle; None means fall back to verl's LB."""
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
-            name = await self.fleet.admit.remote(request)
-            return next(ep for ep in self.endpoints if ep.name == name)
+            return await place(self.fleet, request)
         async with self.lock:
             snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
             endpoints = self.endpoints
@@ -119,7 +120,7 @@ class _SchedulerCore:
             winner: Endpoint = selected[0].endpoint
             # Awaited so the next decision's snapshot already counts this dispatch.
             await self.fleet.increment.remote(winner.name)
-            return winner
+            return winner.name, winner.attributes["replica_obj"]
 
     def note_dispatch(self, endpoint_name: str) -> None:
         self.fleet.increment.remote(endpoint_name)
@@ -129,12 +130,6 @@ class _SchedulerCore:
             self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
         else:
             self.fleet.decrement.remote(endpoint_name)
-
-
-def _generated_tokens(output: object) -> int | None:
-    """Tokens the engine generated, from verl's TokenOutput or a bare token id list."""
-    token_ids = getattr(output, "token_ids", output)
-    return len(token_ids) if isinstance(token_ids, list) else None
 
 
 if _VERL_LAYOUT == "legacy":
@@ -161,8 +156,8 @@ if _VERL_LAYOUT == "legacy":
             request_id: str,
             prompt_ids: list[int] | None = None,
         ) -> tuple[str, ray.actor.ActorHandle]:
-            winner = await self.core.schedule(request_id, prompt_ids)
-            if winner is None:
+            picked = await self.core.schedule(request_id, prompt_ids)
+            if picked is None:
                 logger.warning(
                     "py-inference-scheduler returned no endpoints, falling back to verl global LB."
                 )
@@ -170,7 +165,7 @@ if _VERL_LAYOUT == "legacy":
                 server_id, handle = await super()._acquire_server(request_id)  # type: ignore[no-any-return]
                 self.core.note_dispatch(server_id)
                 return server_id, handle
-            return winner.name, winner.attributes["replica_obj"]
+            return picked
 
         def _release_server(
             self, server_id: str, request_id: str = "", output_tokens: int | None = None
@@ -211,7 +206,7 @@ if _VERL_LAYOUT == "legacy":
                     image_data=image_data,
                     video_data=video_data,
                 )
-                output_tokens = _generated_tokens(output)
+                output_tokens = len(output.token_ids)
                 return output
             finally:
                 self._release_server(server_id, request_id, output_tokens)
@@ -265,8 +260,8 @@ else:  # modern layout
             prompt_ids: list[int] | None = None,
         ) -> tuple[str, ray.actor.ActorHandle]:
             await self._ensure_endpoints()
-            winner = await self.core.schedule(request_id, prompt_ids)
-            if winner is None:
+            picked = await self.core.schedule(request_id, prompt_ids)
+            if picked is None:
                 logger.warning(
                     "py-inference-scheduler returned no endpoints, falling back to verl global LB."
                 )
@@ -274,7 +269,7 @@ else:  # modern layout
                 server_id, handle = await super()._acquire_server(request_id)
                 self.core.note_dispatch(server_id)
                 return server_id, handle
-            return winner.name, winner.attributes["replica_obj"]
+            return picked
 
         def _release_server(
             self, server_id: str, request_id: str = "", output_tokens: int | None = None
@@ -319,7 +314,7 @@ else:  # modern layout
                     **multimodal_kwargs,
                     **kwargs,
                 )
-                output_tokens = _generated_tokens(output)
+                output_tokens = len(output.token_ids)
                 return output
             finally:
                 self._release_server(server_id, request_id, output_tokens)

@@ -16,14 +16,12 @@ from __future__ import annotations
 
 import asyncio
 import os
-import pathlib
 import uuid
 from dataclasses import dataclass
 from typing import cast
 
 import aiohttp
 import ray
-import yaml
 
 from integration.verl.admission import Admission
 from py_inference_scheduler import Scheduler
@@ -35,6 +33,8 @@ from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 _ACTOR_NAME = "rls_fleet"
 _METRICS_INTERVAL_MS = int(os.environ.get("RLS_METRICS_INTERVAL_MS", "100"))
+# A queued admit holds a call slot until placed, and finish must always find one to free it.
+_MAX_CALLS = 1_000_000
 
 
 @dataclass
@@ -64,7 +64,6 @@ class Fleet(InflightStore):
         self._interval_s = interval_ms / 1000
         self._discovery = asyncio.Lock()
         self._admission: Admission | None = None
-        self._retrying: asyncio.Task[None] | None = None
 
     def watch(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
         """Add these engines to the background poll."""
@@ -105,49 +104,30 @@ class Fleet(InflightStore):
         }
         return FleetSnapshot(cast("dict[str, dict[str, object]]", stats), self.get_all())
 
-    async def admit(self, request: LLMRequest) -> str:
+    async def admit(self, request: LLMRequest) -> tuple[str, ray.actor.ActorHandle]:
         """Place a request on an engine with room, waiting in line until one has it."""
-        admission = self._admission_or_load()
-        winner = admission.place(request, self._candidates())
-        if winner is not None:
-            self.increment(winner.name)
-            return winner.name
-        future = admission.wait(request)
-        if self._retrying is None or self._retrying.done():
-            self._retrying = asyncio.get_running_loop().create_task(self._retry_until_empty())
-        return (await future).name
+        winner = await self._admission_or_load().admit(request)
+        return winner.name, winner.attributes["replica_obj"]
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
         """Free an admitted request's place and retry the requests waiting for one."""
-        self.decrement(endpoint_name)
-        self._admission_or_load().release(request_id, endpoint_name, output_tokens)
-        self._retry()
-
-    def _candidates(self) -> list[Endpoint]:
-        for name, ep in self._endpoints.items():
-            ep.attributes["queue_len"] = self.get(name)
-        return list(self._endpoints.values())
-
-    def _retry(self) -> None:
-        for winner in self._admission_or_load().retry(self._candidates()):
-            self.increment(winner.name)
-
-    async def _retry_until_empty(self) -> None:
-        # Also covers capacity that arrives with the first poll, when no finish is coming.
-        while self._admission_or_load().waiting:
-            await asyncio.sleep(self._interval_s)
-            self._retry()
+        self._admission_or_load().finish(request_id, endpoint_name, output_tokens)
 
     def _admission_or_load(self) -> Admission:
         if self._admission is None:
             # Loaded once: a hot reload would replace the plugin and drop its reservations.
-            path = pathlib.Path(os.environ["ROUTER_CONFIG_PATH"])
-            config = SchedulerConfig.from_dict(yaml.safe_load(path.read_text(encoding="utf-8")))
+            config = SchedulerConfig.from_file(os.environ["ROUTER_CONFIG_PATH"])
             scheduler = Scheduler.new_with_config(config)
             plugins = scheduler.get_flow_control_plugins()
             if len(plugins) != 1:
                 raise ValueError("verl admission needs exactly one flow_control plugin.")
-            self._admission = Admission(scheduler, plugins[0])
+            self._admission = Admission(
+                scheduler,
+                plugins[0],
+                self,
+                lambda: list(self._endpoints.values()),
+                self._interval_s,
+            )
         return self._admission
 
 
@@ -162,6 +142,32 @@ _FleetActor = ray.remote(Fleet)
 def fleet_actor() -> ray.actor.ActorHandle:
     """The fleet actor, created by the first caller and shared with the rest by name."""
     # num_cpus=0: an actor pending behind verl's CPU reservations would stall every worker.
-    return _FleetActor.options(name=_ACTOR_NAME, get_if_exists=True, num_cpus=0).remote(
-        _METRICS_INTERVAL_MS
+    return _FleetActor.options(
+        name=_ACTOR_NAME, get_if_exists=True, num_cpus=0, max_concurrency=_MAX_CALLS
+    ).remote(_METRICS_INTERVAL_MS)
+
+
+async def place(
+    fleet: ray.actor.ActorHandle, request: LLMRequest
+) -> tuple[str, ray.actor.ActorHandle]:
+    """Ask the fleet actor to admit a request, from an agent-loop worker.
+
+    - Hands back a place made after the caller was cancelled, since Ray keeps the call running.
+    """
+    placing: asyncio.Future[tuple[str, ray.actor.ActorHandle]] = asyncio.ensure_future(
+        fleet.admit.remote(request)
     )
+    try:
+        return await asyncio.shield(placing)
+    except asyncio.CancelledError:
+        placing.add_done_callback(lambda done: _hand_back(fleet, request.request_id, done))
+        raise
+
+
+def _hand_back(
+    fleet: ray.actor.ActorHandle,
+    request_id: str,
+    placing: asyncio.Future[tuple[str, ray.actor.ActorHandle]],
+) -> None:
+    if not placing.cancelled() and placing.exception() is None:
+        fleet.finish.remote(request_id, placing.result()[0], None)

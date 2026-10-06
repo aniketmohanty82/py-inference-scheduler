@@ -18,8 +18,6 @@ import os
 import pathlib
 from typing import Sequence
 
-import yaml
-
 from py_inference_scheduler.core.config import SchedulerConfig
 from py_inference_scheduler.framework import (
     CycleState,
@@ -83,11 +81,7 @@ class Scheduler:
         mtime = pathlib.Path(self.config_path).stat().st_mtime
         if mtime > self.last_mtime:
             print(f"Reloading scheduler config from {self.config_path}")
-            with pathlib.Path(self.config_path).open(encoding="utf-8") as f:
-                config_dict = yaml.safe_load(f)
-            if not isinstance(config_dict, dict):
-                raise ValueError("Parsed configuration is not a valid dictionary.")
-            config = SchedulerConfig.from_dict(config_dict)
+            config = SchedulerConfig.from_file(self.config_path)
             self.profile_handler = config.profile_handler
             self.profiles = config.profiles
             self.last_mtime = mtime

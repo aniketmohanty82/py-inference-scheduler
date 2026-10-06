@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Sequence, TypeVar
+from typing import Sequence
 
 from py_inference_scheduler.framework import (
     Endpoint,
@@ -23,13 +23,10 @@ from py_inference_scheduler.framework import (
     LLMRequest,
     register_flow_control,
 )
+from py_inference_scheduler.framework.helpers import prefill_tokens
 
 # Trajectories remembered for their last engine and output; a rollout's worth many times over.
 _REMEMBERED = 65536
-# Text prompts carry no token ids, so their size is estimated from their length.
-_CHARS_PER_TOKEN = 4
-
-_V = TypeVar("_V")
 
 
 @register_flow_control("kv_saturation")
@@ -47,59 +44,59 @@ class KVSaturationPlugin(FlowControlPlugin):
             raise ValueError("default_osl must be >= 0.")
         self.default_osl = default_osl
         self._reserved: dict[str, int] = {}
-        self._held: dict[str, tuple[str, int]] = {}
-        self._holder: OrderedDict[str, str] = OrderedDict()
-        self._last_output: OrderedDict[str, int] = OrderedDict()
+        self._holds: dict[str, tuple[str, int]] = {}
+        self._last_turns: OrderedDict[str, tuple[str, int]] = OrderedDict()
 
     def get_allowed_candidates(
         self, request: LLMRequest, candidates: Sequence[Endpoint]
     ) -> Sequence[Endpoint]:
+        if candidates and all(_reports_no_capacity(ep) for ep in candidates):
+            raise RuntimeError("kv_saturation needs each engine's KV capacity; none reports it.")
         need = self._need(request)
-        fitting = [ep for ep in candidates if self._fits(ep, need)]
-        holder = self._holder.get(request.request_id)
-        for ep in fitting:
-            if ep.name == holder:
-                return [ep]
-        return fitting
+        fitting = [ep for ep in candidates if self._fits(ep, need, request.request_id)]
+        last = self._last_turns.get(request.request_id)
+        home = [ep for ep in fitting if last and ep.name == last[0]]
+        return home or fitting
 
     def reserve(self, request: LLMRequest, selected: Endpoint) -> None:
+        # A retried decision moves the hold instead of stacking a second one.
+        self._drop_hold(request.request_id)
         tokens = min(self._need(request), _capacity(selected))
         self._reserved[selected.name] = self._reserved.get(selected.name, 0) + tokens
-        self._held[request.request_id] = (selected.name, tokens)
-        _remember(self._holder, request.request_id, selected.name)
+        self._holds[request.request_id] = (selected.name, tokens)
 
     def release(
         self, request: LLMRequest, endpoint_name: str, output_tokens: int | None = None
     ) -> None:
-        held = self._held.pop(request.request_id, None)
-        if held is not None:
-            engine, tokens = held
-            self._reserved[engine] -= tokens
-        if output_tokens is not None:
-            _remember(self._last_output, request.request_id, output_tokens)
+        engine = self._drop_hold(request.request_id)
+        if engine is None or output_tokens is None:
+            return
+        self._last_turns[request.request_id] = (engine, output_tokens)
+        self._last_turns.move_to_end(request.request_id)
+        if len(self._last_turns) > _REMEMBERED:
+            self._last_turns.popitem(last=False)
+
+    def _drop_hold(self, request_id: str) -> str | None:
+        held = self._holds.pop(request_id, None)
+        if held is None:
+            return None
+        engine, tokens = held
+        self._reserved[engine] -= tokens
+        return engine
 
     def _need(self, request: LLMRequest) -> int:
-        output = self._last_output.get(request.request_id, self.default_osl)
+        last = self._last_turns.get(request.request_id)
+        output = self.default_osl if last is None else last[1]
         return prefill_tokens(request.body) + output
 
-    def _fits(self, ep: Endpoint, need: int) -> bool:
+    def _fits(self, ep: Endpoint, need: int, request_id: str) -> bool:
         capacity = _capacity(ep)
+        # A retried decision moves the request's own hold, so that hold does not count against it.
+        hold = self._holds.get(request_id)
+        own = hold[1] if hold and hold[0] == ep.name else 0
+        reserved = self._reserved.get(ep.name, 0) - own
         # An oversize request reserves the whole engine, so it waits for an idle one.
-        return capacity > 0 and self._reserved.get(ep.name, 0) + min(need, capacity) <= capacity
-
-
-def prefill_tokens(body: object) -> int:
-    """Tokens a request's prompt occupies: exact for token ids, estimated for text."""
-    if isinstance(body, list) and body and isinstance(body[0], int):
-        return len(body)
-    if isinstance(body, (str, bytes)):
-        return len(body) // _CHARS_PER_TOKEN
-    if isinstance(body, list):
-        contents = (
-            m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "") for m in body
-        )
-        return sum(len(str(c)) for c in contents) // _CHARS_PER_TOKEN
-    return 0
+        return capacity > 0 and reserved + min(need, capacity) <= capacity
 
 
 def _capacity(ep: Endpoint) -> int:
@@ -107,8 +104,7 @@ def _capacity(ep: Endpoint) -> int:
     return int(value) if isinstance(value, (int, float)) else 0
 
 
-def _remember(table: OrderedDict[str, _V], key: str, value: _V) -> None:
-    table[key] = value
-    table.move_to_end(key)
-    if len(table) > _REMEMBERED:
-        table.popitem(last=False)
+def _reports_no_capacity(ep: Endpoint) -> bool:
+    # Engines not yet polled have empty stats and are simply waited for.
+    stats = ep.attributes.get("routing_stats")
+    return isinstance(stats, dict) and bool(stats) and not stats.get("error") and _capacity(ep) <= 0

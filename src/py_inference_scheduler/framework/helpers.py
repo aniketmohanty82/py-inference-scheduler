@@ -58,3 +58,21 @@ def score_by_metric(
             scores[ep.name] = (val - min_val) / (max_val - min_val)
 
     return scores
+
+
+# Text prompts carry no token ids, so their size is estimated from their length.
+_CHARS_PER_TOKEN = 4
+
+
+def prefill_tokens(body: object) -> int:
+    """Tokens a request's prompt occupies: exact for token ids, estimated for text."""
+    if isinstance(body, list) and body and isinstance(body[0], int):
+        return len(body)
+    if isinstance(body, (str, bytes)):
+        return len(body) // _CHARS_PER_TOKEN
+    if isinstance(body, list):
+        contents = (
+            m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "") for m in body
+        )
+        return sum(len(str(c)) for c in contents) // _CHARS_PER_TOKEN
+    return 0

@@ -15,62 +15,90 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Sequence, cast
+from typing import Callable, Sequence
 
 from py_inference_scheduler import Scheduler
+from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.framework import Endpoint, FlowControlPlugin, LLMRequest
+from py_inference_scheduler.framework.helpers import prefill_tokens
 
 
 class Admission:
     """Places requests with a flow-control plugin and the profile's scorers.
 
-    - Reserves in the same step as it places, so one instance never over-admits.
+    - Reserves and counts each placement in the same step, so later decisions see it.
     - Holds requests that fit nowhere and retries them longest prompt first.
     """
 
-    def __init__(self, scheduler: Scheduler, plugin: FlowControlPlugin) -> None:
+    def __init__(
+        self,
+        scheduler: Scheduler,
+        plugin: FlowControlPlugin,
+        counts: InflightStore,
+        endpoints: Callable[[], Sequence[Endpoint]],
+        retry_interval_s: float,
+    ) -> None:
         self._scheduler = scheduler
         self._plugin = plugin
+        self._counts = counts
+        self._endpoints = endpoints
+        self._retry_interval_s = retry_interval_s
         self._waiting: list[tuple[LLMRequest, asyncio.Future[Endpoint]]] = []
+        self._retrying: asyncio.Task[None] | None = None
 
-    @property
-    def waiting(self) -> int:
-        return len(self._waiting)
+    async def admit(self, request: LLMRequest) -> Endpoint:
+        """Place the request on an engine with room, waiting in line until one has it."""
+        winner = self._place(request)
+        if winner is not None:
+            return winner
+        future: asyncio.Future[Endpoint] = asyncio.get_running_loop().create_future()
+        self._waiting.append((request, future))
+        if self._retrying is None or self._retrying.done():
+            self._retrying = asyncio.get_running_loop().create_task(self._retry_until_empty())
+        return await future
 
-    def place(self, request: LLMRequest, endpoints: Sequence[Endpoint]) -> Endpoint | None:
-        """Reserve the request on the scorers' pick among engines with room; None if none."""
-        allowed = self._plugin.get_allowed_candidates(request, endpoints)
+    def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
+        """Free the request's place and retry the requests waiting for one."""
+        self._counts.decrement(endpoint_name)
+        self._plugin.release(LLMRequest(request_id=request_id), endpoint_name, output_tokens)
+        self._retry()
+
+    def _place(self, request: LLMRequest) -> Endpoint | None:
+        candidates = self._endpoints()
+        for ep in candidates:
+            ep.attributes["queue_len"] = self._counts.get(ep.name)
+        allowed = self._plugin.get_allowed_candidates(request, candidates)
         if not allowed:
             return None
         picked = self._scheduler.run(request, allowed)
-        winner = picked[0].endpoint if picked else allowed[0]
+        if not picked:
+            raise RuntimeError("the profile picked no engine among those with room")
+        winner = picked[0].endpoint
         self._plugin.reserve(request, winner)
+        self._counts.increment(winner.name)
         return winner
 
-    def wait(self, request: LLMRequest) -> asyncio.Future[Endpoint]:
-        """Queue a request that fit nowhere; the future resolves to its engine."""
-        future: asyncio.Future[Endpoint] = asyncio.get_running_loop().create_future()
-        self._waiting.append((request, future))
-        return future
-
-    def release(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
-        self._plugin.release(LLMRequest(request_id=request_id), endpoint_name, output_tokens)
-
-    def retry(self, endpoints: Sequence[Endpoint]) -> list[Endpoint]:
-        """Place waiting requests that now fit and return their engines."""
+    def _retry(self) -> None:
         # Longest prompt first: late turns are the step's critical path and the costliest to stall.
         waiting = sorted(
             (w for w in self._waiting if not w[1].done()),
-            key=lambda w: len(cast("list[int]", w[0].body or [])),
+            key=lambda w: prefill_tokens(w[0].body),
             reverse=True,
         )
         self._waiting = []
-        placed = []
         for request, future in waiting:
-            winner = self.place(request, endpoints)
+            try:
+                winner = self._place(request)
+            except Exception as e:  # noqa: BLE001 - the waiting caller must see the failure
+                future.set_exception(e)
+                continue
             if winner is None:
                 self._waiting.append((request, future))
             else:
                 future.set_result(winner)
-                placed.append(winner)
-        return placed
+
+    async def _retry_until_empty(self) -> None:
+        # Also covers capacity that arrives with the first metrics poll, when no finish is coming.
+        while self._waiting:
+            await asyncio.sleep(self._retry_interval_s)
+            self._retry()
