@@ -14,17 +14,20 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from py_inference_scheduler.datalayer.metrics.verl.vllm import kv_capacity_tokens
 
 
-def test_reads_the_reported_kv_size():
-    labels = 'block_size="16",kv_cache_size_tokens="157088",num_gpu_blocks="9818"'
-    assert kv_capacity_tokens(labels) == 157088
+def _server(num_gpu_blocks: int | None) -> SimpleNamespace:
+    cache_config = SimpleNamespace(num_gpu_blocks=num_gpu_blocks, block_size=16)
+    vllm_config = SimpleNamespace(cache_config=cache_config)
+    return SimpleNamespace(engine=SimpleNamespace(vllm_config=vllm_config))
 
 
-def test_falls_back_to_blocks_times_block_size():
-    assert kv_capacity_tokens('block_size="16",num_gpu_blocks="9818"') == 157088
+def test_capacity_is_gpu_blocks_times_block_size():
+    assert kv_capacity_tokens(_server(4096)) == 65536
 
 
 def test_capacity_is_zero_until_vllm_sizes_the_cache():
-    assert kv_capacity_tokens('block_size="16",num_gpu_blocks="None"') == 0
+    assert kv_capacity_tokens(_server(None)) == 0
