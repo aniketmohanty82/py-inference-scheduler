@@ -49,6 +49,10 @@ async def get_vllm_routing_stats(server) -> dict:
                         stats["num_running_reqs"] = int(float(running.group(1)))
                     if kv_matches:
                         stats["kv"] = max(float(m) for m in kv_matches)
+                    # VERIFY-ONLY: engine preemptions for the GPU runs.
+                    preempted = re.search(r'^(?:vllm:|vllm_)num_preemptions_total(?:\{.*?\})?\s+([\d.e+]+)', text, re.MULTILINE)  # noqa: E501
+                    if preempted:
+                        stats["preempt"] = int(float(preempted.group(1)))
                     cache_config = re.search(r'^(?:vllm:|vllm_)cache_config_info\{([^}]*)\}', text, re.MULTILINE)  # noqa: E501
                     if cache_config:
                         stats["kv_cache_size"] = kv_capacity_tokens(cache_config.group(1))

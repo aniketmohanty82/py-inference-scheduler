@@ -36,6 +36,7 @@ async def fetch_worker_metrics(ep: Endpoint, inflight_store: InflightStore) -> N
             "num_running_reqs": stats.get("num_running_reqs", 0),
             "kv": stats.get("kv", 0.0),
             "error": stats.get("error", None),
+            "preempt": stats.get("preempt", 0),  # VERIFY-ONLY
         }
         # Capacity is fixed for an engine's life, so a failed scrape keeps the last value.
         if stats.get("kv_cache_size"):
