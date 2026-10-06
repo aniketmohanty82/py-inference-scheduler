@@ -186,7 +186,11 @@ if _VERL_LAYOUT == "legacy":
         ) -> object:
             # Yield CPU so queued metric/scheduling tasks can interleave.
             await asyncio.sleep(0)
-            server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
+            try:  # VERIFY-ONLY
+                server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
+            except Exception as e:
+                print(f'VERIFY_ACQUIRE_ERROR {e!r}'[:3000], flush=True)
+                raise
 
             # vLLMAsyncServer ignores ignore_eos from config, so pass it explicitly.
             # A fresh request_id per generation avoids vLLM KV-cache collisions
@@ -206,7 +210,11 @@ if _VERL_LAYOUT == "legacy":
                     image_data=image_data,
                     video_data=video_data,
                 )
-                output_tokens = len(output.token_ids)
+                try:  # VERIFY-ONLY
+                    output_tokens = len(output.token_ids)
+                except Exception as e:
+                    print(f'VERIFY_OUTPUT_ERROR {type(output)} {e!r}', flush=True)
+                    raise
                 return output
             finally:
                 self._release_server(server_id, request_id, output_tokens)
@@ -292,7 +300,11 @@ else:  # modern layout
             **kwargs: object,
         ) -> object:
             await asyncio.sleep(0)
-            server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
+            try:  # VERIFY-ONLY
+                server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
+            except Exception as e:
+                print(f'VERIFY_ACQUIRE_ERROR {e!r}'[:3000], flush=True)
+                raise
 
             ignore_eos = self.rollout_config.get("ignore_eos", False)
             if isinstance(sampling_params, dict):
@@ -314,7 +326,11 @@ else:  # modern layout
                     **multimodal_kwargs,
                     **kwargs,
                 )
-                output_tokens = len(output.token_ids)
+                try:  # VERIFY-ONLY
+                    output_tokens = len(output.token_ids)
+                except Exception as e:
+                    print(f'VERIFY_OUTPUT_ERROR {type(output)} {e!r}', flush=True)
+                    raise
                 return output
             finally:
                 self._release_server(server_id, request_id, output_tokens)

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Callable, Sequence
 
 from py_inference_scheduler import Scheduler
@@ -45,6 +46,8 @@ class Admission:
         self._retry_interval_s = retry_interval_s
         self._waiting: list[tuple[LLMRequest, asyncio.Future[Endpoint]]] = []
         self._retrying: asyncio.Task[None] | None = None
+        # VERIFY-ONLY counters for the GPU runs.
+        self.v = {'admitted': 0, 'home': 0, 'queued': 0, 'failed': 0, 'wait_sum': 0.0, 'wait_max': 0.0}
 
     async def admit(self, request: LLMRequest) -> Endpoint:
         """Place the request on an engine with room, waiting in line until one has it."""
@@ -55,7 +58,13 @@ class Admission:
         self._waiting.append((request, future))
         if self._retrying is None or self._retrying.done():
             self._retrying = asyncio.get_running_loop().create_task(self._retry_until_empty())
-        return await future
+        self.v['queued'] += 1
+        started = time.monotonic()
+        winner = await future
+        waited = time.monotonic() - started
+        self.v['wait_sum'] += waited
+        self.v['wait_max'] = max(self.v['wait_max'], waited)
+        return winner
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
         """Free the request's place and retry the requests waiting for one."""
@@ -74,6 +83,9 @@ class Admission:
         if not picked:
             raise RuntimeError("the profile picked no engine among those with room")
         winner = picked[0].endpoint
+        last = getattr(self._plugin, '_last_turns', {}).get(request.request_id)
+        self.v['admitted'] += 1
+        self.v['home'] += int(bool(last) and last[0] == winner.name)
         self._plugin.reserve(request, winner)
         self._counts.increment(winner.name)
         return winner
@@ -90,6 +102,8 @@ class Admission:
             try:
                 winner = self._place(request)
             except Exception as e:  # noqa: BLE001 - the waiting caller must see the failure
+                self.v['failed'] += 1
+                print(f'VERIFY_ADMISSION_FAILED {e!r}', flush=True)
                 future.set_exception(e)
                 continue
             if winner is None:
