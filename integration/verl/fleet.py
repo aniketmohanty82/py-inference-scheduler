@@ -101,6 +101,7 @@ class Fleet(InflightStore):
                     f"/resmax{peak_res.get(name, 0)}/kvmax{peak_kv.get(name, 0.0):.2f}"
                     f"/r{s.get('num_running_reqs', 0)}/w{s.get('num_waiting_reqs', 0)}"
                     f"/q{inflight.get(name, 0)}/d{self._dispatched.get(name, 0)}/pre{s.get('preempt', 0)}"
+                    f"/pcq{s.get('pc_queries', 0)}/pch{s.get('pc_hits', 0)}"
                 )
             v = dict(admission.v) if admission else {}
             print(

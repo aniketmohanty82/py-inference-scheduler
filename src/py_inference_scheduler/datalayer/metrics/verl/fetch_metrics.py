@@ -38,6 +38,8 @@ async def fetch_worker_metrics(ep: Endpoint, inflight_store: InflightStore) -> N
             "kv": stats.get("kv", 0.0),
             "error": stats.get("error", None),
             "preempt": stats.get("preempt", 0),  # VERIFY-ONLY
+            "pc_queries": stats.get("pc_queries", 0),  # VERIFY-ONLY
+            "pc_hits": stats.get("pc_hits", 0),  # VERIFY-ONLY
         }
         if ep.name not in _VERIFY_SEEN:  # VERIFY-ONLY
             _VERIFY_SEEN.add(ep.name)

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -186,11 +187,13 @@ if _VERL_LAYOUT == "legacy":
         ) -> object:
             # Yield CPU so queued metric/scheduling tasks can interleave.
             await asyncio.sleep(0)
+            _v_t0 = time.monotonic()  # VERIFY-ONLY
             try:  # VERIFY-ONLY
                 server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
             except Exception as e:
                 print(f'VERIFY_ACQUIRE_ERROR {e!r}'[:3000], flush=True)
                 raise
+            _v_t1 = time.monotonic()  # VERIFY-ONLY
 
             # vLLMAsyncServer ignores ignore_eos from config, so pass it explicitly.
             # A fresh request_id per generation avoids vLLM KV-cache collisions
@@ -217,6 +220,11 @@ if _VERL_LAYOUT == "legacy":
                     raise
                 return output
             finally:
+                print(  # VERIFY-ONLY
+                    f'VERIFY_CALL wait={_v_t1 - _v_t0:.3f} gen={time.monotonic() - _v_t1:.3f} '
+                    f'prompt={len(prompt_ids)} out={output_tokens}',
+                    flush=True,
+                )
                 self._release_server(server_id, request_id, output_tokens)
 
     class PyInferenceAgentLoopWorker(AgentLoopWorker):  # type: ignore[misc]
@@ -300,11 +308,13 @@ else:  # modern layout
             **kwargs: object,
         ) -> object:
             await asyncio.sleep(0)
+            _v_t0 = time.monotonic()  # VERIFY-ONLY
             try:  # VERIFY-ONLY
                 server_id, server = await self._acquire_server(request_id, prompt_ids=prompt_ids)
             except Exception as e:
                 print(f'VERIFY_ACQUIRE_ERROR {e!r}'[:3000], flush=True)
                 raise
+            _v_t1 = time.monotonic()  # VERIFY-ONLY
 
             ignore_eos = self.rollout_config.get("ignore_eos", False)
             if isinstance(sampling_params, dict):
@@ -333,6 +343,11 @@ else:  # modern layout
                     raise
                 return output
             finally:
+                print(  # VERIFY-ONLY
+                    f'VERIFY_CALL wait={_v_t1 - _v_t0:.3f} gen={time.monotonic() - _v_t1:.3f} '
+                    f'prompt={len(prompt_ids)} out={output_tokens}',
+                    flush=True,
+                )
                 self._release_server(server_id, request_id, output_tokens)
 
     class PyInferenceAgentLoopWorker(AgentLoopWorker):  # type: ignore[misc,no-redef]

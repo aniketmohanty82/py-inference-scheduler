@@ -54,6 +54,9 @@ async def get_vllm_routing_stats(server) -> dict:
                     preempted = re.search(r'^(?:vllm:|vllm_)num_preemptions_total(?:\{.*?\})?\s+([\d.e+]+)', text, re.MULTILINE)  # noqa: E501
                     if preempted:
                         stats["preempt"] = int(float(preempted.group(1)))
+                    for key, name in (("pc_queries", "prefix_cache_queries"), ("pc_hits", "prefix_cache_hits")):  # VERIFY-ONLY  # noqa: E501
+                        found = re.findall(rf'^vllm:{name}(?:_total)?(?:\{{.*?\}})?\s+([0-9.e+-]+)', text, re.MULTILINE)  # noqa: E501
+                        stats[key] = int(sum(float(v) for v in found))
                 else:
                     stats["error"] = f"HTTP error {response.status}"
     except Exception as e:  # noqa: BLE001
