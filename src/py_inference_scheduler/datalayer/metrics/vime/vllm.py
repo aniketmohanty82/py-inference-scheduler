@@ -50,6 +50,4 @@ async def fetch_worker_metrics(
     url = ep.attributes.get("url")
     if not url:
         return
-    stats = await scrape_vllm_metrics(str(url), session)
-    ep.attributes["queue_len"] = inflight_store.get(ep.name)
-    ep.attributes["routing_stats"] = stats
+    ep.attributes["routing_stats"] = await scrape_vllm_metrics(str(url), session)
