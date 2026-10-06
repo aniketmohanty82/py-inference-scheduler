@@ -1,0 +1,16 @@
+profile_handler:
+  type: single_profile
+profiles:
+  rayserve:
+    flow_control:
+      type: kv_saturation
+      default_osl: 256
+    scorers:
+      - type: waiting_queue
+        weight: 1.0
+      - type: running_queue
+        weight: 1.0
+      - type: kv_cache
+        weight: 2.0
+    picker:
+      type: max_score

@@ -49,12 +49,40 @@ from py_inference_scheduler.framework import (
 )
 
 
+VERIFY = {'admits': 0, 'waits': 0, 'wait_s': 0.0, 'commits': 0, 'recommits': 0, 'releases': 0}  # VERIFY-ONLY
+VERIFY_HELD: dict[str, int] = {}  # VERIFY-ONLY
+VERIFY_STATE: dict[str, object] = {}  # VERIFY-ONLY
+
+
+def _verify_report() -> None:  # VERIFY-ONLY
+    import threading
+    import time
+
+    def loop() -> None:
+        while True:
+            time.sleep(5)
+            manager = VERIFY_STATE.get('manager')
+            if manager is None:
+                continue
+            plugins = manager._get_plugins() if manager else []
+            reserved = dict(getattr(plugins[0], '_reserved', {})) if plugins else {}
+            waiting = len(manager.admission_queue) if manager else 0
+            print(f"VERIFY_RS {dict(VERIFY)} waiting={waiting} reserved_total={sum(reserved.values())} "
+                  f"capacity={VERIFY_STATE.get('capacity')}", flush=True)
+
+    threading.Thread(target=loop, daemon=True).start()
+
+
+_verify_report()
+
+
 class FlowControlManager:
     def __init__(self, router: IGWRouter) -> None:
         self.router = router
         self.scheduler = router.scheduler
         self.admission_queue: list[asyncio.Future] = []
         self.loop: asyncio.AbstractEventLoop | None = None
+        VERIFY_STATE['manager'] = self  # VERIFY-ONLY
 
     def _get_plugins(self) -> list[FlowControlPlugin]:
         return self.scheduler.get_flow_control_plugins()
@@ -73,7 +101,9 @@ class FlowControlManager:
         if not plugins:
             return candidate_replicas, endpoints
 
+        VERIFY['admits'] += 1  # VERIFY-ONLY
         while True:
+            VERIFY_STATE['capacity'] = {e.name[-6:]: e.attributes.get('kv_cache_size') for e in endpoints}  # VERIFY-ONLY  # noqa: E501
             allowed_eps: Sequence[Endpoint] = endpoints
             for plugin in plugins:
                 allowed_eps = plugin.get_allowed_candidates(request, allowed_eps)
@@ -87,16 +117,24 @@ class FlowControlManager:
 
             fut = self.loop.create_future()
             self.admission_queue.append(fut)
+            VERIFY['waits'] += 1  # VERIFY-ONLY
+            _v_started = self.loop.time()  # VERIFY-ONLY
             await fut
+            VERIFY['wait_s'] += self.loop.time() - _v_started  # VERIFY-ONLY
 
             # Refetch stats because we blocked and conditions changed
             endpoints = await self.router.build_endpoints(candidate_replicas, pending_request)
 
     def commit(self, request: LLMRequest, selected: Endpoint) -> None:
+        VERIFY['commits'] += 1  # VERIFY-ONLY
+        VERIFY_HELD[request.request_id] = VERIFY_HELD.get(request.request_id, 0) + 1  # VERIFY-ONLY
+        if VERIFY_HELD[request.request_id] > 1:  # VERIFY-ONLY
+            VERIFY['recommits'] += 1
         for plugin in self._get_plugins():
             plugin.reserve(request, selected)
 
     def release(self, request: LLMRequest, replica_id: str) -> None:
+        VERIFY['releases'] += 1  # VERIFY-ONLY
         plugins = self._get_plugins()
         for plugin in plugins:
             plugin.release(request, replica_id)
@@ -283,39 +321,22 @@ class IGWRouter(RequestRouter):
 
 # Hooking into Ray Serve's Request Router
 
-llm_config = LLMConfig(
+llm_config = LLMConfig(  # VERIFY-ONLY: small model, four replicas, pinned 6,144-token KV pools
     model_loading_config={
-        "model_id": "qwen-32b",
-        "model_source": "Qwen/Qwen2.5-32B-Instruct",
+        "model_id": "qwen-0.5b",
+        "model_source": "Qwen/Qwen2.5-0.5B-Instruct",
     },
     engine_kwargs={
         "enable_prefix_caching": True,
-        "tensor_parallel_size": 2,
+        "tensor_parallel_size": 1,
+        "max_model_len": 4096,
+        "num_gpu_blocks_override": 384,
+        "gpu_memory_utilization": 0.5,
     },
     deployment_config={
-        "autoscaling_config": {
-            "min_replicas": 1,
-            "max_replicas": 1,
-        },
-        "request_router_config": {
-            # Note our custom IGWRouter here
-            "request_router_class": IGWRouter,
-        },
+        "autoscaling_config": {"min_replicas": 4, "max_replicas": 4},
+        "request_router_config": {"request_router_class": IGWRouter},
         "ray_actor_options": {"num_cpus": 1},
-    },
-    runtime_env={
-        "env_vars": {
-            "NCCL_NET_PLUGIN": "/usr/local/gib/lib64/libnccl-net_internal.so",
-            "NCCL_CROSS_NIC": "0",
-            "NCCL_NET_GDR_LEVEL": "PIX",
-            "NCCL_P2P_NET_CHUNKSIZE": "131072",
-            "NCCL_NVLS_CHUNKSIZE": "524288",
-            "NCCL_IB_ADAPTIVE_ROUTING": "1",
-            "NCCL_IB_QPS_PER_CONNECTION": "4",
-            "NCCL_IB_TC": "52",
-            "NCCL_IB_FIFO_TC": "84",
-            "NCCL_TUNER_CONFIG_PATH": "/usr/local/gib/configs/tuner_config_a3u.txtpb",
-        }
     },
 )
 
