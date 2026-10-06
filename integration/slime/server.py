@@ -133,6 +133,9 @@ async def schedule_and_proxy(  # noqa: PLR0913
     async with scheduling_lock:
         if fetch_metrics is not None:
             await asyncio.gather(*[fetch_metrics(ep, inflight, session) for ep in endpoints])
+        # Counted here, not by the poller: decisions between two polls must see each other.
+        for ep in endpoints:
+            ep.attributes["queue_len"] = inflight.get(ep.name)
         selected = scheduler.run(llm_req, candidates=endpoints)
         if not selected:
             return JSONResponse(status_code=503, content={"error": "no worker selected"})
