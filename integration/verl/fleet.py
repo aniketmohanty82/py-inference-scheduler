@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
+import time
 import uuid
 from dataclasses import dataclass
 from typing import cast
@@ -64,6 +66,51 @@ class Fleet(InflightStore):
         self._interval_s = interval_ms / 1000
         self._discovery = asyncio.Lock()
         self._admission: Admission | None = None
+        # VERIFY-ONLY instrument (scratch branch, never in a PR).
+        self._dispatched: dict[str, int] = {}
+        threading.Thread(target=self._report, daemon=True).start()
+
+    def increment(self, endpoint_name: str) -> None:
+        super().increment(endpoint_name)
+        self._dispatched[endpoint_name] = self._dispatched.get(endpoint_name, 0) + 1
+
+    def _report(self) -> None:
+        peak_kv: dict[str, float] = {}
+        peak_res: dict[str, int] = {}
+        peak_waiting = 0
+        tick = 0
+        while True:
+            time.sleep(1)
+            tick += 1
+            admission = self._admission
+            reserved = dict(getattr(admission._plugin, '_reserved', {})) if admission else {}
+            waiting = len(admission._waiting) if admission else 0
+            peak_waiting = max(peak_waiting, waiting)
+            for name, ep in list(self._endpoints.items()):
+                s = ep.attributes.get('routing_stats', {})
+                peak_kv[name] = max(peak_kv.get(name, 0.0), float(s.get('kv', 0.0)))
+                peak_res[name] = max(peak_res.get(name, 0), reserved.get(name, 0))
+            if tick % 15 or not self._endpoints:
+                continue
+            inflight = self.get_all()
+            parts = []
+            for name, ep in sorted(self._endpoints.items()):
+                s = ep.attributes.get('routing_stats', {})
+                parts.append(
+                    f"{name}=cap{ep.attributes.get('kv_cache_size', 0)}/res{reserved.get(name, 0)}"
+                    f"/resmax{peak_res.get(name, 0)}/kvmax{peak_kv.get(name, 0.0):.2f}"
+                    f"/r{s.get('num_running_reqs', 0)}/w{s.get('num_waiting_reqs', 0)}"
+                    f"/q{inflight.get(name, 0)}/d{self._dispatched.get(name, 0)}/pre{s.get('preempt', 0)}"
+                )
+            v = dict(admission.v) if admission else {}
+            print(
+                f'VERIFY_FLEET t={time.time():.0f} waiting={waiting} waitmax_n={peak_waiting} '
+                f'adm={v} ' + ' '.join(parts),
+                flush=True,
+            )
+            peak_kv.clear()
+            peak_res.clear()
+            peak_waiting = 0
 
     def watch(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
         """Add these engines to the background poll."""
@@ -106,7 +153,11 @@ class Fleet(InflightStore):
 
     async def admit(self, request: LLMRequest) -> tuple[str, ray.actor.ActorHandle]:
         """Place a request on an engine with room, waiting in line until one has it."""
-        winner = await self._admission_or_load().admit(request)
+        try:  # VERIFY-ONLY
+            winner = await self._admission_or_load().admit(request)
+        except Exception as e:
+            print(f'VERIFY_ADMIT_ERROR {e!r}', flush=True)
+            raise
         return winner.name, winner.attributes["replica_obj"]
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
