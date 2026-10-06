@@ -67,8 +67,11 @@ def _verify_report() -> None:  # VERIFY-ONLY
             plugins = manager._get_plugins() if manager else []
             reserved = dict(getattr(plugins[0], '_reserved', {})) if plugins else {}
             waiting = len(manager.admission_queue) if manager else 0
-            print(f"VERIFY_RS {dict(VERIFY)} waiting={waiting} reserved_total={sum(reserved.values())} "
-                  f"capacity={VERIFY_STATE.get('capacity')}", flush=True)
+            report = (f"VERIFY_RS {dict(VERIFY)} waiting={waiting} reserved_total={sum(reserved.values())} "
+                      f"capacity={VERIFY_STATE.get('capacity')}")
+            print(report, flush=True)
+            with open('/tmp/verify_rs.log', 'a') as out:
+                out.write(report + '\n')
 
     threading.Thread(target=loop, daemon=True).start()
 

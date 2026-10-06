@@ -62,12 +62,21 @@ print(
 )
 print("FAILURES", [r[2] for r in results if not r[0]][:5], flush=True)
 time.sleep(15)
-logs = glob.glob("/tmp/ray/session_latest/logs/worker-*.out") + glob.glob("/tmp/ray/session_latest/logs/serve/*.log")
+logs = [p for p in glob.glob("/tmp/ray/session_latest/logs/**/*", recursive=True) if p.endswith((".log", ".out", ".err"))]
+print("log files scanned:", len(logs), flush=True)
+markers = {"Selected endpoint": 0, "ROUTER ERROR": 0, "ROUTER WARNING": 0, "METRICS ERROR": 0, "Traceback": 0}
 for path in logs:
     for line in open(path, errors="replace"):
-        if any(word in line for word in ("ROUTER ERROR", "ROUTER WARNING", "METRICS ERROR", "Traceback")):
-            print("LOG", path.rsplit("/", 1)[-1], line.strip()[:300], flush=True)
-reports = [line.strip() for path in logs for line in open(path, errors="replace") if "VERIFY_RS" in line]
+        for marker in markers:
+            if marker in line:
+                markers[marker] += 1
+                if marker != "Selected endpoint" and markers[marker] <= 3:
+                    print("LOG", path.rsplit("/", 1)[-1], line.strip()[:300], flush=True)
+print("MARKERS", markers, flush=True)
+try:
+    reports = open("/tmp/verify_rs.log").read().splitlines()
+except FileNotFoundError:
+    reports = []
 print("VERIFY_RS reports:", len(reports), flush=True)
 for line in reports[-4:]:
     print("LAST", line[:600], flush=True)
