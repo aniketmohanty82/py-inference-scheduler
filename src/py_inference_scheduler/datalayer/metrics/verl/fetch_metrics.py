@@ -36,6 +36,11 @@ async def fetch_worker_metrics(ep: Endpoint, inflight_store: InflightStore) -> N
             "num_running_reqs": stats.get("num_running_reqs", 0),
             "kv": stats.get("kv", 0.0),
             "error": stats.get("error", None),
+            # VERIFY-ONLY instrument (scratch branch, never in a PR).
+            "pc_queries": stats.get("pc_queries", 0),
+            "pc_hits": stats.get("pc_hits", 0),
+            "req_ok": stats.get("req_ok", 0),
+            "multiproc_dir": stats.get("multiproc_dir"),
         }
     except Exception:
         logger.exception("Failed to scrape RPC metrics for %s", ep.name)

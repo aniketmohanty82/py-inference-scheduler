@@ -110,7 +110,10 @@ class _SchedulerCore:
             for ep in endpoints:
                 ep.attributes["routing_stats"] = snapshot.stats.get(ep.name, {})
                 ep.attributes["queue_len"] = snapshot.inflight.get(ep.name, 0)
-            request = LLMRequest(request_id=request_id, body=prompt_ids)
+            # VERIFY-ONLY: expose the trajectory id to sticky_session (scratch branch, never in a PR).
+            request = LLMRequest(
+                request_id=request_id, body=prompt_ids, headers={"x-rls-session": request_id}
+            )
             selected = self.scheduler.run(request, candidates=endpoints)
             if not selected:
                 return None

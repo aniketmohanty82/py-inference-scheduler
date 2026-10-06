@@ -1,0 +1,18 @@
+profile_handler:
+  type: single_profile
+profiles:
+  backpressure:
+    scorers:
+      - type: sticky_session
+        header_name: x-rls-session
+        weight: 10.0
+      - type: waiting_queue
+        weight: 5.0
+      - type: least_queue
+        weight: 2.0
+      - type: kv_cache
+        weight: 1.0
+      - type: prefix_cache
+        weight: 1.0
+    picker:
+      type: max_score

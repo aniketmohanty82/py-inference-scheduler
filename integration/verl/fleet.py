@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import os
+import threading
+import time
 import uuid
 from dataclasses import dataclass
 from typing import cast
@@ -54,6 +56,31 @@ class Fleet(InflightStore):
             lambda: list(self._endpoints.values()), self, _fetch, interval_ms=interval_ms
         )
         self._poller.start()
+        # VERIFY-ONLY instrument (scratch branch, never in a PR).
+        self._dispatched: dict[str, int] = {}
+        threading.Thread(target=self._report, daemon=True).start()
+
+    def increment(self, endpoint_name: str) -> None:
+        super().increment(endpoint_name)
+        self._dispatched[endpoint_name] = self._dispatched.get(endpoint_name, 0) + 1
+
+    def _report(self) -> None:
+        while True:
+            time.sleep(15)
+            if not self._endpoints:
+                continue
+            inflight = self.get_all()
+            parts = []
+            for name, ep in sorted(self._endpoints.items()):
+                s = ep.attributes.get("routing_stats", {})
+                parts.append(
+                    f"{name}=kv{float(s.get('kv', 0.0)):.2f}/r{s.get('num_running_reqs', 0)}"
+                    f"/w{s.get('num_waiting_reqs', 0)}/q{inflight.get(name, 0)}"
+                    f"/d{self._dispatched.get(name, 0)}/pcq{s.get('pc_queries', 0)}"
+                    f"/pch{s.get('pc_hits', 0)}/ok{s.get('req_ok', 0)}"
+                    f"/mpd{s.get('multiproc_dir')}"
+                )
+            print(f"VERIFY_FLEET t={time.time():.0f} " + " ".join(parts), flush=True)
 
     def watch(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
         """Add these engines to the background poll."""

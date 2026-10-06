@@ -48,6 +48,17 @@ async def get_vllm_routing_stats(server) -> dict:
                         stats["num_running_reqs"] = int(float(running.group(1)))
                     if kv_matches:
                         stats["kv"] = max(float(m) for m in kv_matches)
+                    # VERIFY-ONLY instrument (scratch branch, never in a PR).
+                    import os
+
+                    def _counter(name: str) -> float:
+                        found = re.findall(rf'^vllm:{name}(?:_total)?(?:\{{.*?\}})?\s+([0-9.e+-]+)', text, re.MULTILINE)  # noqa: E501
+                        return sum(float(v) for v in found)
+
+                    stats["pc_queries"] = int(_counter("prefix_cache_queries"))
+                    stats["pc_hits"] = int(_counter("prefix_cache_hits"))
+                    stats["req_ok"] = int(_counter("request_success"))
+                    stats["multiproc_dir"] = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
                 else:
                     stats["error"] = f"HTTP error {response.status}"
     except Exception as e:  # noqa: BLE001
