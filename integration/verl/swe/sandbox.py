@@ -169,6 +169,9 @@ class SandboxClient:
                     f'rc={_v_rc} attempts={attempt + 1} timeout={timeout} out={len(_v_out)} cmd={cmd[:240]!r}',
                     flush=True,
                 )
+                _v_setup = re.search(r'\bpip3? install\b|\bvenv\b|\bcurl\b|\bwget\b|\bapt(-get)? |\bgit clone\b|\bconda\b|setup\.py', cmd)
+                if _v_rc == 124 or ('sh -c' in cmd and _v_setup):  # VERIFY-ONLY
+                    print(f'VERIFY_OUT sb={name} rc={_v_rc} head={_v_out[:300]!r} tail={_v_out[-700:]!r}', flush=True)
                 return _v_rc, _v_out
             except Exception as e:  # noqa: BLE001,PERF203 - websocket layer raises bare Exceptions
                 last = e
