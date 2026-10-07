@@ -140,6 +140,7 @@ class SandboxClient:
             try:
                 pod = self.core.read_namespaced_pod(name, self.namespace)
                 if pod.status.phase == "Running":
+                    print(f'VERIFY_BOOT sb={name} t={time.time():.1f} ready_s={time.monotonic() - start:.1f}', flush=True)  # VERIFY-ONLY
                     return time.monotonic() - start
                 if pod.status.phase in ("Failed", "Succeeded"):  # noqa: PLR6201
                     raise SandboxError(f"{name}: pod reached terminal phase {pod.status.phase}")
@@ -159,12 +160,22 @@ class SandboxClient:
         concurrency) - callers' commands must therefore be idempotent.
         """
         last: Exception | None = None
+        _v_started = time.monotonic()  # VERIFY-ONLY
         for attempt in range(retries + 1):
             try:
-                return self._exec_once(name, cmd, timeout)
+                _v_rc, _v_out = self._exec_once(name, cmd, timeout)
+                print(  # VERIFY-ONLY
+                    f'VERIFY_EXEC sb={name} t={time.time():.1f} dur={time.monotonic() - _v_started:.2f} '
+                    f'rc={_v_rc} attempts={attempt + 1} timeout={timeout} out={len(_v_out)} cmd={cmd[:240]!r}',
+                    flush=True,
+                )
+                return _v_rc, _v_out
             except Exception as e:  # noqa: BLE001,PERF203 - websocket layer raises bare Exceptions
                 last = e
+                print(f'VERIFY_EXEC_RETRY sb={name} attempt={attempt + 1} after={time.monotonic() - _v_started:.2f} '
+                      f'err={e!r}'[:400], flush=True)  # VERIFY-ONLY
                 time.sleep(2 * (attempt + 1))
+        print(f'VERIFY_EXEC_FAILED sb={name} dur={time.monotonic() - _v_started:.2f} cmd={cmd[:240]!r}', flush=True)  # VERIFY-ONLY
         raise SandboxError(f"{name}: exec failed after {retries + 1} attempts: {last}")
 
     def _exec_once(self, name: str, cmd: str, timeout: float) -> tuple[int, str]:

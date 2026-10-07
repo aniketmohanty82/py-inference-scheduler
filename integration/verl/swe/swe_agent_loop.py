@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any
 from uuid import uuid4
 
@@ -120,6 +121,8 @@ class SWEAgentLoop(AgentLoopBase):
         reward, reason = 0.0, "no-submit"
 
         client = None
+        _v_boot_wait = 0.0  # VERIFY-ONLY
+        _v_started = time.time()  # VERIFY-ONLY
         # Boot the sandbox concurrently with the first generate: turn 1 never
         # needs the sandbox until its command executes, and sandbox startup
         # (scheduling + image pull) is tens of seconds.
@@ -165,7 +168,9 @@ class SWEAgentLoop(AgentLoopBase):
                 else:
                     with simple_timer("tool_calls", metrics):
                         if client is None:
+                            _v_t = time.monotonic()  # VERIFY-ONLY
                             client = await sandbox_future
+                            _v_boot_wait += time.monotonic() - _v_t  # VERIFY-ONLY
                         rc, out = await self.loop.run_in_executor(
                             None, lambda c=command: self._run_command(client, sandbox_name, c)  # noqa: B023
                         )
@@ -189,12 +194,15 @@ class SWEAgentLoop(AgentLoopBase):
             if submitted:
                 with simple_timer("tool_calls", metrics):
                     if client is None:
+                        _v_t = time.monotonic()  # VERIFY-ONLY
                         client = await sandbox_future
+                        _v_boot_wait += time.monotonic() - _v_t  # VERIFY-ONLY
                     reward, reason = await self.loop.run_in_executor(
                         None, lambda: self._grade(client, sandbox_name, extra_info)
                     )
         except Exception as e:  # sandbox/infra failure: salvage the trajectory  # noqa: BLE001
             logger.warning("swe_agent rollout error on %s: %s", extra_info.get("instance_id"), e)
+            print(f'VERIFY_TRAJ_ERROR sb={sandbox_name} err={e!r}'[:400], flush=True)  # VERIFY-ONLY
             reward, reason = 0.0, f"rollout-error: {type(e).__name__}"
         finally:
             if client is None:
@@ -223,6 +231,13 @@ class SWEAgentLoop(AgentLoopBase):
         logger.info(
             "swe_agent %s: reward=%s reason=%s turns=%d resp_tokens=%d",
             extra_info.get("instance_id"), reward, reason, assistant_turns, len(response_ids),
+        )
+        print(  # VERIFY-ONLY
+            f'VERIFY_TRAJ sb={sandbox_name} start={_v_started:.1f} end={time.time():.1f} turns={assistant_turns} '
+            f'reason={reason!r} reward={reward} tool_s={metrics.get("tool_calls", 0.0):.1f} '
+            f'gen_s={metrics.get("generate_sequences", 0.0):.1f} boot_wait_s={_v_boot_wait:.1f} '
+            f'resp_tokens={len(response_ids)}',
+            flush=True,
         )
         return AgentLoopOutput(
             prompt_ids=prompt_ids,
