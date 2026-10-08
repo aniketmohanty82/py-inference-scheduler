@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import time
 
 from vllm.config import VllmConfig
 from vllm.distributed.kv_transfer.kv_connector.v1.base import (
@@ -30,6 +29,13 @@ from vllm.logger import init_logger
 from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import KVCacheConfig
 from vllm.v1.request import Request
+
+from py_inference_scheduler.datalayer.connectors.mooncake.save_diagnostics import (
+    install_save_timer,
+    print_pins,
+    print_send_state,
+    track_save_jobs,
+)
 
 logger = init_logger(__name__)
 
@@ -104,30 +110,37 @@ class RLPullPolicyConnector(MooncakeStoreConnector):
         self._log_pull_source = (
             self.connector_worker is not None and os.getenv("RLS_LOG_PULL_SOURCE", "0") == "1"
         )
-        # The same switch, scheduler side: every _PINS_EVERY steps, print the KV blocks held
-        # by in-flight saves. Upstream keeps a saved block referenced until every rank reports
-        # the save, even after its request finished, so those blocks are outside any admission
-        # ledger built from requests.
+        # The same switch, scheduler side: a SAVEJOBS line for every step that emits saves or
+        # preempts, and every _PINS_EVERY steps a PINS line for the KV blocks in-flight saves
+        # hold. Upstream keeps every block of a saving request referenced until each rank
+        # reports the save, even after the request finished, so those blocks are outside any
+        # admission ledger built from requests.
         self._log_pins = (
             self.connector_scheduler is not None and os.getenv("RLS_LOG_PULL_SOURCE", "0") == "1"
         )
         self._steps = 0
-        # Worker side of the same evidence: whether this rank still holds, runs or has finished
-        # the save jobs whose blocks the scheduler pinned.
+        self._job_born: dict[int, float] = {}
+        # Worker side of the same evidence, a SENDQ line per rank: whether this rank still holds,
+        # runs or has finished the save jobs whose blocks the scheduler pinned, and how fast.
         self._worker_steps = 0
 
     def register_kv_caches(self, kv_caches: dict) -> None:  # type: ignore[override]
         super().register_kv_caches(kv_caches)
         if self._log_pull_source:
             n = _install_pull_source_log(self.connector_worker)
-            print(f"PULLSRC instrument installed pid={os.getpid()} recv_threads={n}", flush=True)
+            timed = install_save_timer(getattr(self.connector_worker, "kv_send_thread", None))
+            print(
+                f"PULLSRC instrument installed pid={os.getpid()} recv_threads={n} "
+                f"save_timer={timed}",
+                flush=True,
+            )
 
     def start_load_kv(self, forward_context: object, **kwargs: object) -> None:  # type: ignore[override]
         super().start_load_kv(forward_context, **kwargs)
         if self._log_pull_source:
             self._worker_steps += 1
             if self._worker_steps % _PINS_EVERY == 0:
-                _print_send_state(self.connector_worker)
+                print_send_state(getattr(self.connector_worker, "kv_send_thread", None))
         # vLLM skips wait_for_save() on a step that schedules no tokens
         # (kv_connector_no_forward), but upstream queues its store jobs from
         # wait_for_save() and nowhere else, while the scheduler side has
@@ -177,8 +190,9 @@ class RLPullPolicyConnector(MooncakeStoreConnector):
         meta = super().build_connector_meta(scheduler_output)
         if self._log_pins:
             self._steps += 1
+            track_save_jobs(self.connector_scheduler, scheduler_output, meta, self._job_born)
             if self._steps % _PINS_EVERY == 0:
-                _print_pins(self.connector_scheduler)
+                print_pins(self.connector_scheduler, self._job_born)
         # Read by start_load_kv on the worker side; see there.
         meta.rls_no_forward_step = scheduler_output.total_num_scheduled_tokens == 0  # type: ignore[attr-defined]
         # A request that reaches the scheduled lists is no longer parked on
@@ -198,47 +212,8 @@ class RLPullPolicyConnector(MooncakeStoreConnector):
 # PULLSRC line cadence: every load batch at first, then a sample with cumulative counts.
 _PULLSRC_VERBOSE_BATCHES = 100
 _PULLSRC_EVERY = 50
-# PINS line cadence in scheduler steps; ~1.5 s at decode step times.
+# PINS and SENDQ line cadence in steps; ~1.5 s at decode step times.
 _PINS_EVERY = 50
-
-
-def _print_pins(sched: object) -> None:
-    """One PINS line: store jobs pinning blocks, the distinct blocks held, the free blocks."""
-    try:
-        pinned = getattr(sched, "_pinned_saves", None) or {}
-        blocks = {block for ids, _ in pinned.values() for block in ids}
-        pool = getattr(sched, "_gpu_block_pool", None)
-        free = pool.get_num_free_blocks() if pool is not None else -1
-        total = getattr(pool, "num_gpu_blocks", -1)
-        print(
-            f"PINS t={time.time():.1f} pid={os.getpid()} jobs={len(pinned)} "
-            f"blocks={len(blocks)} free={free} total={total}",
-            flush=True,
-        )
-    except Exception as e:  # noqa: BLE001 - a diagnostic must never take an engine down
-        print(f"PINS unavailable: {e!r}", flush=True)
-
-
-def _print_send_state(worker: object) -> None:
-    """One SENDQ line per rank: save jobs queued and live, finishes not yet reported, thread health.
-
-    Reads without the thread's lock: a send thread stuck while holding it must not stall the
-    engine through its own diagnostic.
-    """
-    try:
-        thread = getattr(worker, "kv_send_thread", None)
-        if thread is None:
-            return
-        live = sum(len(jobs) for jobs in list(thread.stored_requests.values()))
-        print(
-            f"SENDQ t={time.time():.1f} pid={os.getpid()} rank={thread.tp_rank} "
-            f"queued={thread.request_queue.qsize()} live={live} "
-            f"unreported={len(thread._completed_saves)} "
-            f"pressure={getattr(thread, '_store_pressure_active', None)} alive={thread.is_alive()}",
-            flush=True,
-        )
-    except Exception as e:  # noqa: BLE001 - a diagnostic must never take an engine down
-        print(f"SENDQ unavailable: {e!r}", flush=True)
 
 
 def _endpoint_host(endpoint: str | None) -> str:
