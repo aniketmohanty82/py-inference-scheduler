@@ -112,6 +112,9 @@ class RLPullPolicyConnector(MooncakeStoreConnector):
             self.connector_scheduler is not None and os.getenv("RLS_LOG_PULL_SOURCE", "0") == "1"
         )
         self._steps = 0
+        # Worker side of the same evidence: whether this rank still holds, runs or has finished
+        # the save jobs whose blocks the scheduler pinned.
+        self._worker_steps = 0
 
     def register_kv_caches(self, kv_caches: dict) -> None:  # type: ignore[override]
         super().register_kv_caches(kv_caches)
@@ -121,6 +124,10 @@ class RLPullPolicyConnector(MooncakeStoreConnector):
 
     def start_load_kv(self, forward_context: object, **kwargs: object) -> None:  # type: ignore[override]
         super().start_load_kv(forward_context, **kwargs)
+        if self._log_pull_source:
+            self._worker_steps += 1
+            if self._worker_steps % _PINS_EVERY == 0:
+                _print_send_state(self.connector_worker)
         # vLLM skips wait_for_save() on a step that schedules no tokens
         # (kv_connector_no_forward), but upstream queues its store jobs from
         # wait_for_save() and nowhere else, while the scheduler side has
@@ -210,6 +217,28 @@ def _print_pins(sched: object) -> None:
         )
     except Exception as e:  # noqa: BLE001 - a diagnostic must never take an engine down
         print(f"PINS unavailable: {e!r}", flush=True)
+
+
+def _print_send_state(worker: object) -> None:
+    """One SENDQ line per rank: save jobs queued and live, finishes not yet reported, thread health.
+
+    Reads without the thread's lock: a send thread stuck while holding it must not stall the
+    engine through its own diagnostic.
+    """
+    try:
+        thread = getattr(worker, "kv_send_thread", None)
+        if thread is None:
+            return
+        live = sum(len(jobs) for jobs in list(thread.stored_requests.values()))
+        print(
+            f"SENDQ t={time.time():.1f} pid={os.getpid()} rank={thread.tp_rank} "
+            f"queued={thread.request_queue.qsize()} live={live} "
+            f"unreported={len(thread._completed_saves)} "
+            f"pressure={getattr(thread, '_store_pressure_active', None)} alive={thread.is_alive()}",
+            flush=True,
+        )
+    except Exception as e:  # noqa: BLE001 - a diagnostic must never take an engine down
+        print(f"SENDQ unavailable: {e!r}", flush=True)
 
 
 def _endpoint_host(endpoint: str | None) -> str:
