@@ -6,6 +6,10 @@ profiles:
       type: kv_saturation
       # The load runs fixed-length turns, so a first turn's output is known: keep in step with --output-tokens.
       default_osl: 256
+      # Sticky routing places a first-turn burst unevenly, faster than engine metrics move; this cap
+      # holds the busiest engine below preemption, allowing for the ledger counting tokens where
+      # vLLM allocates whole blocks.
+      budget_fraction: 0.94
     scorers:
       # Each trajectory keeps one preferred engine; kv_saturation stops it when that engine is full.
       - type: sticky_session
