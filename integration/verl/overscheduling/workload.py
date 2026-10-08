@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 
@@ -30,10 +31,16 @@ _WORDS = (  # noqa: SIM905
     "used take three"
 ).split()
 
+# Spread of each tool call around the mean: lognormal, so most calls are quick and a few are slow.
+_TOOL_LATENCY_SIGMA = 0.5
+
 
 @dataclass(frozen=True)
 class Workload:
-    """A batch of identical-shape trajectories: unique prompts, fixed turn schedule."""
+    """A batch of identical-shape trajectories: unique prompts, fixed turn schedule.
+
+    tool_latency_s is the mean time a tool call takes between turns; 0 means replies arrive at once.
+    """
 
     trajectories: int
     prompt_words: int
@@ -41,10 +48,18 @@ class Workload:
     output_tokens: int
     reply_tokens: int
     seed: int = 0
+    tool_latency_s: float = 0.0
+
+    def __post_init__(self) -> None:
+        """Refuse a negative mean tool time."""
+        if self.tool_latency_s < 0:
+            raise ValueError("tool_latency_s must be >= 0")
 
     def rows(self) -> list[dict]:
         """Rows in verl's non-tensor batch layout; the same seed yields the same rows."""
         rng = random.Random(self.seed)  # noqa: S311 - reproducible load text, not secrets
+        # Its own stream, so adding tool time leaves every prompt as it was.
+        tool_rng = random.Random(f"tool-latency-{self.seed}")  # noqa: S311
         rows = []
         for i in range(self.trajectories):
             # The index leads the prompt so no two trajectories share a prefix past the template.
@@ -54,11 +69,18 @@ class Workload:
                 "extra_info": {
                     "output_tokens": [self.output_tokens] * self.turns,
                     "reply_tokens": [self.reply_tokens] * (self.turns - 1),
+                    "tool_latency_s": self._tool_latencies(tool_rng),
                 },
                 "agent_name": "multiturn_load",
                 "index": i,
             })
         return rows
+
+    def _tool_latencies(self, rng: random.Random) -> list[float]:
+        if self.tool_latency_s == 0:
+            return [0.0] * (self.turns - 1)
+        mu = math.log(self.tool_latency_s) - _TOOL_LATENCY_SIGMA**2 / 2
+        return [rng.lognormvariate(mu, _TOOL_LATENCY_SIGMA) for _ in range(self.turns - 1)]
 
     def max_context_tokens(self, template_tokens: int = 64) -> int:
         """Upper bound on a trajectory's final context, for sizing pools and max lengths.

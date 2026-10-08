@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from uuid import uuid4
 
@@ -29,20 +30,21 @@ _FILLER = " data"
 
 @register("multiturn_load")
 class MultiTurnLoadAgentLoop(AgentLoopBase):
-    """Run a row's fixed turn schedule back to back, with no tool wait between turns.
+    """Run a row's fixed turn schedule, waiting out a tool call between turns.
 
     Turn i generates ``output_tokens[i]`` tokens (the rollout must run with
-    ignore_eos so the model cannot end a turn early), then ``reply_tokens[i]``
-    filler tokens stand in for the next user message and the next turn starts at
-    once. Replies are raw token ids rather than a chat-templated message, so their
-    length is exact. The schedule rides on the dataset row, so every arm runs
-    identical work.
+    ignore_eos so the model cannot end a turn early), the tool call takes
+    ``tool_latency_s[i]`` seconds, then ``reply_tokens[i]`` filler tokens stand in for
+    its output and the next turn starts. Replies are raw token ids rather than a
+    chat-templated message, so their length is exact. The schedule rides on the
+    dataset row, so every arm runs identical work.
     """
 
     async def run(self, sampling_params: dict[str, Any], **kwargs: Any) -> AgentLoopOutput:  # noqa: ANN401
         schedule = kwargs["extra_info"]
         output_tokens = [int(n) for n in schedule["output_tokens"]]
         reply_tokens = [int(n) for n in schedule["reply_tokens"]]
+        tool_latency = [float(s) for s in schedule["tool_latency_s"]]
         messages = [dict(m) for m in kwargs["raw_prompt"]]
         prompt_ids = await self.loop.run_in_executor(None, lambda: self._prompt_ids(messages))
         filler_id = self.tokenizer.encode(_FILLER, add_special_tokens=False)[0]
@@ -61,6 +63,8 @@ class MultiTurnLoadAgentLoop(AgentLoopBase):
             full_ids += token_ids
             response_mask += [1] * len(token_ids)
             if turn < len(reply_tokens):
+                if tool_latency[turn] > 0:
+                    await asyncio.sleep(tool_latency[turn])
                 full_ids += [filler_id] * reply_tokens[turn]
                 response_mask += [0] * reply_tokens[turn]
         response_length = self.rollout_config.response_length

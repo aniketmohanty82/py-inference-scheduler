@@ -51,6 +51,12 @@ def _parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--turns", type=int, default=8)
     parser.add_argument("--output-tokens", type=int, default=512)
     parser.add_argument("--reply-tokens", type=int, default=128)
+    parser.add_argument(
+        "--tool-latency-s",
+        type=float,
+        default=0.0,
+        help="mean seconds a tool call takes between turns, lognormal; 0 = replies arrive at once",
+    )
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument(
         "--warmup", type=int, default=1, help="unmeasured rollouts first, at the first batch size"
@@ -68,6 +74,7 @@ def _workload(args: argparse.Namespace, trajectories: int, repeat: int = 0) -> W
         args.output_tokens,
         args.reply_tokens,
         args.seed + repeat,
+        args.tool_latency_s,
     )
 
 
@@ -153,6 +160,7 @@ def _rollout(
             "turns": workload.turns,
             "output_tokens": workload.output_tokens,
             "reply_tokens": workload.reply_tokens,
+            "tool_latency_s": workload.tool_latency_s,
             "seed": workload.seed,
         },
         "start": start,
