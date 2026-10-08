@@ -31,6 +31,8 @@ vllm:num_preemptions_total{engine="0",model_name="m"} 2.0
 vllm:num_preemptions_total{engine="1",model_name="m"} 1.0
 vllm:prompt_tokens_by_source_total{engine="0",source="local_compute"} 100.0
 vllm:prompt_tokens_by_source_total{engine="0",source="external_kv_transfer"} 40.0
+vllm:num_requests_waiting_by_reason{engine="0",reason="capacity"} 4.0
+vllm:num_requests_waiting_by_reason{engine="0",reason="deferred"} 2.0
 vllm:e2e_request_latency_seconds_bucket{engine="0",le="1.0"} 9.0
 vllm:num_preemptions_created{engine="0"} 1.7e9
 process_cpu_seconds_total 12.0
@@ -43,6 +45,8 @@ def test_parse_sums_labels_keeps_sources_apart_and_skips_buckets() -> None:
     assert values["vllm:num_preemptions_total"] == 3.0
     assert values["vllm:prompt_tokens_by_source_total[local_compute]"] == 100.0
     assert values["vllm:prompt_tokens_by_source_total[external_kv_transfer]"] == 40.0
+    assert values["vllm:num_requests_waiting_by_reason[capacity]"] == 4.0
+    assert values["vllm:num_requests_waiting_by_reason[deferred]"] == 2.0
     assert not any("bucket" in key or "created" in key for key in values)
     assert "process_cpu_seconds_total" not in values
 
