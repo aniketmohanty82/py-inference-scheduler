@@ -34,6 +34,6 @@ def test_rows_carry_unique_prompts_and_the_fixed_schedule() -> None:
         assert len(row["raw_prompt"][0]["content"].split()) == 20 + 2
 
 
-def test_max_context_counts_prompt_turns_and_replies_with_template_slack() -> None:
+def test_max_context_adds_template_slack_to_the_prompt_only() -> None:
     workload = Workload(1, 1000, 3, 500, 100)
-    assert workload.max_context_tokens(template_tokens=10) == 1000 + 10 + 3 * 500 + 2 * 110
+    assert workload.max_context_tokens(template_tokens=10) == 1000 + 10 + 3 * 500 + 2 * 100

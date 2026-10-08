@@ -61,6 +61,9 @@ class Workload:
         return rows
 
     def max_context_tokens(self, template_tokens: int = 64) -> int:
-        """Upper bound on a trajectory's final context, for sizing pools and max lengths."""
-        replies = (self.turns - 1) * (self.reply_tokens + template_tokens)
+        """Upper bound on a trajectory's final context, for sizing pools and max lengths.
+
+        Only the prompt goes through the chat template; turns and replies are exact.
+        """
+        replies = (self.turns - 1) * self.reply_tokens
         return self.prompt_words + template_tokens + self.turns * self.output_tokens + replies

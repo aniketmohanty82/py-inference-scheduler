@@ -24,7 +24,6 @@ from verl.experimental.agent_loop.agent_loop import (  # type: ignore[import-not
 )
 from verl.utils.profiler import simple_timer  # type: ignore[import-not-found]
 
-# One token per repeat in Qwen-family tokenizers, so a reply's length tracks its schedule.
 _FILLER = " data"
 
 
@@ -33,18 +32,27 @@ class MultiTurnLoadAgentLoop(AgentLoopBase):
     """Run a row's fixed turn schedule back to back, with no tool wait between turns.
 
     Turn i generates ``output_tokens[i]`` tokens (the rollout must run with
-    ignore_eos so the model cannot end a turn early), then a user message of
-    ``reply_tokens[i]`` filler tokens is appended and the next turn starts at
-    once. The schedule rides on the dataset row, so every arm runs identical work.
+    ignore_eos so the model cannot end a turn early), then ``reply_tokens[i]``
+    filler tokens stand in for the next user message and the next turn starts at
+    once. Replies are raw token ids rather than a chat-templated message, so their
+    length is exact. The schedule rides on the dataset row, so every arm runs
+    identical work.
     """
 
     async def run(self, sampling_params: dict[str, Any], **kwargs: Any) -> AgentLoopOutput:  # noqa: ANN401
         schedule = kwargs["extra_info"]
         output_tokens = [int(n) for n in schedule["output_tokens"]]
         reply_tokens = [int(n) for n in schedule["reply_tokens"]]
-        prompt_ids: list[int] = await self.apply_chat_template([
-            dict(m) for m in kwargs["raw_prompt"]
-        ])
+        messages = [dict(m) for m in kwargs["raw_prompt"]]
+        prompt_ids: list[int] = await self.loop.run_in_executor(
+            None,
+            lambda: list(
+                self.tokenizer.apply_chat_template(
+                    messages, add_generation_prompt=True, tokenize=True
+                )
+            ),
+        )
+        filler_id = self.tokenizer.encode(_FILLER, add_special_tokens=False)[0]
         full_ids = list(prompt_ids)
         response_mask: list[int] = []
         metrics: dict[str, Any] = {}
@@ -60,12 +68,8 @@ class MultiTurnLoadAgentLoop(AgentLoopBase):
             full_ids += token_ids
             response_mask += [1] * len(token_ids)
             if turn < len(reply_tokens):
-                reply_ids = await self.apply_chat_template(
-                    [{"role": "user", "content": _FILLER * reply_tokens[turn]}],
-                    remove_system_prompt=True,
-                )
-                full_ids += reply_ids
-                response_mask += [0] * len(reply_ids)
+                full_ids += [filler_id] * reply_tokens[turn]
+                response_mask += [0] * reply_tokens[turn]
         response_length = self.rollout_config.response_length
         return AgentLoopOutput(
             prompt_ids=prompt_ids,
