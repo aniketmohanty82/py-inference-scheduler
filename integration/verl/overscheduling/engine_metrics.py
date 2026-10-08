@@ -29,7 +29,7 @@ WAITING = "vllm:num_requests_waiting"
 
 
 def parse_metrics(text: str) -> dict[str, float]:
-    """Sum every vLLM series over its labels, keeping a ``source`` label apart; skip buckets."""
+    """Sum each vLLM series over its labels, but keep ``source`` and ``reason`` apart."""
     values: dict[str, float] = {}
     for line in text.splitlines():
         if not line.startswith("vllm:"):
@@ -38,8 +38,8 @@ def parse_metrics(text: str) -> dict[str, float]:
         name, _, labels = series.partition("{")
         if name.endswith(("_bucket", "_created")):
             continue
-        source = _label(labels, "source")
-        key = f"{name}[{source}]" if source else name
+        split = _label(labels, "source") or _label(labels, "reason")
+        key = f"{name}[{split}]" if split else name
         try:
             values[key] = values.get(key, 0.0) + float(value)
         except ValueError:
@@ -120,6 +120,9 @@ class EngineMetricsPoller:
                 "kv_max": kv[-1],
                 "running_mean": _time_mean(points, RUNNING, span),
                 "waiting_mean": _time_mean(points, WAITING, span),
+                # Capacity = no KV blocks; deferred = held back by the step's token budget.
+                "waiting_capacity_mean": _time_mean(points, f"{WAITING}_by_reason[capacity]", span),
+                "waiting_deferred_mean": _time_mean(points, f"{WAITING}_by_reason[deferred]", span),
             }
             first, last = padded[0][1], padded[-1][1]
             for key, value in last.items():
