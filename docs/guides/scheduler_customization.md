@@ -108,9 +108,6 @@ Scorers assign scores to replicas. Multiple scorers are normalized and weighted.
 *   **`constant`**: Assigns a static score to all replicas.
     *   `value` (float, required): The score to assign.
 
-#### D. Packing (Fills replicas one at a time)
-*   **`fill_first`**: Scores replicas by their in-flight request count, highest first, so new work goes to the busiest replica. Use it behind a capacity gate such as `kv_saturation`, which removes full replicas: each replica fills to the gate's budget before the next one opens.
-
 ### Pickers
 Pickers choose the final replica from the scored list.
 *   **`max_score`**: Always selects the replica with the highest combined score (default).

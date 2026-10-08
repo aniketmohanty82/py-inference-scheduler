@@ -25,15 +25,13 @@ from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 
-def _admission(
-    engines: list[Endpoint], scorer: str = "least_queue"
-) -> tuple[Admission, InflightStore]:
+def _admission(engines: list[Endpoint]) -> tuple[Admission, InflightStore]:
     config = {
         "profile_handler": {"type": "single_profile"},
         "profiles": {
             "p": {
                 "flow_control": {"type": "kv_saturation", "default_osl": 0},
-                "scorers": [{"type": scorer, "weight": 1.0}],
+                "scorers": [{"type": "least_queue", "weight": 1.0}],
                 "picker": {"type": "max_score"},
             }
         },
@@ -109,24 +107,6 @@ async def test_a_trajectory_returns_to_its_engine_over_a_less_loaded_one():
     admission.finish("t1", "home", 5)
     for _ in range(3):
         counts.increment("home")
-
-    assert await admission.admit(_turn("t1", 30)) is home
-
-
-async def test_fill_first_fills_one_engine_before_opening_the_next():
-    engines = [_engine("a", 100), _engine("b", 100), _engine("c", 100)]
-    admission, _ = _admission(engines, scorer="fill_first")
-    placed = [(await admission.admit(_turn(f"t{i}", 25))).name for i in range(12)]
-    assert placed == ["a"] * 4 + ["b"] * 4 + ["c"] * 4
-
-
-async def test_fill_first_still_returns_a_trajectory_to_its_engine():
-    home, fuller = _engine("home", 100), _engine("fuller", 100)
-    admission, counts = _admission([home, fuller], scorer="fill_first")
-    assert await admission.admit(_turn("t1", 10)) is home
-    admission.finish("t1", "home", 5)
-    for _ in range(3):
-        counts.increment("fuller")
 
     assert await admission.admit(_turn("t1", 30)) is home
 
