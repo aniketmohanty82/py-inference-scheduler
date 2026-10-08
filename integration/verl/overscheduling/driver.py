@@ -57,14 +57,14 @@ def _parse_args() -> tuple[argparse.Namespace, list[str]]:
     return parser.parse_known_args()
 
 
-def _workload(args: argparse.Namespace, trajectories: int) -> Workload:
+def _workload(args: argparse.Namespace, trajectories: int, repeat: int = 0) -> Workload:
     return Workload(
         trajectories,
         args.prompt_words,
         args.turns,
         args.output_tokens,
         args.reply_tokens,
-        args.seed,
+        args.seed + repeat,
     )
 
 
@@ -180,7 +180,11 @@ def main() -> None:
     try:
         for trajectories in (int(n) for n in args.trajectories.split(",")):
             for repeat in range(args.repeats):
-                record = _rollout(loops, poller, args, _workload(args, trajectories), repeat)
+                # No rollout may reuse KV an earlier one computed: drop local and Mooncake caches,
+                # and give each repeat its own prompts in case a store entry survives the drop.
+                ray.get([handle.clear_kv_cache.remote() for handle in servers.server_handles])
+                workload = _workload(args, trajectories, repeat)
+                record = _rollout(loops, poller, args, workload, repeat)
                 print("OVERSCHED_RESULT " + json.dumps(record), flush=True)
     finally:
         poller.stop()
