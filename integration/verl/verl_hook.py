@@ -67,6 +67,10 @@ from py_inference_scheduler.framework import Endpoint, LLMRequest
 logger = logging.getLogger(__name__)
 logger.info("py-inference-scheduler verl hook: %s layout detected", _VERL_LAYOUT)
 
+# verl keeps one request id for every turn of a trajectory, so it doubles as the session id
+# the sticky_session scorer reads.
+SESSION_HEADER = "x-rls-session-id"
+
 # Must apply at module level to patch classes before use across distributed
 # Ray workers without modifying verl.
 VllmEnginePatch.apply()
@@ -105,7 +109,9 @@ class _SchedulerCore:
         self, request_id: str, prompt_ids: list[int] | None
     ) -> tuple[str, ray.actor.ActorHandle] | None:
         """Pick an engine's id and handle; None means fall back to verl's LB."""
-        request = LLMRequest(request_id=request_id, body=prompt_ids)
+        request = LLMRequest(
+            request_id=request_id, headers={SESSION_HEADER: request_id}, body=prompt_ids
+        )
         if self.admits:
             return await place(self.fleet, request)
         async with self.lock:

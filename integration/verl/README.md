@@ -103,6 +103,9 @@ If you want to customize the scheduler settings in a VM-based cluster:
 > [!TIP]
 > **Designing Custom Profiles**: To learn more about the available scorers, filters, pickers, and flow-control plugins you can use to customize your scheduling policies, refer to the comprehensive [Scheduler Customization Guide](../../docs/guides/scheduler_customization.md).
 
+### Session header
+The hook sends verl's request id, which stays the same for every turn of a trajectory, as the `x-rls-session-id` header. To keep a trajectory's turns on one engine, add a `sticky_session` scorer with `header_name: x-rls-session-id`.
+
 ### Metrics polling
 The fleet actor polls every engine's routing stats in the background, so no routing decision waits on a scrape. To change the interval, set `RLS_METRICS_INTERVAL_MS` in the runtime env's `env_vars` (default `100`). With flow control, requests waiting for room are also retried at this interval.
 
