@@ -59,6 +59,7 @@ def test_window_time_averages_gauges_and_takes_counter_deltas_over_the_pad() -> 
     stats = poller.window(10.0, 14.0, pad=1.0)["a"]
     # Ramp 0 -> 1 over 2 s, then flat at 1 for 2 s: 3 KV-seconds over 4 s.
     assert stats["kv_mean"] == pytest.approx(0.75)
+    assert stats["kv_p50"] == 1.0
     assert stats["kv_max"] == 1.0
     assert stats["running_mean"] == pytest.approx(3.5)
     assert stats["delta:vllm:num_preemptions_total"] == 4.0
