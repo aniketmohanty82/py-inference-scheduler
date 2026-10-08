@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from integration.verl.overscheduling.workload import Workload
 
 
@@ -30,8 +32,35 @@ def test_rows_carry_unique_prompts_and_the_fixed_schedule() -> None:
     for i, row in enumerate(rows):
         assert row["index"] == i
         assert row["agent_name"] == "multiturn_load"
-        assert row["extra_info"] == {"output_tokens": [128] * 4, "reply_tokens": [32] * 3}
+        assert row["extra_info"] == {
+            "output_tokens": [128] * 4,
+            "reply_tokens": [32] * 3,
+            "tool_latency_s": [0.0] * 3,
+        }
         assert len(row["raw_prompt"][0]["content"].split()) == 20 + 2
+
+
+def test_tool_latency_is_seeded_and_leaves_prompts_unchanged() -> None:
+    instant = Workload(4, 50, 3, 64, 16, seed=7).rows()
+    timed = Workload(4, 50, 3, 64, 16, seed=7, tool_latency_s=3.0).rows()
+    assert [r["raw_prompt"] for r in timed] == [r["raw_prompt"] for r in instant]
+    assert timed == Workload(4, 50, 3, 64, 16, seed=7, tool_latency_s=3.0).rows()
+    latencies = [r["extra_info"]["tool_latency_s"] for r in timed]
+    assert all(len(row) == 2 and all(s > 0 for s in row) for row in latencies)
+    other = Workload(4, 50, 3, 64, 16, seed=8, tool_latency_s=3.0).rows()
+    assert other[0]["extra_info"]["tool_latency_s"] != latencies[0]
+
+
+def test_tool_latency_averages_its_mean() -> None:
+    rows = Workload(2000, 1, 6, 1, 1, seed=3, tool_latency_s=3.0).rows()
+    draws = [s for row in rows for s in row["extra_info"]["tool_latency_s"]]
+    assert len(draws) == 2000 * 5
+    assert abs(sum(draws) / len(draws) - 3.0) < 0.05
+
+
+def test_negative_tool_latency_is_refused() -> None:
+    with pytest.raises(ValueError, match="tool_latency_s"):
+        Workload(1, 1, 2, 1, 1, tool_latency_s=-1.0)
 
 
 def test_max_context_adds_template_slack_to_the_prompt_only() -> None:
