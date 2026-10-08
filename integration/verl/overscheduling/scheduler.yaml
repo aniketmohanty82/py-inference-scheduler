@@ -7,13 +7,15 @@ profiles:
       # The load runs fixed-length turns, so a first turn's output is known: keep in step with --output-tokens.
       default_osl: 256
     scorers:
-      - type: waiting_queue
-        weight: 5.0
+      # Each trajectory keeps one preferred engine; kv_saturation stops it when that engine is full.
+      - type: sticky_session
+        header_name: x-rls-session-id
+        weight: 4.0
       - type: least_queue
-        weight: 2.0
-      - type: kv_cache
         weight: 1.0
-      - type: prefix_cache
+      - type: waiting_queue
+        weight: 1.0
+      - type: kv_cache
         weight: 1.0
     picker:
       type: max_score
