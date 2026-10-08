@@ -1,0 +1,68 @@
+# swe15 = swe14 with the Mooncake that vLLM 0.29.0 ships. Nothing else changes.
+#
+# vllm/vllm-openai:v0.29.0 already carries mooncake-transfer-engine-cuda13
+# 0.3.13.post1: vLLM's requirements/kv_connectors.txt asks for >= 0.3.12, the
+# cuda13 build on CUDA 13 images. swe13 and swe14 then installed the CUDA 12
+# build 0.3.11.post1 on top to match an older master. Both distributions write
+# the same mooncake/ package, so store.so, engine.so and mooncake_master came
+# from 0.3.11.post1 (a cu12 runtime loaded into a cu13 process) while the
+# 0.3.13-only modules stayed behind. Every store run on swe13/swe14 ran that mix.
+#
+# Uninstalling 0.3.11.post1 deletes the files the two distributions share, so
+# the cuda13 wheel is reinstalled whole. Clients of this image need a
+# 0.3.13.post1 master (integration/verl/k8s/mooncake-v0313.yaml): a 0.3.13.post1
+# client fails mount_segment against a 0.3.11.post1 master.
+#
+# Layered on swe14, pinned to the digest the H200 pods ran, so flash-attn is
+# not recompiled and a re-pushed tag cannot change the base.
+# Build: docker build -f integration/verl/image/Dockerfile.swe15 \
+#            -t us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe15 \
+#            integration/verl/image
+FROM us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe14@sha256:3a068fd0f8ab1d9e28eed6ac60aa3eb7233bff64561fbd1e780d8c1d3773e181
+
+RUN pip uninstall -y mooncake-transfer-engine nvidia-cuda-runtime-cu12 \
+    && pip install --no-cache-dir --no-deps --force-reinstall \
+        "mooncake-transfer-engine-cuda13==0.3.13.post1"
+
+# The base image's value; swe13 had prepended the cu12 runtime for 0.3.11.post1.
+ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64
+
+# Fail the build if anything but the one stock distribution is left, or if the
+# bindings vLLM's store worker loads miss a library. They cannot be imported
+# here: the cuda13 build links libcuda.so.1, which only a GPU node provides.
+RUN python3 - <<'PYEOF'
+import base64, hashlib, importlib.metadata as md, importlib.util, os, subprocess, sys
+
+problems = []
+for name in ("mooncake-transfer-engine", "nvidia-cuda-runtime-cu12"):
+    try:
+        problems.append(f"{name} {md.version(name)} is still installed")
+    except md.PackageNotFoundError:
+        pass
+
+dist = md.distribution("mooncake-transfer-engine-cuda13")
+if dist.version != "0.3.13.post1":
+    problems.append(f"mooncake-transfer-engine-cuda13 is {dist.version}, not 0.3.13.post1")
+for f in dist.files or []:
+    if not f.hash:
+        continue
+    data = open(f.locate(), "rb").read()
+    digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+    if digest != f.hash.value:
+        problems.append(f"{f} does not hold the bytes its wheel recorded")
+
+package = importlib.util.find_spec("mooncake").submodule_search_locations[0]
+for binding in ("store.so", "engine.so"):
+    path = os.path.join(package, binding)
+    ldd = subprocess.run(["ldd", path], capture_output=True, text=True, check=True).stdout
+    for line in ldd.splitlines():
+        if "not found" in line and not line.strip().startswith("libcuda.so.1 "):
+            problems.append(f"{binding}: {line.strip()}")
+        if "libcudart.so.12" in line:
+            problems.append(f"{binding} links {line.split()[0]}")
+
+if problems:
+    sys.exit("GATE FAILED:\n  - " + "\n  - ".join(problems))
+print(f"GATE OK  mooncake-transfer-engine-cuda13=={dist.version}, sole Mooncake distribution, "
+      "bindings resolve every library but the driver's libcuda.so.1")
+PYEOF

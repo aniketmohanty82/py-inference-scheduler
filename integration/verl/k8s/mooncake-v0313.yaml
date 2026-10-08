@@ -1,0 +1,88 @@
+# Mooncake 0.3.13.post1 master and client config for engines on image swe15
+# (integration/verl/image/Dockerfile.swe15). 0.3.11.post1 and 0.3.13.post1
+# clients and masters do not interoperate, so this runs beside the original
+# mooncake-master / mooncake-config, which the ray-serve-llm-mooncake RayService
+# still uses with its 0.3.11.post1 image.
+#
+# The master runs from the clients' own image so both ends come from one
+# wheel. CPU: the original master's 500m limit ran at 106% of the limit
+# (one-minute mean) during an overscheduling run on 2026-10-08, and the
+# scheduler waits on master lookups every step, so a capped master throttles
+# the engines.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mooncake-master-v0313
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mooncake-master-v0313
+  template:
+    metadata:
+      labels:
+        app: mooncake-master-v0313
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: default-pool
+      affinity:
+        # The swe-ab2 head's node already holds swe14's layers, so the 23 GB
+        # image arrives as one small layer there.
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  ray.io/cluster: swe-ab2
+                  ray.io/node-type: head
+      containers:
+      - name: mooncake-master
+        image: us-south1-docker.pkg.dev/aniket-gke-dev/llm-images/rllm-verl-mooncake:swe15@sha256:e960feb9b05ceb7122e3cd34f9ab6f26914d92444f7af4ce384e0f36d3cec2b0
+        command: ["mooncake_master"]
+        args:
+        - --port
+        - "50051"
+        - --enable_http_metadata_server
+        - --http_metadata_server_port
+        - "8080"
+        - --default_kv_lease_ttl
+        - "60000"
+        ports:
+        - {containerPort: 50051, name: rpc}
+        - {containerPort: 8080, name: metadata}
+        - {containerPort: 9003, name: metrics}
+        resources:
+          requests: {cpu: "2", memory: 4Gi}
+          limits: {cpu: "4", memory: 4Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mooncake-master-v0313
+spec:
+  selector:
+    app: mooncake-master-v0313
+  ports:
+  - {name: rpc, port: 50051, targetPort: 50051}
+  - {name: metadata, port: 8080, targetPort: 8080}
+  - {name: metrics, port: 9003, targetPort: 9003}
+---
+# Same settings as the swe A/B mooncake-config (sizing history in
+# cm-mooncake-config.yaml on verl-swe-store-ab); only the master differs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mooncake-config-v0313
+data:
+  mooncake_config.json: |
+    {
+      "mode": "embedded",
+      "metadata_server": "P2PHANDSHAKE",
+      "master_server_address": "mooncake-master-v0313.default.svc.cluster.local:50051",
+      "protocol": "rdma",
+      "device_name": "",
+      "global_segment_size": "128gb",
+      "local_buffer_size": "4gb"
+    }
