@@ -1,0 +1,21 @@
+profile_handler:
+  type: single_profile
+profiles:
+  overscheduling:
+    flow_control:
+      type: kv_saturation
+      # The load runs fixed-length turns, so a first turn's output is known: keep in step with --output-tokens.
+      default_osl: 256
+      # Headroom for blocks a Mooncake save holds after its request finishes.
+      budget_fraction: 0.9
+    scorers:
+      - type: waiting_queue
+        weight: 5.0
+      - type: least_queue
+        weight: 2.0
+      - type: kv_cache
+        weight: 1.0
+      - type: prefix_cache
+        weight: 1.0
+    picker:
+      type: max_score
