@@ -43,6 +43,30 @@ def test_rejects_a_negative_output_estimate():
         KVSaturationPlugin(default_osl=-1)
 
 
+@pytest.mark.parametrize("fraction", [0.0, -0.5, 1.5])
+def test_rejects_a_budget_fraction_outside_zero_to_one(fraction: float):
+    with pytest.raises(ValueError, match="budget_fraction"):
+        KVSaturationPlugin(budget_fraction=fraction)
+
+
+def test_budget_fraction_keeps_headroom_unreserved():
+    plugin = KVSaturationPlugin(default_osl=0, budget_fraction=0.5)
+    engine = _engine("e1", 200)
+    plugin.reserve(_turn("t1", 100), engine)
+
+    # Half of 200 is the budget, and 100 of it is held.
+    assert _offered(plugin, _turn("t2", 1), [engine]) == []
+
+
+def test_oversize_request_reserves_the_whole_budget():
+    plugin = KVSaturationPlugin(default_osl=0, budget_fraction=0.5)
+    engine = _engine("e1", 200)
+
+    assert _offered(plugin, _turn("big", 500), [engine]) == ["e1"]
+    plugin.reserve(_turn("big", 500), engine)
+    assert _offered(plugin, _turn("t2", 1), [engine]) == []
+
+
 def test_rejects_the_removed_drip_settings():
     with pytest.raises(TypeError):
         build_flow_control("kv_saturation", enable_drip=True)
