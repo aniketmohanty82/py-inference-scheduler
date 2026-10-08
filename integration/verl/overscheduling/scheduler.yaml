@@ -5,7 +5,7 @@ profiles:
     flow_control:
       type: kv_saturation
       # The load runs fixed-length turns, so a first turn's output is known: keep in step with --output-tokens.
-      default_osl: 512
+      default_osl: 256
     scorers:
       - type: waiting_queue
         weight: 5.0

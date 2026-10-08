@@ -52,6 +52,9 @@ def _parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--output-tokens", type=int, default=512)
     parser.add_argument("--reply-tokens", type=int, default=128)
     parser.add_argument("--repeats", type=int, default=1)
+    parser.add_argument(
+        "--warmup", type=int, default=1, help="unmeasured rollouts first, at the first batch size"
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--metrics-interval", type=float, default=2.0)
     return parser.parse_known_args()
@@ -180,15 +183,18 @@ def main() -> None:
     loops = manager_cls.create(config, llm_client=servers.get_client())
     poller = EngineMetricsPoller(addresses, args.metrics_interval)
     poller.start()
+    sizes = [int(n) for n in args.trajectories.split(",")]
+    # A first rollout pays one-time compile and kernel-tuning stalls; measure only after that.
+    # Warm-ups use their own seeds, so no measured rollout repeats their prompts.
+    runs = [("OVERSCHED_WARMUP", sizes[0], -1 - w) for w in range(args.warmup)]
+    runs += [("OVERSCHED_RESULT", size, repeat) for size in sizes for repeat in range(args.repeats)]
     try:
-        for trajectories in (int(n) for n in args.trajectories.split(",")):
-            for repeat in range(args.repeats):
-                # No rollout may reuse KV an earlier one computed: drop local and Mooncake caches,
-                # and give each repeat its own prompts in case a store entry survives the drop.
-                ray.get([handle.clear_kv_cache.remote() for handle in servers.server_handles])
-                workload = _workload(args, trajectories, repeat)
-                record = _rollout(loops, poller, args, workload, repeat)
-                print("OVERSCHED_RESULT " + json.dumps(record), flush=True)
+        for tag, trajectories, repeat in runs:
+            # No rollout may reuse KV an earlier one computed: drop local and Mooncake caches,
+            # and give each repeat its own prompts in case a store entry survives the drop.
+            ray.get([handle.clear_kv_cache.remote() for handle in servers.server_handles])
+            record = _rollout(loops, poller, args, _workload(args, trajectories, repeat), repeat)
+            print(f"{tag} {json.dumps(record)}", flush=True)
     finally:
         poller.stop()
 
