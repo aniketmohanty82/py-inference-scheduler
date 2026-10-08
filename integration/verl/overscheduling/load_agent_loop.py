@@ -44,14 +44,7 @@ class MultiTurnLoadAgentLoop(AgentLoopBase):
         output_tokens = [int(n) for n in schedule["output_tokens"]]
         reply_tokens = [int(n) for n in schedule["reply_tokens"]]
         messages = [dict(m) for m in kwargs["raw_prompt"]]
-        prompt_ids: list[int] = await self.loop.run_in_executor(
-            None,
-            lambda: list(
-                self.tokenizer.apply_chat_template(
-                    messages, add_generation_prompt=True, tokenize=True
-                )
-            ),
-        )
+        prompt_ids = await self.loop.run_in_executor(None, lambda: self._prompt_ids(messages))
         filler_id = self.tokenizer.encode(_FILLER, add_special_tokens=False)[0]
         full_ids = list(prompt_ids)
         response_mask: list[int] = []
@@ -78,3 +71,11 @@ class MultiTurnLoadAgentLoop(AgentLoopBase):
             num_turns=len(output_tokens) + len(reply_tokens) + 1,
             metrics=metrics,
         )
+
+    def _prompt_ids(self, messages: list[dict]) -> list[int]:
+        encoded = self.tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=True
+        )
+        # Newer transformers return an encoding dict here, older ones the id list itself.
+        ids = encoded["input_ids"] if hasattr(encoded, "keys") else encoded
+        return [int(token) for token in ids]

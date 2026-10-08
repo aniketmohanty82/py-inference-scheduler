@@ -137,6 +137,8 @@ def _rollout(
     gpus = args.samplers * args.tp
     rollout_s = end - start
     generated = int(output.batch["response_mask"].sum().item())
+    prompt_width = output.batch["prompts"].shape[1]
+    prompt_tokens = output.batch["attention_mask"][:, :prompt_width].sum(-1).float()
     return {
         "arm": args.arm,
         "samplers": args.samplers,
@@ -154,6 +156,7 @@ def _rollout(
         "end": end,
         "rollout_s": rollout_s,
         "samples_per_s_per_gpu": workload.trajectories / rollout_s / gpus,
+        "prompt_tokens_mean": float(prompt_tokens.mean().item()),
         "generated_tokens": generated,
         "generated_tokens_per_s_per_gpu": generated / rollout_s / gpus,
         "verl_timing": {k: float(v) for k, v in output.meta_info.get("timing", {}).items()},
