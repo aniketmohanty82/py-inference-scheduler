@@ -64,6 +64,24 @@ class LeastQueueScorer(ScorerPlugin):
         )
 
 
+@register_scorer("fill_first")
+class FillFirstScorer(ScorerPlugin):
+    """Prefers the endpoint with the most requests in flight, so engines fill one at a time.
+
+    Pair it with a capacity gate such as kv_saturation, which removes full engines: the busiest
+    engine that still has room takes the request, and the next engine opens only once it is full.
+    """
+
+    def score(
+        self, cycle_state: CycleState, request: LLMRequest, pods: Mapping[str, Endpoint]
+    ) -> dict[str, float]:
+        return score_by_metric(
+            pods,
+            metric_extractor=lambda ep: float(ep.attributes.get("queue_len", 0)),  # type: ignore[arg-type]
+            lower_is_better=False,
+        )
+
+
 @register_scorer("waiting_queue")
 class WaitingQueueScorer(ScorerPlugin):
     """Scores candidate endpoints based on the number of waiting requests inside the vLLM engine."""

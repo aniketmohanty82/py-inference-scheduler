@@ -22,6 +22,7 @@ from .handlers import SingleProfileHandler as SingleProfileHandler
 from .pickers import MaxScorePicker as MaxScorePicker
 from .pickers import RandomPicker as RandomPicker
 from .scorers import ConstantScorer as ConstantScorer
+from .scorers import FillFirstScorer as FillFirstScorer
 from .scorers import KVCacheScorer as KVCacheScorer
 from .scorers import LeastQueueScorer as LeastQueueScorer
 from .scorers import PrefixCacheScorer as PrefixCacheScorer

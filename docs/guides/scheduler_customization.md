@@ -108,6 +108,9 @@ Scorers assign scores to replicas. Multiple scorers are normalized and weighted.
 *   **`constant`**: Assigns a static score to all replicas.
     *   `value` (float, required): The score to assign.
 
+#### D. Packing (Fills replicas one at a time)
+*   **`fill_first`**: Scores replicas by their in-flight request count, highest first, so new work goes to the busiest replica. Use it behind a capacity gate such as `kv_saturation`, which removes full replicas: each replica fills to the gate's budget before the next one opens.
+
 ### Pickers
 Pickers choose the final replica from the scored list.
 *   **`max_score`**: Always selects the replica with the highest combined score (default).
@@ -118,6 +121,7 @@ Pickers choose the final replica from the scored list.
 Flow control plugins prevent replica overload and mid-decoding preemptions by controlling the flow to affected replicas.
 *   **`kv_saturation`**: Admits a request only to a replica whose KV token budget has room for it. A request needs its prompt tokens plus its trajectory's previous output; replicas offered are the one that served the trajectory's last turn if it fits, otherwise every replica that fits, and the profile's scorers pick among them. When none fits, the request waits.
     *   `default_osl` (int, default: `1024`): Output tokens assumed for a trajectory's first turn, before its real output is known.
+    *   `budget_fraction` (float, default: `1.0`): Share of each replica's KV capacity that may be reserved, in (0, 1]. Lower it to leave headroom for KV the ledger does not see.
     *   *More Info*: See the [KV Saturation Guide](../kv_saturation.md).
 
 ---
