@@ -111,9 +111,13 @@ class EngineMetricsPoller:
             if len(points) < 2:  # noqa: PLR2004 - a time average needs two points
                 continue
             span = points[-1][0] - points[0][0]
+            kv = sorted(v.get(KV_USAGE, 0.0) for _, v in points)
             stats = {
                 "kv_mean": _time_mean(points, KV_USAGE, span),
-                "kv_max": max(v.get(KV_USAGE, 0.0) for _, v in points),
+                # A batch rollout ramps up and drains; the median and p90 read the plateau.
+                "kv_p50": kv[len(kv) // 2],
+                "kv_p90": kv[int(0.9 * (len(kv) - 1))],
+                "kv_max": kv[-1],
                 "running_mean": _time_mean(points, RUNNING, span),
                 "waiting_mean": _time_mean(points, WAITING, span),
             }
