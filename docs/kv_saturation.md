@@ -4,7 +4,7 @@
 
 ## How it works
 
-1. **Budget.** Each replica's budget is `budget_fraction` of its KV cache capacity in tokens, minus what admitted, unfinished requests have reserved. Capacity comes from the engine itself: vLLM's KV cache block count times its block size. Engines that report no capacity, such as SGLang, make admission fail with an error instead of queueing requests forever. Lower `budget_fraction` below 1 when something outside the reservations holds KV, such as a KV connector that keeps a finished request's blocks while it saves them.
+1. **Budget.** Each replica's budget is its KV cache capacity in tokens minus what admitted, unfinished requests have reserved. Capacity comes from the engine itself: vLLM's KV cache block count times its block size. Engines that report no capacity, such as SGLang, make admission fail with an error instead of queueing requests forever.
 2. **Request size.** A request needs its prompt tokens plus its trajectory's output from the previous turn. A trajectory's first turn assumes `default_osl` output tokens. A request larger than a whole replica reserves that replica's full capacity, so it runs on an idle replica.
 3. **Placement.** The replica that served the trajectory's last turn still holds most of its context, so it is offered alone when it fits. Otherwise every replica that fits is offered, and the profile's scorers choose among them.
 4. **Queueing.** When no replica fits, the request waits until a reservation is freed.
@@ -18,7 +18,6 @@ profiles:
     flow_control:
       type: kv_saturation
       default_osl: 1024   # output tokens assumed for a trajectory's first turn
-      budget_fraction: 1.0  # share of each replica's KV capacity that may be reserved, in (0, 1]
     scorers:
       - type: least_queue
         weight: 1.0

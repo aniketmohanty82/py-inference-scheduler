@@ -34,19 +34,15 @@ class KVSaturationPlugin(FlowControlPlugin):
     """Admits a request only where its tokens fit in an engine's KV budget.
 
     - A request needs its prefill plus its trajectory's last output, default_osl on turn one.
-    - An engine's budget is budget_fraction of its KV capacity, minus what unfinished admitted
-      requests reserved; the rest is headroom for KV the ledger cannot see.
+    - An engine's budget is its KV capacity minus what unfinished admitted requests reserved.
     - Offers the engine that served the trajectory's last turn if it fits, else all that fit.
     - Offers nothing when no engine fits, so the caller queues the request.
     """
 
-    def __init__(self, default_osl: int = 1024, budget_fraction: float = 1.0) -> None:
+    def __init__(self, default_osl: int = 1024) -> None:
         if default_osl < 0:
             raise ValueError("default_osl must be >= 0.")
-        if not 0 < budget_fraction <= 1:
-            raise ValueError("budget_fraction must be in (0, 1].")
         self.default_osl = default_osl
-        self.budget_fraction = budget_fraction
         self._reserved: dict[str, int] = {}
         self._holds: dict[str, tuple[str, int]] = {}
         self._last_turns: OrderedDict[str, tuple[str, int]] = OrderedDict()
@@ -65,7 +61,7 @@ class KVSaturationPlugin(FlowControlPlugin):
     def reserve(self, request: LLMRequest, selected: Endpoint) -> None:
         # A retried decision moves the hold instead of stacking a second one.
         self._drop_hold(request.request_id)
-        tokens = min(self._need(request), self._budget(selected))
+        tokens = min(self._need(request), _capacity(selected))
         self._reserved[selected.name] = self._reserved.get(selected.name, 0) + tokens
         self._holds[request.request_id] = (selected.name, tokens)
 
@@ -94,16 +90,13 @@ class KVSaturationPlugin(FlowControlPlugin):
         return prefill_tokens(request.body) + output
 
     def _fits(self, ep: Endpoint, need: int, request_id: str) -> bool:
-        budget = self._budget(ep)
+        capacity = _capacity(ep)
         # A retried decision moves the request's own hold, so that hold does not count against it.
         hold = self._holds.get(request_id)
         own = hold[1] if hold and hold[0] == ep.name else 0
         reserved = self._reserved.get(ep.name, 0) - own
-        # An oversize request reserves the whole budget, so it waits for an idle engine.
-        return budget > 0 and reserved + min(need, budget) <= budget
-
-    def _budget(self, ep: Endpoint) -> int:
-        return int(_capacity(ep) * self.budget_fraction)
+        # An oversize request reserves the whole engine, so it waits for an idle one.
+        return capacity > 0 and reserved + min(need, capacity) <= capacity
 
 
 def _capacity(ep: Endpoint) -> int:
