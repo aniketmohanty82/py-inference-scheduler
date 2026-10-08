@@ -176,6 +176,11 @@ def main() -> None:
     from verl.workers.rollout.llm_server import LLMServerManager  # type: ignore[import-not-found]
 
     config = _compose(args, overrides)
+    sizes = [int(n) for n in args.trajectories.split(",")]
+    # verl splits a batch evenly over its agent-loop workers; fail before sampler start-up.
+    workers = config.actor_rollout_ref.rollout.agent.num_workers
+    if uneven := [n for n in sizes if n % workers]:
+        raise ValueError(f"batch sizes {uneven} must be multiples of agent.num_workers={workers}")
     ray.init()
     servers = LLMServerManager.create(config, worker_group=None)
     addresses = servers.get_addresses()
@@ -183,7 +188,6 @@ def main() -> None:
     loops = manager_cls.create(config, llm_client=servers.get_client())
     poller = EngineMetricsPoller(addresses, args.metrics_interval)
     poller.start()
-    sizes = [int(n) for n in args.trajectories.split(",")]
     # A first rollout pays one-time compile and kernel-tuning stalls; measure only after that.
     # Warm-ups use their own seeds, so no measured rollout repeats their prompts.
     runs = [("OVERSCHED_WARMUP", sizes[0], -1 - w) for w in range(args.warmup)]
