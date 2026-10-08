@@ -11,9 +11,12 @@ profiles:
       # vLLM allocates whole blocks.
       budget_fraction: 0.94
     scorers:
-      # Each trajectory keeps one preferred engine; kv_saturation stops it when that engine is full.
+      # Affinity first: each trajectory prefers the engine holding its prefix. When kv_saturation
+      # finds that engine full, the backpressure scorers below pick among the engines with room.
       - type: sticky_session
         header_name: x-rls-session-id
+        weight: 4.0
+      - type: prefix_cache
         weight: 4.0
       - type: least_queue
         weight: 1.0
