@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 KV_USAGE = "vllm:kv_cache_usage_perc"
 RUNNING = "vllm:num_requests_running"
 WAITING = "vllm:num_requests_waiting"
+PREEMPTIONS = "vllm:num_preemptions_total"
+PULLED = "vllm:prompt_tokens_by_source_total[external_kv_transfer]"
 
 
 def parse_metrics(text: str) -> dict[str, float]:
@@ -89,10 +91,13 @@ class EngineMetricsPoller:
                     # Once per sampler: which series it exports, so a missing gauge is visible.
                     print(f"OVERSCHED_KEYS {address} {json.dumps(sorted(values))}", flush=True)
                 self.samples.append((now, address, values))
-                # None, not 0, when a gauge is absent: a silent default once hid exactly that.
-                row[address] = [values.get(KV_USAGE), values.get(RUNNING), values.get(WAITING)]
+                # None, not 0, when a series is absent: a silent default once hid exactly that.
+                row[address] = [
+                    values.get(k) for k in (KV_USAGE, RUNNING, WAITING, PREEMPTIONS, PULLED)
+                ]
             print(
-                "OVERSCHED_SCRAPE " + json.dumps({"t": round(now, 2), "kv_run_wait": row}),
+                "OVERSCHED_SCRAPE "
+                + json.dumps({"t": round(now, 2), "kv_run_wait_preempt_pulled": row}),
                 flush=True,
             )
             self._stop.wait(self.interval_s)
