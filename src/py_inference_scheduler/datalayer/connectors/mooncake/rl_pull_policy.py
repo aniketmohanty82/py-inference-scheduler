@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import time
 
 from vllm.config import VllmConfig
 from vllm.distributed.kv_transfer.kv_connector.v1.base import (
@@ -103,6 +104,14 @@ class RLPullPolicyConnector(MooncakeStoreConnector):
         self._log_pull_source = (
             self.connector_worker is not None and os.getenv("RLS_LOG_PULL_SOURCE", "0") == "1"
         )
+        # The same switch, scheduler side: every _PINS_EVERY steps, print the KV blocks held
+        # by in-flight saves. Upstream keeps a saved block referenced until every rank reports
+        # the save, even after its request finished, so those blocks are outside any admission
+        # ledger built from requests.
+        self._log_pins = (
+            self.connector_scheduler is not None and os.getenv("RLS_LOG_PULL_SOURCE", "0") == "1"
+        )
+        self._steps = 0
 
     def register_kv_caches(self, kv_caches: dict) -> None:  # type: ignore[override]
         super().register_kv_caches(kv_caches)
@@ -159,6 +168,10 @@ class RLPullPolicyConnector(MooncakeStoreConnector):
         scheduler_output: SchedulerOutput,
     ) -> KVConnectorMetadata:
         meta = super().build_connector_meta(scheduler_output)
+        if self._log_pins:
+            self._steps += 1
+            if self._steps % _PINS_EVERY == 0:
+                _print_pins(self.connector_scheduler)
         # Read by start_load_kv on the worker side; see there.
         meta.rls_no_forward_step = scheduler_output.total_num_scheduled_tokens == 0  # type: ignore[attr-defined]
         # A request that reaches the scheduled lists is no longer parked on
@@ -178,6 +191,25 @@ class RLPullPolicyConnector(MooncakeStoreConnector):
 # PULLSRC line cadence: every load batch at first, then a sample with cumulative counts.
 _PULLSRC_VERBOSE_BATCHES = 100
 _PULLSRC_EVERY = 50
+# PINS line cadence in scheduler steps; ~1.5 s at decode step times.
+_PINS_EVERY = 50
+
+
+def _print_pins(sched: object) -> None:
+    """One PINS line: store jobs pinning blocks, the distinct blocks held, the free blocks."""
+    try:
+        pinned = getattr(sched, "_pinned_saves", None) or {}
+        blocks = {block for ids, _ in pinned.values() for block in ids}
+        pool = getattr(sched, "_gpu_block_pool", None)
+        free = pool.get_num_free_blocks() if pool is not None else -1
+        total = getattr(pool, "num_gpu_blocks", -1)
+        print(
+            f"PINS t={time.time():.1f} pid={os.getpid()} jobs={len(pinned)} "
+            f"blocks={len(blocks)} free={free} total={total}",
+            flush=True,
+        )
+    except Exception as e:  # noqa: BLE001 - a diagnostic must never take an engine down
+        print(f"PINS unavailable: {e!r}", flush=True)
 
 
 def _endpoint_host(endpoint: str | None) -> str:
