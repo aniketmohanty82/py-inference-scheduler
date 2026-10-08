@@ -85,12 +85,12 @@ class EngineMetricsPoller:
                 except Exception as e:  # noqa: BLE001 - one bad scrape must not end the run
                     logger.warning("metrics scrape of %s failed: %s", address, e)
                     continue
+                if not any(a == address for _, a, _ in self.samples):
+                    # Once per sampler: which series it exports, so a missing gauge is visible.
+                    print(f"OVERSCHED_KEYS {address} {json.dumps(sorted(values))}", flush=True)
                 self.samples.append((now, address, values))
-                row[address] = [
-                    values.get(KV_USAGE, 0.0),
-                    values.get(RUNNING, 0.0),
-                    values.get(WAITING, 0.0),
-                ]
+                # None, not 0, when a gauge is absent: a silent default once hid exactly that.
+                row[address] = [values.get(KV_USAGE), values.get(RUNNING), values.get(WAITING)]
             print(
                 "OVERSCHED_SCRAPE " + json.dumps({"t": round(now, 2), "kv_run_wait": row}),
                 flush=True,
