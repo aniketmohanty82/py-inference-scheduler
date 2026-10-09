@@ -65,26 +65,18 @@ Each trajectory is a 6-turn agentic loop. The model writes 256 tokens, a tool ru
 
 ## Results
 
-Means of 3 rollouts. Percentages are relative to stock verl on 4 samplers.
+Means of 3 rollouts. Percentages are relative to stock verl on 4 samplers. Per-rollout numbers are in the verl logs.
 
-| Arm | GPUs | Rollout time | Samples/s/GPU | Throughput vs stock | KV mean / peak | Prompt KV from store | Prompt tokens computed | Preemptions |
+| Arm | GPUs | Rollout time | Samples/s/GPU | Throughput | KV mean / peak | Prompt KV from store | Prompt tokens computed | Preemptions |
 |---|---|---|---|---|---|---|---|---|
-| Stock verl, 4 samplers | 16 | 53.4 s | 0.225 | 100% | 0.35 / 0.74 | 0% | 15.9% | 0 |
-| v0, 3 samplers | 12 | 59.1 s (+11%) | **0.271 (+20%)** | 90% | 0.52 / 0.93 | 38.2% | 17.4% | 0 |
-| v0, 2 samplers | 8 | 74.9 s (+40%) | **0.321 (+42%)** | 71% | 0.75 / 0.93 | 78.7% | 18.9% | 0 |
-
-Per rollout (rollout time, samples/s/GPU, change vs stock on the same rollout):
-
-| Rollout | Stock verl, 4 samplers | v0, 3 samplers | v0, 2 samplers |
-|---|---|---|---|
-| 1 | 56.2 s, 0.214 | 61.7 s, 0.259 (+21.5%) | 75.7 s, 0.317 (+48.5%) |
-| 2 | 53.3 s, 0.225 | 58.6 s, 0.273 (+21.2%) | 75.6 s, 0.318 (+40.9%) |
-| 3 | 50.6 s, 0.237 | 57.1 s, 0.280 (+18.1%) | 73.3 s, 0.327 (+37.9%) |
+| Stock verl, 4 samplers | 16 | 53.4 s | 0.225 | 3.61 samples/s | 0.35 / 0.74 | 0% | 15.9% | 0 |
+| v0, 3 samplers | 12 | 59.1 s (+11%) | **0.271 (+20%)** | 3.25 samples/s (−10%) | 0.52 / 0.93 | 38.2% | 17.4% | 0 |
+| v0, 2 samplers | 8 | 74.9 s (+40%) | **0.321 (+42%)** | 2.57 samples/s (−29%) | 0.75 / 0.93 | 78.7% | 18.9% | 0 |
 
 > [!NOTE]
 > - **Rollout time:** wall time for verl to finish all 192 trajectories.
 > - **Samples/s/GPU:** trajectories ÷ rollout time ÷ sampler GPUs. For v0 on 3 samplers: 192 ÷ 59.1 s ÷ 12 = 0.271.
-> - **Throughput vs stock:** stock's rollout time ÷ the arm's rollout time.
+> - **Throughput:** trajectories ÷ rollout time. For v0 on 3 samplers: 192 ÷ 59.1 s = 3.25 samples/s.
 > - **KV mean / peak:** vLLM's KV cache usage, sampled every 2 s. Mean is averaged over samplers. Peak is the highest sample.
 > - **Prompt KV from store:** share of prompt tokens vLLM loaded from Mooncake.
 > - **Prompt tokens computed:** share of prompt tokens vLLM computed instead of reusing.
