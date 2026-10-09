@@ -60,7 +60,7 @@ Each trajectory is a 6-turn agentic loop. The model writes 256 tokens, a tool ru
 | Arm | Samplers (per node) | Routing | KV store |
 |---|---|---|---|
 | Stock verl | 4 (2 + 2) | verl 0.9.1's built-in load balancer | None |
-| v0, 3 samplers | 3 (2 + 1) | Our scheduler through the verl hook. The gate caps each sampler at 94% KV. Sticky session and prefix cache scorers have weight 4. Least queue, waiting queue and KV cache scorers have weight 1. | Mooncake, saving prompt KV each turn |
+| v0, 3 samplers | 3 (2 + 1) | Our scheduler through the verl hook. A gate caps each sampler at 94% of its KV. Routing uses sticky session and prefix cache scoring, followed by backpressure scoring. | Mooncake, saving prompt KV each turn |
 | v0, 2 samplers | 2 (1 + 1) | Same as v0 on 3 samplers | Same as v0 on 3 samplers |
 
 ## Results
