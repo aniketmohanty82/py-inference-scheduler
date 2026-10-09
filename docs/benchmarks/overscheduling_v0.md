@@ -92,11 +92,11 @@ Each turn re-sends the whole conversation so far, so a trajectory sends 41,967 p
 
 Run logs:
 
-| Arm | Ray job | verl log |
-|---|---|---|
-| Stock verl, 4 samplers | `os-final-n192-stock4` | `<verl_stock_4samplers_n192.log>` |
-| v0, 3 samplers | `os-final-n192-v0x3` | `<verl_v0_3samplers_n192.log>` |
-| v0, 2 samplers | `os-final-n192-v0x2` | `<verl_v0_2samplers_n192.log>` |
+| Arm | verl log |
+|---|---|
+| Stock verl, 4 samplers | `<verl_stock_4samplers_n192.log>` |
+| v0, 3 samplers | `<verl_v0_3samplers_n192.log>` |
+| v0, 2 samplers | `<verl_v0_2samplers_n192.log>` |
 
 ## Analysis
 
