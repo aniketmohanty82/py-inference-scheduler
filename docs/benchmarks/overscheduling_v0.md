@@ -97,33 +97,3 @@ Run logs:
 | Stock verl, 4 samplers | `<verl_stock_4samplers_n192.log>` |
 | v0, 3 samplers | `<verl_v0_3samplers_n192.log>` |
 | v0, 2 samplers | `<verl_v0_2samplers_n192.log>` |
-
-## Analysis
-
-**(a) Samples/s/GPU rises because rollout time grows less than the GPU count falls.**
-- 3 samplers use 25% fewer GPUs, which is worth +33% per GPU. The rollout runs 11% longer, which takes back 13 points. Net: +20% (16/12 × 53.4/59.1 = 1.20).
-- 2 samplers use half the GPUs, which is worth +100% per GPU. The rollout runs 40% longer, which takes back 58 points. Net: +42% (16/8 × 53.4/74.9 = 1.43).
-
-**(b) Tool waits are the same in every arm, so a smaller pool only stretches the model time.**
-- In each rollout, the slowest trajectory spends 24–31 s waiting on tools. That part does not change with pool size.
-- The rest is model time: about 26 s on stock, 32 s on v0 with 3 samplers, and 48 s on v0 with 2.
-- Each v0 sampler serves 33% more trajectories with 3 samplers and 100% more with 2. Model time grows only 22% and 82%, because fuller samplers do more work per step. KV mean rises from 0.35 on stock to 0.52 and 0.75.
-
-**(c) KV offload keeps the smaller pools from recomputing.**
-- At peak, the 192 trajectories need 1.58M tokens of KV (192 × 8,210). Two samplers hold 0.80M (2 × 401,920), so about half of the waiting trajectories' KV cannot stay on GPU.
-- On 2 samplers, Mooncake supplies 78.7% of prompt KV. The GPU cache supplies only 2.5%.
-- v0 on 2 samplers computes 18.9% of prompt KV, close to stock's 15.9%.
-- Without the store, that 78.7% would be computed again.
-
-**(d) Cross-node transfer carries about half of those reloads.**
-- Mooncake spreads saved KV across both nodes' host memory.
-- 44% (3 samplers) and 50% (2 samplers) of reloaded KV comes from the other node. These shares are estimated from a sample of loads.
-
-**(e) Prefill-based flow control prevents preemptions.**
-- The gate caps each sampler at 94% of its KV. KV peaked at 0.93.
-- No arm preempted a single request.
-
-**(f) Limits.**
-- Per-GPU numbers exclude the store's host memory: 128 GB per GPU process.
-- `gpu_memory_utilization` 0.3 keeps KV scarce on purpose.
-- Tool time is synthetic: lognormal, mean 3 s.
