@@ -19,7 +19,7 @@ v0 lets a smaller sampler pool carry the same rollout. It has four parts.
 
 | Part | What it does |
 |---|---|
-| Prefill-based flow control | A gate admits a turn only to a sampler whose KV can hold the turn's prompt plus the trajectory's last output length. A first turn uses a configured length instead (256 tokens here). Each sampler is capped at 94% of its KV, so vLLM never needs to preempt. |
+| Prefill-based flow control | A gate admits a turn only to a sampler whose KV can hold the turn's prompt plus the trajectory's last output length. A first turn uses a configured length instead (256 tokens here). Each sampler is capped at 94% of its KV (377,804 of 401,920 tokens), so vLLM never needs to preempt. |
 | KV offload | Mooncake saves each turn's prompt KV to host memory. When a waiting trajectory's KV is evicted from GPU memory, its next turn reloads it instead of recomputing it. |
 | Cross-node KV transfer | Mooncake spreads that host memory across both nodes over RDMA. Any sampler can reload KV saved on either node. |
 | Affinity routing | Scorers keep each trajectory on the sampler that holds its prefix. When that sampler is full, backpressure scorers pick the least busy sampler with room. |
@@ -33,25 +33,25 @@ v0 lets a smaller sampler pool carry the same rollout. It has four parts.
 | Nodes | 2 × GKE `a3-ultragpu-8g`, 8 × NVIDIA H200 141 GB each, RDMA between nodes |
 | Model | Qwen2.5-32B-Instruct |
 | Sampler | vLLM 0.29.0, tensor parallel 4 (4 GPUs per sampler) |
-| KV per sampler | `gpu_memory_utilization` 0.3: 25,120 blocks × 16 tokens = 401,920 tokens |
+| KV per sampler | 401,920 tokens (`gpu_memory_utilization` 0.3) |
 | RL framework | verl 0.9.1, rollout only (no training) |
 | KV store (v0 only) | Mooncake 0.3.13.post1 over RDMA, 128 GB host memory per GPU process |
 | Scheduler (v0 only) | py-inference-scheduler at `4fd565c` |
 
 ### 2. Workload
 
-Each trajectory is a 6-turn agentic loop. The model writes 256 tokens, a tool runs, and its 128-token reply is appended. Tool time is random per turn but seeded, so every arm waits exactly the same. Prompts are unique.
+Each trajectory is a 6-turn agentic loop. The model writes 256 tokens, a tool runs, and its 128-token reply is appended. Tool time is random per turn but fixed in advance, so every arm waits exactly the same. Prompts are unique.
 
 | Dimension | Value |
 |---|---|
 | Trajectories per rollout | 192 |
 | Turns per trajectory | 6 |
-| Prompt | 6,000 words (6,034 tokens with the chat template), unique per trajectory |
+| Prompt | 6,034 tokens, unique per trajectory |
 | Model output per turn | 256 tokens, fixed (EOS ignored) |
 | Tool reply per turn | 128 tokens |
-| Tool time per turn | Lognormal, mean 3 s, σ 0.5, seeded per trajectory and turn |
-| Peak context per trajectory | 6,034 + 5 × (256 + 128) + 256 = 8,210 tokens (514 KV blocks) |
-| Repeats | 3 rollouts per arm, seeds 0, 1, 2, same in every arm |
+| Tool time per turn | Lognormal, mean 3 s, σ 0.5, fixed per trajectory and turn |
+| Peak context per trajectory | 6,034 + 5 × (256 + 128) + 256 = 8,210 tokens |
+| Repeats | 3 rollouts per arm. Rollouts 1, 2 and 3 use the same prompts and tool times in every arm. |
 | Warm-up | 1 unmeasured rollout per arm |
 | Between rollouts | vLLM prefix cache and Mooncake store cleared |
 
@@ -73,13 +73,13 @@ Means of 3 rollouts. Percentages are relative to stock verl on 4 samplers.
 | v0, 3 samplers | 12 | 59.1 s (+11%) | **0.271 (+20%)** | 90% | 0.52 / 0.93 | 38.2% | 17.4% | 0 |
 | v0, 2 samplers | 8 | 74.9 s (+40%) | **0.321 (+42%)** | 71% | 0.75 / 0.93 | 78.7% | 18.9% | 0 |
 
-Per rollout (rollout time, samples/s/GPU, change vs stock on the same seed):
+Per rollout (rollout time, samples/s/GPU, change vs stock on the same rollout):
 
-| Seed | Stock verl, 4 samplers | v0, 3 samplers | v0, 2 samplers |
+| Rollout | Stock verl, 4 samplers | v0, 3 samplers | v0, 2 samplers |
 |---|---|---|---|
-| 0 | 56.2 s, 0.214 | 61.7 s, 0.259 (+21.5%) | 75.7 s, 0.317 (+48.5%) |
-| 1 | 53.3 s, 0.225 | 58.6 s, 0.273 (+21.2%) | 75.6 s, 0.318 (+40.9%) |
-| 2 | 50.6 s, 0.237 | 57.1 s, 0.280 (+18.1%) | 73.3 s, 0.327 (+37.9%) |
+| 1 | 56.2 s, 0.214 | 61.7 s, 0.259 (+21.5%) | 75.7 s, 0.317 (+48.5%) |
+| 2 | 53.3 s, 0.225 | 58.6 s, 0.273 (+21.2%) | 75.6 s, 0.318 (+40.9%) |
+| 3 | 50.6 s, 0.237 | 57.1 s, 0.280 (+18.1%) | 73.3 s, 0.327 (+37.9%) |
 
 > [!NOTE]
 > - **Rollout time:** wall time for verl to finish all 192 trajectories.
@@ -110,7 +110,7 @@ Run logs:
 - Each v0 sampler serves 33% more trajectories with 3 samplers and 100% more with 2. Model time grows only 22% and 82%, because fuller samplers do more work per step. KV mean rises from 0.35 on stock to 0.52 and 0.75.
 
 **(c) KV offload keeps the smaller pools from recomputing.**
-- At peak, the 192 trajectories need 98,688 KV blocks. Two samplers hold 50,240, so about half of the waiting trajectories' KV cannot stay on GPU.
+- At peak, the 192 trajectories need 1.58M tokens of KV (192 × 8,210). Two samplers hold 0.80M (2 × 401,920), so about half of the waiting trajectories' KV cannot stay on GPU.
 - v0 reloads 79% of prompt KV from Mooncake on 2 samplers and 38% on 3.
 - Computed prompt tokens stay at 18.9% and 17.4%. Stock's 15.9% is the floor: first-turn prompts plus tool replies.
 - Without the store, those reloads would be recomputed. On 2 samplers that is about 6.3M extra prompt tokens per rollout.
