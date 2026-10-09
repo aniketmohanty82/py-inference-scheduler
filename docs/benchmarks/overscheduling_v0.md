@@ -88,7 +88,7 @@ Where prompt KV came from, per trajectory:
 | v0, 3 samplers | 18,628 tokens (44.4%) | 16,026 tokens (38.2%) | 7,313 tokens (17.4%) |
 | v0, 2 samplers | 1,032 tokens (2.5%) | 33,013 tokens (78.7%) | 7,921 tokens (18.9%) |
 
-Each turn re-sends the whole conversation so far, so a trajectory sends 41,967 prompt tokens over its 6 turns. Only 6,674 are new: the first prompt plus 5 tool replies. The rest can be reused from GPU cache or Mooncake instead of computed again.
+A conversation grows from 6,034 to 8,210 tokens. Each turn sends the conversation so far as its prompt: 6,034 tokens on turn 1, growing by 384 each turn to 7,954 on turn 6. So vLLM handles about 42,000 prompt tokens per trajectory, and most are repeats from earlier turns. Only 6,674 are new: the first prompt plus 5 tool replies. The repeats can be reused from GPU cache or Mooncake instead of computed again.
 
 Run logs:
 
