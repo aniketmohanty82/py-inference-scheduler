@@ -40,7 +40,7 @@ v0 lets a smaller sampler pool carry the same rollout. It has four parts.
 
 ### 2. Workload
 
-Each trajectory is a 6-turn agentic loop. The model writes 256 tokens, a tool runs, and its 128-token reply is appended. Tool time is random per turn but fixed in advance, so every arm waits exactly the same. Prompts are unique.
+Each trajectory is a 6-turn agentic loop. The model writes 256 tokens, a tool runs, and its 128-token reply is appended. Each tool call takes a random time. The times are drawn in advance, so every arm waits exactly the same. Prompts are unique.
 
 | Dimension | Value |
 |---|---|
@@ -49,7 +49,7 @@ Each trajectory is a 6-turn agentic loop. The model writes 256 tokens, a tool ru
 | Prompt | 6,034 tokens, unique per trajectory |
 | Model output per turn | 256 tokens, fixed (EOS ignored) |
 | Tool reply per turn | 128 tokens |
-| Tool time per turn | Lognormal, mean 3 s, σ 0.5, fixed per trajectory and turn |
+| Tool time per tool call | Random, lognormal, mean 3 s, σ 0.5. Each tool call gets its own time. |
 | Peak context per trajectory | 6,034 + 5 × (256 + 128) + 256 = 8,210 tokens |
 | Repeats | 3 rollouts per arm. Rollouts 1, 2 and 3 use the same prompts and tool times in every arm. |
 | Warm-up | 1 unmeasured rollout per arm |
