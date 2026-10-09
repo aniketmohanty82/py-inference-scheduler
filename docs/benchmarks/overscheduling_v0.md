@@ -6,44 +6,23 @@ Runs: 2026-10-09, 05:11–05:34 UTC. Code: `feat/overscheduling-v0` at `4fd565c`
 
 Overscheduling v0, using cross-node KV transfer, prefill-based flow control and KV offload, results in **20% better samples/sec/GPU** when running on 3 samplers instead of 4, and **42% better samples/sec/GPU** when running on 2 samplers instead of 4.
 
-## Purpose
+## Problem
 
-- RL rollouts with tool calls leave samplers idle while trajectories wait.
-- Teams size the sampler pool for peak load and keep it.
-- Question: with v0, can a smaller pool keep up?
-- Baseline: stock verl 0.9.1 on 4 samplers. This is what verl users run today.
+- Agentic RL rollouts alternate model turns with tool calls.
+- While a trajectory waits on a tool, its sampler has less to do.
+- Teams size the sampler pool for peak load, so GPUs sit partly idle.
+- Shrinking the pool is risky. The waiting trajectories' KV no longer fits in GPU memory. It gets evicted and recomputed, or requests get preempted.
 
-## How each arm decides
+## Overscheduling v0
 
-- **Stock verl (4 samplers):** verl 0.9.1's built-in load balancer routes every turn. No KV store.
-- **v0 (3 or 2 samplers):** Our gate admits a turn only where its KV fits under 94%. Scorers keep each trajectory on its engine. Mooncake reloads evicted KV from host memory on both nodes.
+v0 lets a smaller sampler pool carry the same rollout. It has four parts.
 
-Our scheduler profile (`integration/verl/overscheduling/scheduler.yaml` at `4fd565c`, comments removed):
-
-```yaml
-profile_handler:
-  type: single_profile
-profiles:
-  overscheduling:
-    flow_control:
-      type: kv_saturation
-      default_osl: 256
-      budget_fraction: 0.94
-    scorers:
-      - type: sticky_session
-        header_name: x-rls-session-id
-        weight: 4.0
-      - type: prefix_cache
-        weight: 4.0
-      - type: least_queue
-        weight: 1.0
-      - type: waiting_queue
-        weight: 1.0
-      - type: kv_cache
-        weight: 1.0
-    picker:
-      type: max_score
-```
+| Part | What it does |
+|---|---|
+| Prefill-based flow control | A gate admits a turn only to a sampler whose KV can hold the turn's prompt plus its expected output. Each sampler is capped at 94% of its KV, so vLLM never needs to preempt. |
+| KV offload | Mooncake saves each turn's prompt KV to host memory. When a waiting trajectory's KV is evicted from GPU memory, its next turn reloads it instead of recomputing it. |
+| Cross-node KV transfer | Mooncake spreads that host memory across both nodes over RDMA. Any sampler can reload KV saved on either node. |
+| Affinity routing | Scorers keep each trajectory on the sampler that holds its prefix. When that sampler is full, backpressure scorers pick the least busy sampler with room. |
 
 ## Methodology
 
@@ -76,25 +55,13 @@ Each trajectory is a 6-turn agentic loop. The model writes 256 tokens, a tool ru
 | Warm-up | 1 unmeasured rollout per arm |
 | Between rollouts | vLLM prefix cache and Mooncake store cleared |
 
-### 3. Integration
+### 3. Arms
 
 | Arm | Samplers (per node) | Routing | KV store |
 |---|---|---|---|
-| Stock verl | 4 (2 + 2) | verl's built-in balancer | None |
-| v0, 3 samplers | 3 (2 + 1) | verl hook to our scheduler, profile above | Mooncake via `RLPullPolicyConnector`, `save_decode_cache=false` |
-| v0, 2 samplers | 2 (1 + 1) | Same as above | Same as above |
-
-### 4. Metrics
-
-| Metric | Definition | Better |
-|---|---|---|
-| Rollout time | Wall time for verl to finish all 192 trajectories | Lower |
-| Samples/s/GPU | Trajectories ÷ rollout time ÷ sampler GPUs. v0 on 3: 192 ÷ 59.1 s ÷ 12 = 0.271 | Higher |
-| Throughput vs stock | Stock rollout time ÷ arm rollout time. v0 on 3: 53.4 ÷ 59.1 = 90% | Higher |
-| KV mean / peak | vLLM KV cache usage, scraped every 2 s, averaged over samplers / highest value | Mean: higher. Peak: below 1.0 |
-| Prompt KV from store | Share of prompt tokens vLLM loaded from Mooncake | Context |
-| Prompt tokens computed | Share of prompt tokens vLLM computed instead of reusing | Lower |
-| Preemptions | Requests vLLM preempted | Lower |
+| Stock verl | 4 (2 + 2) | verl 0.9.1's built-in load balancer | None |
+| v0, 3 samplers | 3 (2 + 1) | Our scheduler through the verl hook. The gate caps each sampler at 94% KV. Sticky session and prefix cache scorers have weight 4. Least queue, waiting queue and KV cache scorers have weight 1. | Mooncake, saving prompt KV each turn |
+| v0, 2 samplers | 2 (1 + 1) | Same as v0 on 3 samplers | Same as v0 on 3 samplers |
 
 ## Results
 
@@ -106,7 +73,7 @@ Means of 3 rollouts. Percentages are relative to stock verl on 4 samplers.
 | v0, 3 samplers | 12 | 59.1 s (+11%) | **0.271 (+20%)** | 90% | 0.52 / 0.93 | 38.2% | 17.4% | 0 |
 | v0, 2 samplers | 8 | 74.9 s (+40%) | **0.321 (+42%)** | 71% | 0.75 / 0.93 | 78.7% | 18.9% | 0 |
 
-Per rollout:
+Per rollout (rollout time, samples/s/GPU, change vs stock on the same seed):
 
 | Seed | Stock verl, 4 samplers | v0, 3 samplers | v0, 2 samplers |
 |---|---|---|---|
@@ -114,11 +81,16 @@ Per rollout:
 | 1 | 53.3 s, 0.225 | 58.6 s, 0.273 (+21.2%) | 75.6 s, 0.318 (+40.9%) |
 | 2 | 50.6 s, 0.237 | 57.1 s, 0.280 (+18.1%) | 73.3 s, 0.327 (+37.9%) |
 
-Cells: rollout time, samples/s/GPU (change vs stock on the same seed).
+> [!NOTE]
+> - **Rollout time:** wall time for verl to finish all 192 trajectories.
+> - **Samples/s/GPU:** trajectories ÷ rollout time ÷ sampler GPUs. For v0 on 3 samplers: 192 ÷ 59.1 s ÷ 12 = 0.271.
+> - **Throughput vs stock:** stock's rollout time ÷ the arm's rollout time.
+> - **KV mean / peak:** vLLM's KV cache usage, sampled every 2 s. Mean is averaged over samplers. Peak is the highest sample.
+> - **Prompt KV from store:** share of prompt tokens vLLM loaded from Mooncake.
+> - **Prompt tokens computed:** share of prompt tokens vLLM computed instead of reusing.
+> - **Preemptions:** requests vLLM preempted.
 
-## Run logs
-
-Each log holds the per-rollout results, every routing decision (v0 arms), and engine counters scraped every 2 s.
+Run logs:
 
 | Arm | Ray job | verl log |
 |---|---|---|
@@ -128,30 +100,30 @@ Each log holds the per-rollout results, every routing decision (v0 arms), and en
 
 ## Analysis
 
-**(a) v0 on 3 samplers does 20% more work per GPU, at 90% of the throughput.**
-- Stock's 4 samplers sit partly idle during tool waits: KV mean 0.35.
-- v0 packs the same work into 3 samplers: KV mean 0.52.
-- The store reloads 38% of prompt KV, evicted while trajectories waited on tools.
+**(a) Samples/s/GPU rises because rollout time grows less than the GPU count falls.**
+- 3 samplers use 25% fewer GPUs, which is worth +33% per GPU. The rollout runs 11% longer, which takes back 13 points. Net: +20% (16/12 × 53.4/59.1 = 1.20).
+- 2 samplers use half the GPUs, which is worth +100% per GPU. The rollout runs 40% longer, which takes back 58 points. Net: +42% (16/8 × 53.4/74.9 = 1.43).
 
-**(b) v0 on 2 samplers does 42% more work per GPU, at 71% of the throughput.**
-- Two samplers hold only about half of the waiting trajectories' contexts.
-- The store reloads 79% of prompt KV.
-- Computed prompt tokens stay at 18.9%, close to stock's 15.9%. Stock's figure is the floor: first-turn prompts plus tool replies.
-- About half the reloaded KV comes from the other node, estimated from a sample of loads.
+**(b) Tool waits are the same in every arm, so a smaller pool only stretches the model time.**
+- In each rollout, the slowest trajectory spends 24–31 s waiting on tools. That part does not change with pool size.
+- The rest is model time: about 26 s on stock, 32 s on v0 with 3 samplers, and 48 s on v0 with 2.
+- Each v0 sampler serves 33% more trajectories with 3 samplers and 100% more with 2. Model time grows only 22% and 82%, because fuller samplers do more work per step. KV mean rises from 0.35 on stock to 0.52 and 0.75.
 
-**(c) The cost is rollout time.**
-- +11% on 3 samplers, +40% on 2.
-- "Similar throughput" holds for 3 samplers.
-- 2 samplers trade more time for more work per GPU.
+**(c) KV offload keeps the smaller pools from recomputing.**
+- At peak, the 192 trajectories need 98,688 KV blocks. Two samplers hold 50,240, so about half of the waiting trajectories' KV cannot stay on GPU.
+- v0 reloads 79% of prompt KV from Mooncake on 2 samplers and 38% on 3.
+- Computed prompt tokens stay at 18.9% and 17.4%. Stock's 15.9% is the floor: first-turn prompts plus tool replies.
+- Without the store, those reloads would be recomputed. On 2 samplers that is about 6.3M extra prompt tokens per rollout.
 
-**(d) No preemptions in any arm.**
-- v0's KV peaks at 0.93, under the 0.94 cap.
+**(d) Cross-node transfer carries about half of those reloads.**
+- Mooncake spreads saved KV across both nodes' host memory.
+- 44% (3 samplers) and 50% (2 samplers) of reloaded KV comes from the other node. These shares are estimated from a sample of loads.
 
-**(e) Results hold across seeds.**
-- v0 on 3: +18% to +22% per GPU.
-- v0 on 2: +38% to +49% per GPU.
+**(e) Prefill-based flow control prevents preemptions.**
+- The gate caps each sampler at 94% of its KV. KV peaked at 0.93.
+- No arm preempted a single request.
 
 **(f) Limits.**
-- Per-GPU numbers exclude the store's host memory: 128 GB per GPU process, 1.5 TB for v0 on 3 and 1 TB for v0 on 2.
-- `gpu_memory_utilization` 0.3 keeps KV scarce on purpose. Real deployments need longer contexts or more trajectories to see the same pressure.
+- Per-GPU numbers exclude the store's host memory: 128 GB per GPU process.
+- `gpu_memory_utilization` 0.3 keeps KV scarce on purpose.
 - Tool time is synthetic: lognormal, mean 3 s.
