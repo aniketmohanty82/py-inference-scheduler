@@ -80,15 +80,15 @@ Means of 3 rollouts. Percentages are relative to stock verl on 4 samplers. Per-r
 > - **KV mean / peak:** vLLM's KV cache usage, sampled every 2 s. Mean is averaged over samplers. Peak is the highest sample.
 > - **Preemptions:** requests vLLM preempted.
 
-Where prompt KV came from, per trajectory:
+Where prompt KV came from, per rollout:
 
 | Arm | From GPU cache | From Mooncake | Computed |
 |---|---|---|---|
-| Stock verl, 4 samplers | 35,296 tokens (84.1%) | 0 | 6,671 tokens (15.9%) |
-| v0, 3 samplers | 18,628 tokens (44.4%) | 16,026 tokens (38.2%) | 7,313 tokens (17.4%) |
-| v0, 2 samplers | 1,032 tokens (2.5%) | 33,013 tokens (78.7%) | 7,921 tokens (18.9%) |
+| Stock verl, 4 samplers | 6.78M tokens (84.1%) | 0 | 1.28M tokens (15.9%) |
+| v0, 3 samplers | 3.58M tokens (44.4%) | 3.08M tokens (38.2%) | 1.40M tokens (17.4%) |
+| v0, 2 samplers | 0.20M tokens (2.5%) | 6.34M tokens (78.7%) | 1.52M tokens (18.9%) |
 
-Every turn's prompt is the conversation so far. vLLM gets its KV from the sampler's GPU cache, loads it from Mooncake, or computes it.
+Every turn's prompt is the conversation so far. Per rollout, the 192 trajectories send 8.06M prompt tokens over 1,152 turns. vLLM gets their KV from the sampler's GPU cache, loads it from Mooncake, or computes it.
 
 Run logs:
 
