@@ -80,7 +80,7 @@ Means of 3 rollouts. Percentages are relative to stock verl on 4 samplers. Per-r
 > - **KV mean / peak:** vLLM's KV cache usage, sampled every 2 s. Mean is averaged over samplers. Peak is the highest sample.
 > - **Preemptions:** requests vLLM preempted.
 
-Where each turn's prompt KV came from, summed over a trajectory's 6 turns:
+Where prompt KV came from, per trajectory:
 
 | Arm | From GPU cache | From Mooncake | Computed |
 |---|---|---|---|
@@ -88,10 +88,7 @@ Where each turn's prompt KV came from, summed over a trajectory's 6 turns:
 | v0, 3 samplers | 18,628 tokens (44.4%) | 16,026 tokens (38.2%) | 7,313 tokens (17.4%) |
 | v0, 2 samplers | 1,032 tokens (2.5%) | 33,013 tokens (78.7%) | 7,921 tokens (18.9%) |
 
-- Turn 1 computes its 6,034-token prompt.
-- Each later turn starts from the previous turn's full conversation: 6,290 tokens at turn 2, up to 7,826 at turn 6. vLLM reuses that context from GPU cache or loads it from Mooncake. It computes only the new 128-token tool reply.
-- So each trajectory has 6,674 new tokens to compute and 35,293 tokens of reused context.
-- Computed tokens above 6,674 are context that was neither cached nor stored, so it had to be recomputed.
+Every turn's prompt is the conversation so far. vLLM gets its KV from the sampler's GPU cache, loads it from Mooncake, or computes it.
 
 Run logs:
 
@@ -114,9 +111,9 @@ Run logs:
 
 **(c) KV offload keeps the smaller pools from recomputing.**
 - At peak, the 192 trajectories need 1.58M tokens of KV (192 × 8,210). Two samplers hold 0.80M (2 × 401,920), so about half of the waiting trajectories' KV cannot stay on GPU.
-- On 2 samplers, each trajectory reuses 35,293 tokens of context. The GPU cache supplies only 1,032 of them. Mooncake supplies 33,013.
-- v0 on 2 samplers computes 7,921 tokens per trajectory, only about 1,250 more than stock's 6,671.
-- Without the store, those 33,013 tokens would be computed again. Across 192 trajectories that is about 6.3M extra prompt tokens per rollout.
+- On 2 samplers, Mooncake supplies 78.7% of prompt KV. The GPU cache supplies only 2.5%.
+- v0 on 2 samplers computes 18.9% of prompt KV, close to stock's 15.9%.
+- Without the store, that 78.7% would be computed again.
 
 **(d) Cross-node transfer carries about half of those reloads.**
 - Mooncake spreads saved KV across both nodes' host memory.
