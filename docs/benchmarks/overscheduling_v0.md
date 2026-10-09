@@ -67,20 +67,28 @@ Each trajectory is a 6-turn agentic loop. The model writes 256 tokens, a tool ru
 
 Means of 3 rollouts. Percentages are relative to stock verl on 4 samplers. Per-rollout numbers are in the verl logs.
 
-| Arm | GPUs | Rollout time | Samples/s/GPU | Throughput | KV mean / peak | Prompt KV from store | Prompt tokens computed | Preemptions |
-|---|---|---|---|---|---|---|---|---|
-| Stock verl, 4 samplers | 16 | 53.4 s | 0.225 | 3.61 samples/s | 0.35 / 0.74 | 0% | 15.9% | 0 |
-| v0, 3 samplers | 12 | 59.1 s (+11%) | **0.271 (+20%)** | 3.25 samples/s (−10%) | 0.52 / 0.93 | 38.2% | 17.4% | 0 |
-| v0, 2 samplers | 8 | 74.9 s (+40%) | **0.321 (+42%)** | 2.57 samples/s (−29%) | 0.75 / 0.93 | 78.7% | 18.9% | 0 |
+| Arm | GPUs | Rollout time | Samples/s/GPU | Throughput | KV mean / peak | Preemptions |
+|---|---|---|---|---|---|---|
+| Stock verl, 4 samplers | 16 | 53.4 s | 0.225 | 3.61 samples/s | 0.35 / 0.74 | 0 |
+| v0, 3 samplers | 12 | 59.1 s (+11%) | **0.271 (+20%)** | 3.25 samples/s (−10%) | 0.52 / 0.93 | 0 |
+| v0, 2 samplers | 8 | 74.9 s (+40%) | **0.321 (+42%)** | 2.57 samples/s (−29%) | 0.75 / 0.93 | 0 |
 
 > [!NOTE]
 > - **Rollout time:** wall time for verl to finish all 192 trajectories.
 > - **Samples/s/GPU:** trajectories ÷ rollout time ÷ sampler GPUs. For v0 on 3 samplers: 192 ÷ 59.1 s ÷ 12 = 0.271.
 > - **Throughput:** trajectories ÷ rollout time. For v0 on 3 samplers: 192 ÷ 59.1 s = 3.25 samples/s.
 > - **KV mean / peak:** vLLM's KV cache usage, sampled every 2 s. Mean is averaged over samplers. Peak is the highest sample.
-> - **Prompt KV from store:** share of prompt tokens vLLM loaded from Mooncake.
-> - **Prompt tokens computed:** share of prompt tokens vLLM computed instead of reusing.
 > - **Preemptions:** requests vLLM preempted.
+
+Where prompt KV came from, per trajectory:
+
+| Arm | From GPU cache | From Mooncake | Computed |
+|---|---|---|---|
+| Stock verl, 4 samplers | 35,296 tokens (84.1%) | 0 | 6,671 tokens (15.9%) |
+| v0, 3 samplers | 18,628 tokens (44.4%) | 16,026 tokens (38.2%) | 7,313 tokens (17.4%) |
+| v0, 2 samplers | 1,032 tokens (2.5%) | 33,013 tokens (78.7%) | 7,921 tokens (18.9%) |
+
+Each turn re-sends the whole conversation so far, so a trajectory sends 41,967 prompt tokens over its 6 turns. Only 6,674 are new: the first prompt plus 5 tool replies. The rest can be reused from GPU cache or Mooncake instead of computed again.
 
 Run logs:
 
@@ -103,9 +111,9 @@ Run logs:
 
 **(c) KV offload keeps the smaller pools from recomputing.**
 - At peak, the 192 trajectories need 1.58M tokens of KV (192 × 8,210). Two samplers hold 0.80M (2 × 401,920), so about half of the waiting trajectories' KV cannot stay on GPU.
-- v0 reloads 79% of prompt KV from Mooncake on 2 samplers and 38% on 3.
-- Computed prompt tokens stay at 18.9% and 17.4%. Stock's 15.9% is the floor: first-turn prompts plus tool replies.
-- Without the store, those reloads would be recomputed. On 2 samplers that is about 6.3M extra prompt tokens per rollout.
+- On 2 samplers, the GPU cache supplies only 1,032 of each trajectory's 41,967 prompt tokens. Mooncake supplies 33,013.
+- v0 on 2 samplers computes 7,921 tokens per trajectory, only about 1,250 more than stock's 6,671.
+- Without the store, those 33,013 tokens would be computed again. Across 192 trajectories that is about 6.3M extra prompt tokens per rollout.
 
 **(d) Cross-node transfer carries about half of those reloads.**
 - Mooncake spreads saved KV across both nodes' host memory.
