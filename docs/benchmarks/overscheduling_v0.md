@@ -16,9 +16,9 @@ Overscheduling v0, using cross-node KV transfer, prefill-based flow control and 
 ## How each arm decides
 
 - **Stock verl (4 samplers):** verl 0.9.1's built-in load balancer routes every turn. No KV store.
-- **v0 (3 or 2 samplers):** our gate admits a turn only where its KV fits under 94%; scorers keep each trajectory on its engine; Mooncake reloads evicted KV from host memory on both nodes.
+- **v0 (3 or 2 samplers):** Our gate admits a turn only where its KV fits under 94%. Scorers keep each trajectory on its engine. Mooncake reloads evicted KV from host memory on both nodes.
 
-Our scheduler profile, verbatim (`integration/verl/overscheduling/scheduler.yaml` at `4fd565c`):
+Our scheduler profile (`integration/verl/overscheduling/scheduler.yaml` at `4fd565c`, comments removed):
 
 ```yaml
 profile_handler:
@@ -27,15 +27,9 @@ profiles:
   overscheduling:
     flow_control:
       type: kv_saturation
-      # The load runs fixed-length turns, so a first turn's output is known: keep in step with --output-tokens.
       default_osl: 256
-      # Sticky routing places a first-turn burst unevenly, faster than engine metrics move; this cap
-      # holds the busiest engine below preemption, allowing for the ledger counting tokens where
-      # vLLM allocates whole blocks.
       budget_fraction: 0.94
     scorers:
-      # Affinity first: each trajectory prefers the engine holding its prefix. When kv_saturation
-      # finds that engine full, the backpressure scorers below pick among the engines with room.
       - type: sticky_session
         header_name: x-rls-session-id
         weight: 4.0
