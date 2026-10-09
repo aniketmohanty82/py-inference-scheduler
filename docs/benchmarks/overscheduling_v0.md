@@ -1,16 +1,10 @@
-# Overscheduling v0 vs stock verl on a multi-turn agentic RL rollout: smaller sampler pools, more work per GPU
+# Overscheduling v0 vs stock verl on an agentic RL rollout
 
 Runs: 2026-10-09, 05:11–05:34 UTC. Code: `feat/overscheduling-v0` at `4fd565c`.
 
 ## TLDR
 
-v0 lets a smaller sampler pool carry the same rollout. Its gate keeps each sampler under 94% KV, and Mooncake reloads KV evicted during tool waits instead of recomputing it.
-
-- **v0 on 3 samplers:** 90% of stock's throughput on 75% of the GPUs. **+20% samples/s/GPU.**
-- **v0 on 2 samplers:** 71% of stock's throughput on 50% of the GPUs. **+42% samples/s/GPU.**
-- No preemptions in any arm.
-
-Why it matters: agentic rollouts wait on tools, so a pool sized for peak load sits partly idle. More work per GPU frees GPUs for training or for more rollouts.
+Overscheduling v0, using cross-node KV transfer, prefill-based flow control and KV offload, results in **20% better samples/sec/GPU** when running on 3 samplers instead of 4, and **42% better samples/sec/GPU** when running on 2 samplers instead of 4.
 
 ## Purpose
 
