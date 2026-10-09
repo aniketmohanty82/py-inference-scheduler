@@ -19,7 +19,7 @@ v0 lets a smaller sampler pool carry the same rollout. It has four parts.
 
 | Part | What it does |
 |---|---|
-| Prefill-based flow control | A gate admits a turn only to a sampler whose KV can hold the turn's prompt plus its expected output. Each sampler is capped at 94% of its KV, so vLLM never needs to preempt. |
+| Prefill-based flow control | A gate admits a turn only to a sampler whose KV can hold the turn's prompt plus the trajectory's last output length. A first turn uses a configured length instead (256 tokens here). Each sampler is capped at 94% of its KV, so vLLM never needs to preempt. |
 | KV offload | Mooncake saves each turn's prompt KV to host memory. When a waiting trajectory's KV is evicted from GPU memory, its next turn reloads it instead of recomputing it. |
 | Cross-node KV transfer | Mooncake spreads that host memory across both nodes over RDMA. Any sampler can reload KV saved on either node. |
 | Affinity routing | Scorers keep each trajectory on the sampler that holds its prefix. When that sampler is full, backpressure scorers pick the least busy sampler with room. |
