@@ -66,8 +66,6 @@ env_vars:
 ```
 Ray unpacks the zip, sets the CWD to the repo root, and resolves the relative path to the default config.
 
-With vLLM, do not set `PROMETHEUS_MULTIPROC_DIR`. vLLM serves each engine's `/metrics` from its own registry; a directory shared by the engines on a node turns every `/metrics` into the node aggregate, and the scorers then see the same load on every engine.
-
 ### Custom Configuration on Kubernetes (K8s)
 If you want to customize the scheduler settings on K8s:
 *   Modify the [scheduler_config.yaml](../../configs/scheduler_config.yaml) ConfigMap manifest locally.
