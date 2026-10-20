@@ -42,9 +42,9 @@ class FleetSnapshot:
 class Fleet(InflightStore):
     """State shared by every AgentLoopWorker, held in one named Ray actor.
 
-    - Counts in-flight requests per engine across all workers.
     - Recovers the engine handles from verl's balancer once for the whole fleet.
     - Polls engine metrics in the background, so no decision scrapes an engine.
+    - Counts in-flight requests per engine across all workers.
     """
 
     def __init__(self, interval_ms: int) -> None:

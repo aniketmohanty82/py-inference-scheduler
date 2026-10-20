@@ -30,7 +30,7 @@ To debug effectively without making assumptions, you must understand how the int
 
 ### 2.1 Control Flow (Scheduling & Routing)
 1.  **Entry Point**: verl loads `PyInferenceAgentLoopManager` ([verl_hook.py](../../../integration/verl/verl_hook.py)), which overrides the worker actor class with `PyInferenceAgentLoopWorker`.
-2.  **Fleet**: The manager creates one named `Fleet` actor ([fleet.py](../../../integration/verl/fleet.py)) shared by every worker. It counts in-flight requests per engine across workers, discovers the engines from verl's balancer once, and polls their metrics in the background.
+2.  **Fleet**: The manager creates one named `Fleet` actor ([fleet.py](../../../integration/verl/fleet.py)) shared by every worker. It discovers the engines from verl's balancer once, polls their metrics in the background, and counts in-flight requests per engine across workers.
 3.  **Scheduling Loop**: When verl requests a generation:
     *   `_acquire_server()` takes the worker's lock and reads one fleet snapshot: engine metrics plus fleet-wide in-flight counts.
     *   It queries the `Scheduler` to select the best engine.
