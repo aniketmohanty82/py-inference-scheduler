@@ -172,3 +172,33 @@ def _hand_back(
 ) -> None:
     if not placing.cancelled() and placing.exception() is None:
         fleet.finish.remote(request_id, placing.result()[0], None)
+
+
+class PendingFinishes:
+    """Each trajectory's last finish, until the fleet actor has run it.
+
+    The fleet actor is async, so Ray does not keep one caller's calls in order. A trajectory's next
+    turn waits for its last finish, or that finish could free the new turn's reservation instead.
+    """
+
+    def __init__(self, fleet: ray.actor.ActorHandle) -> None:
+        self._fleet = fleet
+        self._running: dict[str, asyncio.Task[None]] = {}
+
+    def start(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
+        self._running[request_id] = asyncio.get_running_loop().create_task(
+            self._finish(request_id, endpoint_name, output_tokens)
+        )
+
+    async def wait(self, request_id: str) -> None:
+        running = self._running.get(request_id)
+        if running is not None:
+            await running
+
+    async def _finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
+        try:
+            await self._fleet.finish.remote(request_id, endpoint_name, output_tokens)
+        finally:
+            # A newer finish for the same trajectory keeps its entry.
+            if self._running.get(request_id) is asyncio.current_task():
+                del self._running[request_id]
