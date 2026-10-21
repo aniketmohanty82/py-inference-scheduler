@@ -114,13 +114,13 @@ class _SchedulerCore:
             if not selected:
                 return None
             winner: Endpoint = selected[0].endpoint
-            self.note_dispatch(winner.name)
+            self.record_dispatch(winner.name)
             return winner
 
-    def note_dispatch(self, endpoint_name: str) -> None:
+    def record_dispatch(self, endpoint_name: str) -> None:
         self.fleet.increment.remote(endpoint_name)
 
-    def release(self, endpoint_name: str) -> None:
+    def record_release(self, endpoint_name: str) -> None:
         self.fleet.decrement.remote(endpoint_name)
 
 
@@ -155,12 +155,12 @@ if _VERL_LAYOUT == "legacy":
                 )
                 self.core.lb_acquired_requests.add(request_id)
                 server_id, handle = await super()._acquire_server(request_id)  # type: ignore[no-any-return]
-                self.core.note_dispatch(server_id)
+                self.core.record_dispatch(server_id)
                 return server_id, handle
             return winner.name, winner.attributes["replica_obj"]
 
         def _release_server(self, server_id: str, request_id: str | None = None) -> None:
-            self.core.release(server_id)
+            self.core.record_release(server_id)
             if request_id and request_id in self.core.lb_acquired_requests:
                 super()._release_server(server_id)
                 self.core.lb_acquired_requests.remove(request_id)
@@ -254,12 +254,12 @@ else:  # modern layout
                 )
                 self.core.lb_acquired_requests.add(request_id)
                 server_id, handle = await super()._acquire_server(request_id)
-                self.core.note_dispatch(server_id)
+                self.core.record_dispatch(server_id)
                 return server_id, handle
             return winner.name, winner.attributes["replica_obj"]
 
         def _release_server(self, server_id: str, request_id: str | None = None) -> None:
-            self.core.release(server_id)
+            self.core.record_release(server_id)
             if request_id and request_id in self.core.lb_acquired_requests:
                 super()._release_server(server_id)
                 self.core.lb_acquired_requests.remove(request_id)
