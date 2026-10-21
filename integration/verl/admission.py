@@ -47,22 +47,17 @@ class Admission:
         self._retrying: asyncio.Task[None] | None = None
         # VERIFY-ONLY: counts finish/admit ordering per trajectory.
         self._order = {"admits": 0, "finishes": 0, "admit_before_finish": 0, "finish_found_nothing": 0}
-        self._order_task: asyncio.Task[None] | None = None
 
     def _order_note(self, key: str, request_id: str = "") -> None:
         self._order[key] += 1
         if request_id and self._order[key] <= 20:
             print(f"[ORDER] {key} id={request_id} counts={self._order}", flush=True)
-
-    async def _order_loop(self) -> None:
-        while True:
-            await asyncio.sleep(10)
+        everything_finished = key == "finishes" and self._order["finishes"] == self._order["admits"]
+        if everything_finished or (key == "admits" and self._order["admits"] % 1000 == 0):
             print(f"[ORDER] summary {self._order}", flush=True)
 
     async def admit(self, request: LLMRequest) -> Endpoint:
         """Place the request on an engine with room, waiting in line until one has it."""
-        if self._order_task is None:
-            self._order_task = asyncio.get_running_loop().create_task(self._order_loop())
         self._order_note("admits")
         if request.request_id in getattr(self._plugin, "_reservations", {}):
             self._order_note("admit_before_finish", request.request_id)
