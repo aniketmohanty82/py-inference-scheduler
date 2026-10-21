@@ -29,12 +29,16 @@ from py_inference_scheduler.framework.helpers import prefill_tokens
 _MAX_REMEMBERED_TRAJECTORIES = 65536
 
 
-class _Hold(NamedTuple):
+class _Reservation(NamedTuple):
+    """Tokens an admitted, unfinished request has booked on one engine."""
+
     engine: str
     tokens: int
 
 
 class _LastTurn(NamedTuple):
+    """Where a trajectory's last turn ran and how many tokens it generated."""
+
     engine: str
     output_tokens: int
 
@@ -58,8 +62,8 @@ class KVSaturationPlugin(FlowControlPlugin):
             raise ValueError("budget_fraction must be in (0, 1].")
         self.default_osl = default_osl
         self.budget_fraction = budget_fraction
-        self._reserved: dict[str, int] = {}
-        self._holds: dict[str, _Hold] = {}
+        self._reserved_by_engine: dict[str, int] = {}
+        self._reservations: dict[str, _Reservation] = {}
         self._last_turns: OrderedDict[str, _LastTurn] = OrderedDict()
 
     def get_allowed_candidates(
@@ -74,16 +78,18 @@ class KVSaturationPlugin(FlowControlPlugin):
         return home or fitting
 
     def reserve(self, request: LLMRequest, selected: Endpoint) -> None:
-        # A retried decision moves the hold instead of stacking a second one.
-        self._drop_hold(request.request_id)
+        # Ray Serve routes a request again when a replica turns it away. Drop the old reservation
+        # first so the request is never booked on two engines.
+        self._drop_reservation(request.request_id)
+        engine = selected.name
         tokens = min(self._need(request), self._budget(selected))
-        self._reserved[selected.name] = self._reserved.get(selected.name, 0) + tokens
-        self._holds[request.request_id] = _Hold(selected.name, tokens)
+        self._reserved_by_engine[engine] = self._reserved_by_engine.get(engine, 0) + tokens
+        self._reservations[request.request_id] = _Reservation(engine, tokens)
 
     def release(
         self, request: LLMRequest, endpoint_name: str, output_tokens: int | None = None
     ) -> None:
-        engine = self._drop_hold(request.request_id)
+        engine = self._drop_reservation(request.request_id)
         if engine is None or output_tokens is None:
             return
         self._last_turns[request.request_id] = _LastTurn(engine, output_tokens)
@@ -91,12 +97,12 @@ class KVSaturationPlugin(FlowControlPlugin):
         if len(self._last_turns) > _MAX_REMEMBERED_TRAJECTORIES:
             self._last_turns.popitem(last=False)
 
-    def _drop_hold(self, request_id: str) -> str | None:
-        hold = self._holds.pop(request_id, None)
-        if hold is None:
+    def _drop_reservation(self, request_id: str) -> str | None:
+        reservation = self._reservations.pop(request_id, None)
+        if reservation is None:
             return None
-        self._reserved[hold.engine] -= hold.tokens
-        return hold.engine
+        self._reserved_by_engine[reservation.engine] -= reservation.tokens
+        return reservation.engine
 
     def _need(self, request: LLMRequest) -> int:
         last = self._last_turns.get(request.request_id)
@@ -105,10 +111,10 @@ class KVSaturationPlugin(FlowControlPlugin):
 
     def _fits(self, ep: Endpoint, need: int, request_id: str) -> bool:
         budget = self._budget(ep)
-        # A retried decision moves its own hold, so that hold does not count against it.
-        hold = self._holds.get(request_id)
-        own = hold.tokens if hold and hold.engine == ep.name else 0
-        reserved = self._reserved.get(ep.name, 0) - own
+        # A request routed again must not compete with its own old reservation.
+        reservation = self._reservations.get(request_id)
+        own = reservation.tokens if reservation and reservation.engine == ep.name else 0
+        reserved = self._reserved_by_engine.get(ep.name, 0) - own
         # An oversize request reserves the whole budget, so it waits for an idle engine.
         return budget > 0 and reserved + min(need, budget) <= budget
 
