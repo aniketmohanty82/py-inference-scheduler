@@ -45,9 +45,27 @@ class Admission:
         self._retry_interval_s = retry_interval_s
         self._waiting: list[tuple[LLMRequest, asyncio.Future[Endpoint]]] = []
         self._retrying: asyncio.Task[None] | None = None
+        # VERIFY-ONLY: counts finish/admit ordering per trajectory.
+        self._order = {"admits": 0, "finishes": 0, "admit_before_finish": 0, "finish_found_nothing": 0}
+        self._order_task: asyncio.Task[None] | None = None
+
+    def _order_note(self, key: str, request_id: str = "") -> None:
+        self._order[key] += 1
+        if request_id and self._order[key] <= 20:
+            print(f"[ORDER] {key} id={request_id} counts={self._order}", flush=True)
+
+    async def _order_loop(self) -> None:
+        while True:
+            await asyncio.sleep(10)
+            print(f"[ORDER] summary {self._order}", flush=True)
 
     async def admit(self, request: LLMRequest) -> Endpoint:
         """Place the request on an engine with room, waiting in line until one has it."""
+        if self._order_task is None:
+            self._order_task = asyncio.get_running_loop().create_task(self._order_loop())
+        self._order_note("admits")
+        if request.request_id in getattr(self._plugin, "_reservations", {}):
+            self._order_note("admit_before_finish", request.request_id)
         winner = self._place(request)
         if winner is not None:
             return winner
@@ -59,6 +77,9 @@ class Admission:
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
         """Free the request's place and retry the requests waiting for one."""
+        self._order_note("finishes")
+        if request_id not in getattr(self._plugin, "_reservations", {}):
+            self._order_note("finish_found_nothing", request_id)
         self._counts.decrement(endpoint_name)
         self._plugin.release(LLMRequest(request_id=request_id), endpoint_name, output_tokens)
         self._retry()
