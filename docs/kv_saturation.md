@@ -30,4 +30,5 @@ profiles:
 
 | Integration | Where requests wait | Order of retries | Turns of a trajectory |
 | --- | --- | --- | --- |
+| verl (vLLM engines) | one queue in the fleet actor shared by every agent-loop worker | longest prompt first, any request that fits | linked by verl's per-trajectory request id |
 | Ray Serve | the router | first come, first retried | not linked: every request assumes `default_osl` |

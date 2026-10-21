@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
 from dataclasses import dataclass
@@ -22,12 +23,17 @@ from typing import cast
 import aiohttp
 import ray
 
+from integration.verl.admission import Admission
+from py_inference_scheduler import Scheduler
+from py_inference_scheduler.core.config import SchedulerConfig
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.datalayer.metrics.poller import MetricsPoller
 from py_inference_scheduler.datalayer.metrics.verl.fetch_metrics import fetch_worker_metrics
-from py_inference_scheduler.framework import Endpoint
+from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 _ACTOR_NAME = "rls_fleet"
+# A queued admit holds a call slot until it is placed, so finish must always find a free one.
+_MAX_CALLS = 1_000_000
 
 
 @dataclass
@@ -44,6 +50,7 @@ class Fleet(InflightStore):
     - Recovers the engine handles from verl's balancer once for the whole fleet.
     - Polls engine metrics in the background, so no decision scrapes an engine.
     - Counts in-flight requests per engine across all workers.
+    - With flow control in the profile, places every request and queues those that fit nowhere.
     """
 
     def __init__(self, interval_ms: int) -> None:
@@ -53,6 +60,9 @@ class Fleet(InflightStore):
             lambda: list(self._endpoints.values()), self, _fetch, interval_ms=interval_ms
         )
         self._poller.start()
+        self._retry_interval_s = interval_ms / 1000
+        self._discovery = asyncio.Lock()
+        self._admission: Admission | None = None
 
     def watch(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
         """Add these engines to the background poll."""
@@ -62,35 +72,62 @@ class Fleet(InflightStore):
                     name=name, attributes={"replica_obj": handle, "routing_stats": {}}
                 )
 
-    def discover(
+    async def discover(
         self, balancer: ray.actor.ActorHandle, expected: int
     ) -> dict[str, ray.actor.ActorHandle]:
         """Recover the engine handles from verl's balancer, which enumerates only ids.
 
         - Acquires with unique request ids until every engine is visited, then releases them.
-        - Runs in this actor, so concurrent workers never drain the balancer at the same time.
+        - Runs one walk at a time, so concurrent workers never drain the balancer together.
         """
-        handles = {name: ep.attributes["replica_obj"] for name, ep in self._endpoints.items()}
-        acquired: list[str] = []
-        # Live traffic skews the balancer's counters, so an engine can be visited twice.
-        for _ in range(expected * 3):
-            if len(handles) >= expected:
-                break
-            server_id, handle = ray.get(
-                balancer.acquire_server.remote(request_id=f"rls-discover-{uuid.uuid4().hex}")
-            )
-            acquired.append(server_id)
-            handles[server_id] = handle
-        for server_id in acquired:
-            balancer.release_server.remote(server_id=server_id)
-        self.watch(handles)
-        return handles
+        async with self._discovery:
+            handles = {name: ep.attributes["replica_obj"] for name, ep in self._endpoints.items()}
+            acquired: list[str] = []
+            # Live traffic skews the balancer's counters, so an engine can be visited twice.
+            for _ in range(expected * 3):
+                if len(handles) >= expected:
+                    break
+                server_id, handle = await balancer.acquire_server.remote(
+                    request_id=f"rls-discover-{uuid.uuid4().hex}"
+                )
+                acquired.append(server_id)
+                handles[server_id] = handle
+            for server_id in acquired:
+                balancer.release_server.remote(server_id=server_id)
+            self.watch(handles)
+            return handles
 
     def snapshot(self) -> FleetSnapshot:
         stats = {
             name: ep.attributes.get("routing_stats", {}) for name, ep in self._endpoints.items()
         }
         return FleetSnapshot(cast("dict[str, dict[str, object]]", stats), self.get_all())
+
+    async def admit(self, request: LLMRequest) -> tuple[str, ray.actor.ActorHandle]:
+        """Place a request on an engine with room, waiting in line until one has it."""
+        winner = await self._get_admission().admit(request)
+        return winner.name, winner.attributes["replica_obj"]
+
+    def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
+        """Free an admitted request's place and retry the requests waiting for one."""
+        self._get_admission().finish(request_id, endpoint_name, output_tokens)
+
+    def _get_admission(self) -> Admission:
+        if self._admission is None:
+            # Loaded once, because a hot reload would replace the plugin and drop its reservations.
+            config = SchedulerConfig.from_file(os.environ["ROUTER_CONFIG_PATH"])
+            scheduler = Scheduler.new_with_config(config)
+            plugins = scheduler.get_flow_control_plugins()
+            if len(plugins) != 1:
+                raise ValueError("verl admission needs exactly one flow_control plugin.")
+            self._admission = Admission(
+                scheduler,
+                plugins[0],
+                self,
+                lambda: list(self._endpoints.values()),
+                self._retry_interval_s,
+            )
+        return self._admission
 
 
 async def _fetch(ep: Endpoint, inflight: InflightStore, session: aiohttp.ClientSession) -> None:
@@ -105,4 +142,33 @@ def fleet_actor() -> ray.actor.ActorHandle:
     """The fleet actor, created by the first caller and shared with the rest by name."""
     interval_ms = int(os.environ.get("RLS_METRICS_INTERVAL_MS", "100"))
     # num_cpus=0: an actor pending behind verl's CPU reservations would stall every worker.
-    return _FleetActor.options(name=_ACTOR_NAME, get_if_exists=True, num_cpus=0).remote(interval_ms)
+    return _FleetActor.options(
+        name=_ACTOR_NAME, get_if_exists=True, num_cpus=0, max_concurrency=_MAX_CALLS
+    ).remote(interval_ms)
+
+
+async def place(
+    fleet: ray.actor.ActorHandle, request: LLMRequest
+) -> tuple[str, ray.actor.ActorHandle]:
+    """Ask the fleet actor to admit a request.
+
+    If the caller is cancelled first, a place made later is handed back, since Ray keeps the call
+    running.
+    """
+    placing: asyncio.Future[tuple[str, ray.actor.ActorHandle]] = asyncio.ensure_future(
+        fleet.admit.remote(request)
+    )
+    try:
+        return await asyncio.shield(placing)
+    except asyncio.CancelledError:
+        placing.add_done_callback(lambda done: _hand_back(fleet, request.request_id, done))
+        raise
+
+
+def _hand_back(
+    fleet: ray.actor.ActorHandle,
+    request_id: str,
+    placing: asyncio.Future[tuple[str, ray.actor.ActorHandle]],
+) -> None:
+    if not placing.cancelled() and placing.exception() is None:
+        fleet.finish.remote(request_id, placing.result()[0], None)
