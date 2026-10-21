@@ -35,18 +35,25 @@ from __future__ import annotations
 
 import asyncio
 import collections
-from typing import cast
+import time
+from typing import NamedTuple, cast
 
 import ray
 from omegaconf import OmegaConf
 
-# (running, waiting, kv) per fake engine.
-_IDLE = (0, 0, 0.0)
-_SKEWED = {"srv-0": (12, 20, 0.97), "srv-1": (0, 0, 0.05), "srv-2": (6, 3, 0.55)}
-# Long enough for the fleet poller to pick up a load change.
-_SETTLE_S = 0.5
-_BURST_N = 48
-_BURST_SPREAD_MAX = 6
+
+class Load(NamedTuple):
+    running: int
+    waiting: int
+    kv: float
+
+
+_IDLE = Load(running=0, waiting=0, kv=0.0)
+
+
+def _stats(load: Load) -> dict[str, float]:
+    """The routing stats a vLLM engine under this load reports."""
+    return {"num_running_reqs": load.running, "num_waiting_reqs": load.waiting, "kv": load.kv}
 
 
 @ray.remote(num_cpus=0)
@@ -61,17 +68,31 @@ class FakeServer:
             await asyncio.sleep(self.hold_s)
         return {"token_ids": [1, 2, 3], "server": self.name}
 
-    def configure(self, load: tuple[int, int, float], hold_s: float) -> None:
+    def configure(self, load: Load, hold_s: float) -> None:
         self.load, self.hold_s = load, hold_s
 
     def get_routing_stats(self):  # noqa: ANN201
-        running, waiting, kv = self.load
-        return {"num_running_reqs": running, "num_waiting_reqs": waiting, "kv": kv}
+        return _stats(self.load)
 
 
-async def _configure(servers, loads, hold_s: float = 0.0) -> None:
+async def _set_loads(fleet, servers, loads: dict[str, Load], hold_s: float = 0.0) -> None:
+    """Give each fake engine a load, then wait until the fleet's poll reports it.
+
+    The fleet only polls engines it has discovered, so call this after the first routed turn.
+    """
     await asyncio.gather(*(servers[name].configure.remote(loads[name], hold_s) for name in servers))
-    await asyncio.sleep(_SETTLE_S)
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        polled = (await fleet.snapshot.remote()).stats
+        if all(_reports(polled.get(name, {}), loads[name]) for name in servers):
+            return
+        await asyncio.sleep(0.05)
+    msg = "the fleet's poll never reported the new engine loads"
+    raise TimeoutError(msg)
+
+
+def _reports(stats: dict[str, object], load: Load) -> bool:
+    return all(stats.get(key) == value for key, value in _stats(load).items())
 
 
 async def _turn(client, request_id: str, prompt_ids: list[int]) -> str:
@@ -83,19 +104,25 @@ async def _turn(client, request_id: str, prompt_ids: list[int]) -> str:
     return str(out["server"])
 
 
-async def _prefix_sticky(client, servers) -> bool:
-    await _configure(servers, dict.fromkeys(servers, _IDLE))
+async def _prefix_sticky(client) -> bool:
+    # The fake engines start idle, so only the shared prefix decides where the turns go.
+    turns = 4
     prefix = list(range(400))
     routed = collections.Counter([
         await _turn(client, f"sticky-{i}", prefix + list(range(1000 + i * 50, 1050 + i * 50)))
-        for i in range(4)
+        for i in range(turns)
     ])
     print(f"same-prefix turns: {dict(routed)}")
-    return max(routed.values()) == 4  # noqa: PLR2004
+    return max(routed.values()) == turns
 
 
 async def _load_aware(clients, servers) -> bool:
-    await _configure(servers, _SKEWED)
+    loads = {
+        "srv-0": Load(running=12, waiting=20, kv=0.97),
+        "srv-1": Load(running=0, waiting=0, kv=0.05),
+        "srv-2": Load(running=6, waiting=3, kv=0.55),
+    }
+    await _set_loads(clients[0].core.fleet, servers, loads)
     prefix = list(range(400))
     routed = collections.Counter([
         await _turn(clients[i % 2], f"load-{i}", [*prefix, i]) for i in range(12)
@@ -105,15 +132,15 @@ async def _load_aware(clients, servers) -> bool:
 
 
 async def _burst(client, servers) -> bool:
-    await _configure(servers, dict.fromkeys(servers, _IDLE), hold_s=1.0)
+    turns = 48
+    max_gap = 6  # between the busiest and the quietest engine
+    # Each turn holds its engine for a second, so every turn is in flight at the same time.
+    await _set_loads(client.core.fleet, servers, dict.fromkeys(servers, _IDLE), hold_s=1.0)
     routed = collections.Counter(
-        await asyncio.gather(*(_turn(client, f"burst-{i}", [7, i]) for i in range(_BURST_N)))
+        await asyncio.gather(*(_turn(client, f"burst-{i}", [7, i]) for i in range(turns)))
     )
-    print(f"burst of {_BURST_N} first turns over idle engines: {dict(routed)}")
-    return (
-        len(routed) == len(servers)
-        and max(routed.values()) - min(routed.values()) <= _BURST_SPREAD_MAX
-    )
+    print(f"burst of {turns} first turns over idle engines: {dict(routed)}")
+    return len(routed) == len(servers) and max(routed.values()) - min(routed.values()) <= max_gap
 
 
 async def main() -> int:
@@ -140,7 +167,7 @@ async def main() -> int:
         verl_hook.InferenceSchedulerServerClient(config, load_balancer_handle=lb) for _ in range(2)
     ]
 
-    sticky_ok = await _prefix_sticky(clients[0], servers)
+    sticky_ok = await _prefix_sticky(clients[0])
     load_ok = await _load_aware(clients, servers)
     burst_ok = await _burst(clients[0], servers)
 
