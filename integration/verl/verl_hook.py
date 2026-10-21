@@ -94,11 +94,10 @@ class _SchedulerCore:
         self.lock = asyncio.Lock()
 
     def set_endpoints(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
-        if set(handles) != {ep.name for ep in self.endpoints}:
-            self.endpoints = [
-                Endpoint(name=name, attributes={"replica_obj": handle, "routing_stats": {}})
-                for name, handle in handles.items()
-            ]
+        self.endpoints = [
+            Endpoint(name=name, attributes={"replica_obj": handle, "routing_stats": {}})
+            for name, handle in handles.items()
+        ]
 
     async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
         """Pick an endpoint on the latest fleet snapshot. None means fall back to verl's LB."""
