@@ -60,7 +60,7 @@ except ImportError:  # modern layout (verl v0.9.x)
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from integration.verl.fleet import FleetSnapshot, PendingFinishes, fleet_actor, place
+from integration.verl.fleet import FleetSnapshot, PendingFinishes, admit, fleet_actor
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
@@ -83,7 +83,7 @@ class _SchedulerCore:
     """Per-worker routing on state shared by the whole fleet.
 
     - Without flow control, routes on one fleet snapshot per decision, under a lock.
-    - With flow control, asks the fleet actor, which places and queues requests for every worker.
+    - With flow control, asks the fleet actor, which admits and queues requests for every worker.
     """
 
     def __init__(self) -> None:
@@ -108,7 +108,7 @@ class _SchedulerCore:
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
             await self.finishes.wait(request_id)
-            return await place(self.fleet, request)
+            return await admit(self.fleet, request)
         async with self.lock:
             snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
             endpoints = self.endpoints

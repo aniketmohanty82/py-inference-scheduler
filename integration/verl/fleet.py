@@ -32,7 +32,7 @@ from py_inference_scheduler.datalayer.metrics.verl.fetch_metrics import fetch_wo
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 _ACTOR_NAME = "rls_fleet"
-# A queued admit holds a call slot until it is placed, so finish must always find a free one.
+# A queued admit holds a call slot until it returns, so finish must always find a free one.
 _MAX_CALLS = 1_000_000
 
 
@@ -50,7 +50,7 @@ class Fleet(InflightStore):
     - Recovers the engine handles from verl's balancer once for the whole fleet.
     - Polls engine metrics in the background, so no decision scrapes an engine.
     - Counts in-flight requests per engine across all workers.
-    - With flow control in the profile, places every request and queues those that fit nowhere.
+    - With flow control in the profile, admits every request and queues those that fit nowhere.
     """
 
     def __init__(self, interval_ms: int) -> None:
@@ -104,12 +104,12 @@ class Fleet(InflightStore):
         return FleetSnapshot(cast("dict[str, dict[str, object]]", stats), self.get_all())
 
     async def admit(self, request: LLMRequest) -> tuple[str, ray.actor.ActorHandle]:
-        """Place a request on an engine with room, waiting in line until one has it."""
+        """Admit a request to an engine with room, waiting in line until one has it."""
         winner = await self._get_admission().admit(request)
         return winner.name, winner.attributes["replica_obj"]
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
-        """Free an admitted request's place and retry the requests waiting for one."""
+        """Release an admitted request's reservation and retry the requests waiting for one."""
         self._get_admission().finish(request_id, endpoint_name, output_tokens)
 
     def _get_admission(self) -> Admission:
@@ -147,31 +147,31 @@ def fleet_actor() -> ray.actor.ActorHandle:
     ).remote(interval_ms)
 
 
-async def place(
+async def admit(
     fleet: ray.actor.ActorHandle, request: LLMRequest
 ) -> tuple[str, ray.actor.ActorHandle]:
     """Ask the fleet actor to admit a request.
 
-    If the caller is cancelled first, a place made later is handed back, since Ray keeps the call
-    running.
+    If the caller is cancelled first, an admission that completes later is handed back, since Ray
+    keeps the call running.
     """
-    placing: asyncio.Future[tuple[str, ray.actor.ActorHandle]] = asyncio.ensure_future(
+    admitting: asyncio.Future[tuple[str, ray.actor.ActorHandle]] = asyncio.ensure_future(
         fleet.admit.remote(request)
     )
     try:
-        return await asyncio.shield(placing)
+        return await asyncio.shield(admitting)
     except asyncio.CancelledError:
-        placing.add_done_callback(lambda done: _hand_back(fleet, request.request_id, done))
+        admitting.add_done_callback(lambda done: _hand_back(fleet, request.request_id, done))
         raise
 
 
 def _hand_back(
     fleet: ray.actor.ActorHandle,
     request_id: str,
-    placing: asyncio.Future[tuple[str, ray.actor.ActorHandle]],
+    admitting: asyncio.Future[tuple[str, ray.actor.ActorHandle]],
 ) -> None:
-    if not placing.cancelled() and placing.exception() is None:
-        fleet.finish.remote(request_id, placing.result()[0], None)
+    if not admitting.cancelled() and admitting.exception() is None:
+        fleet.finish.remote(request_id, admitting.result()[0], None)
 
 
 class PendingFinishes:

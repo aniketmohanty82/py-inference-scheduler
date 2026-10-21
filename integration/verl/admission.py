@@ -24,9 +24,9 @@ from py_inference_scheduler.framework.helpers import prefill_tokens
 
 
 class Admission:
-    """Places requests with a flow-control plugin and the profile's scorers.
+    """Admits requests with a flow-control plugin and the profile's scorers.
 
-    - Reserves and counts each placement in the same step, so later decisions see it.
+    - Reserves and counts each admission in the same step, so later decisions see it.
     - Holds requests that fit nowhere and retries them longest prompt first.
     """
 
@@ -47,8 +47,8 @@ class Admission:
         self._retrying: asyncio.Task[None] | None = None
 
     async def admit(self, request: LLMRequest) -> Endpoint:
-        """Place the request on an engine with room, waiting in line until one has it."""
-        winner = self._place(request)
+        """Admit the request to an engine with room, waiting in line until one has it."""
+        winner = self._try_admit(request)
         if winner is not None:
             return winner
         future: asyncio.Future[Endpoint] = asyncio.get_running_loop().create_future()
@@ -58,12 +58,12 @@ class Admission:
         return await future
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
-        """Free the request's place and retry the requests waiting for one."""
+        """Release the request's reservation and retry the requests waiting for one."""
         self._counts.decrement(endpoint_name)
         self._plugin.release(LLMRequest(request_id=request_id), endpoint_name, output_tokens)
         self._retry()
 
-    def _place(self, request: LLMRequest) -> Endpoint | None:
+    def _try_admit(self, request: LLMRequest) -> Endpoint | None:
         candidates = self._endpoints()
         for ep in candidates:
             ep.attributes["queue_len"] = self._counts.get(ep.name)
@@ -88,7 +88,7 @@ class Admission:
         self._waiting = []
         for request, future in waiting:
             try:
-                winner = self._place(request)
+                winner = self._try_admit(request)
             except Exception as e:  # noqa: BLE001 - the waiting caller must see the failure
                 future.set_exception(e)
                 continue
