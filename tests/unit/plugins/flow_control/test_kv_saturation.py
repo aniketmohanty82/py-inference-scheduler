@@ -110,7 +110,7 @@ def test_reservations_consume_the_budget_until_released():
     assert _offered(plugin, second, [engine]) == ["e1"]
 
 
-def test_a_retried_decision_reuses_its_own_hold():
+def test_reserving_a_request_again_moves_its_reservation():
     plugin = KVSaturationPlugin(default_osl=0)
     e1, e2 = _engine("e1", 100), _engine("e2", 100)
     plugin.reserve(_turn("t1", 60), e1)
@@ -149,7 +149,7 @@ def test_next_turn_assumes_the_previous_output():
     plugin.release(_turn("t1", 10), "e1", output_tokens=40)
     plugin.reserve(_turn("other", 100), engine)
 
-    # other holds 100 + 500 default, leaving 100: 60 prompt + 40 last output fits, 61 + 40 not.
+    # other reserves 100 + 500 default, leaving 100: 60 prompt + 40 last output fits, 61 + 40 not.
     assert _offered(plugin, _turn("t1", 60), [engine]) == ["e1"]
     assert _offered(plugin, _turn("t1", 61), [engine]) == []
 
