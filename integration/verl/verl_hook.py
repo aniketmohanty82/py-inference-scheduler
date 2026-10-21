@@ -101,7 +101,7 @@ class _SchedulerCore:
             ]
 
     async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
-        """Pick an endpoint on the latest fleet snapshot; None means fall back to verl's LB."""
+        """Pick an endpoint on the latest fleet snapshot. None means fall back to verl's LB."""
         async with self.lock:
             # Ray runs one caller's actor calls in order, so this worker's last
             # dispatch is already counted in the snapshot.
@@ -219,7 +219,7 @@ else:  # modern layout
     class InferenceSchedulerServerClient(_ModernServerClient):  # type: ignore[misc]
         """Delegate routing to py-inference-scheduler. Compatible with verl v0.9.x.
 
-        verl's balancer owns the engine registry but enumerates only ids; the
+        verl's balancer owns the engine registry but enumerates only ids. The
         fleet actor recovers the handles once for every worker.
         """
 
