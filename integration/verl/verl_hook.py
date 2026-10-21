@@ -70,7 +70,7 @@ logger.info("py-inference-scheduler verl hook: %s layout detected", _VERL_LAYOUT
 
 # verl's request_id is the same for every turn of a trajectory. Sent in this header, it lets
 # sticky_session keep those turns on one engine.
-SESSION_HEADER = "x-rls-session"
+SESSION_HEADER = "x-rls-session-id"
 
 # Must apply at module level to patch classes before use across distributed
 # Ray workers without modifying verl.
