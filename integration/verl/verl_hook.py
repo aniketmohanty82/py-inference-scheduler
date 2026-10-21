@@ -93,6 +93,10 @@ class _SchedulerCore:
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
+        # Each trajectory's last finish, until the fleet actor has run it.
+        self.finishing: dict[str, asyncio.Task[None]] = {}
+        self._schedules = 0  # VERIFY-ONLY
+        self._waits = 0  # VERIFY-ONLY
 
     def set_endpoints(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
         self.endpoints = [
@@ -106,6 +110,17 @@ class _SchedulerCore:
         """Pick an engine's id and handle. None means fall back to verl's LB."""
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
+            # The fleet actor is async, so Ray does not keep one caller's calls in order. Without
+            # this wait, the last turn's finish could free this turn's reservation instead.
+            finishing = self.finishing.get(request_id)
+            self._schedules += 1  # VERIFY-ONLY
+            if finishing is not None:
+                self._waits += 1  # VERIFY-ONLY
+                if self._waits <= 5:  # VERIFY-ONLY
+                    print(f"[ORDER-HOOK] waiting for finish id={request_id}", flush=True)
+                await finishing
+            if self._schedules % 500 == 0:  # VERIFY-ONLY
+                print(f"[ORDER-HOOK] schedules={self._schedules} waits={self._waits}", flush=True)
             return await place(self.fleet, request)
         async with self.lock:
             snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
@@ -129,9 +144,17 @@ class _SchedulerCore:
         self, endpoint_name: str, request_id: str, output_tokens: int | None
     ) -> None:
         if self.admits:
-            self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
+            self.finishing[request_id] = asyncio.get_running_loop().create_task(
+                self._finish(request_id, endpoint_name, output_tokens)
+            )
         else:
             self.fleet.decrement.remote(endpoint_name)
+
+    async def _finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
+        try:
+            await self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
+        finally:
+            self.finishing.pop(request_id, None)
 
 
 if _VERL_LAYOUT == "legacy":
