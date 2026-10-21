@@ -19,11 +19,11 @@ verl GlobalRequestLoadBalancer, then drives two InferenceSchedulerServerClients,
 standing in for two AgentLoopWorkers, through discovery, routing, generate and
 release. Verifies:
 
-- both clients see every engine;
-- same-prefix turns stick to one engine;
-- polled engine load reaches decisions, so a loaded engine is avoided;
-- a burst of concurrent first turns spreads evenly over idle engines;
-- fleet in-flight counts and the balancer's counters return to zero.
+- Both clients see every engine.
+- Same-prefix turns stick to one engine.
+- Polled engine load reaches decisions, so a loaded engine is avoided.
+- A burst of concurrent first turns spreads evenly over idle engines.
+- Fleet in-flight counts and the balancer's counters return to zero.
 
 Usage:
     ROUTER_CONFIG_PATH=integration/verl/examples/scheduler.yaml \

@@ -5,9 +5,9 @@
 **This integration supports two verl layouts, auto-detected at import time:**
 
 - **verl v0.7.1** ("legacy"): `AsyncLLMServerManager` in `verl.experimental.agent_loop.agent_loop`, server list passed to workers.
-- **verl v0.9.x** ("modern"): `LLMServerClient` in `verl.workers.rollout.llm_server` with a `GlobalRequestLoadBalancer` actor owning the server registry; one fleet actor shared by all agent-loop workers recovers the engine handles by draining the balancer once.
+- **verl v0.9.x** ("modern"): `LLMServerClient` in `verl.workers.rollout.llm_server` with a `GlobalRequestLoadBalancer` actor owning the server registry. One fleet actor, shared by all agent-loop workers, recovers the engine handles by draining the balancer once.
 
-Both expose the same entrypoint flag (`agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager`). The modern path is validated GPU-free by [hook_compat_check.py](./hook_compat_check.py) (fake server actors + a real load balancer; verifies discovery, prefix-sticky and load-aware routing, burst spreading, and in-flight accounting). It uses internal API signatures and is **not backwards compatible** with verl versions earlier than v0.7.1; intermediate releases (v0.8.x) are untested.
+Both expose the same entrypoint flag (`agent_loop_manager_class=integration.verl.verl_hook.PyInferenceAgentLoopManager`). The modern path is validated GPU-free by [hook_compat_check.py](./hook_compat_check.py), which runs fake server actors against a real load balancer and verifies discovery, prefix-sticky and load-aware routing, burst spreading, and in-flight accounting. It uses internal API signatures and is **not backwards compatible** with verl versions earlier than v0.7.1. Intermediate releases (v0.8.x) are untested.
 
 ## Architecture
 
