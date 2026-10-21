@@ -122,7 +122,7 @@ Flow control plugins prevent replica overload and mid-decoding preemptions by co
 
 ## 4. Example Configuration
 
-Here is an example of a sophisticated `scheduler.yaml` that combines prefix caching, backpressure scoring, and KV saturation protection:
+Here is an example of a sophisticated `scheduler.yaml` that combines session affinity, prefix caching, backpressure scoring, and KV saturation protection:
 
 ```yaml
 profile_handler:
@@ -131,6 +131,10 @@ profile_handler:
 profiles:
   hybrid_policy:
     scorers:
+      # Keep every request of a session on the same replica
+      - type: sticky_session
+        header_name: x-rls-session
+        weight: 10.0
       # Heavily favor prefix cache hits for speed
       - type: prefix_cache
         weight: 10.0
