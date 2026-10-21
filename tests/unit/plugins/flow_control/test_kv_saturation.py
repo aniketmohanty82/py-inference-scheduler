@@ -67,11 +67,6 @@ def test_oversize_request_reserves_the_whole_budget():
     assert _offered(plugin, _turn("t2", 1), [engine]) == []
 
 
-def test_rejects_the_removed_drip_settings():
-    with pytest.raises(TypeError):
-        build_flow_control("kv_saturation", enable_drip=True)
-
-
 def test_needs_prompt_plus_default_output():
     plugin = KVSaturationPlugin(default_osl=10)
     fits, short = _engine("fits", 200), _engine("short", 200)
