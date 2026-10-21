@@ -68,7 +68,8 @@ from py_inference_scheduler.framework import Endpoint, LLMRequest
 logger = logging.getLogger(__name__)
 logger.info("py-inference-scheduler verl hook: %s layout detected", _VERL_LAYOUT)
 
-# verl keeps one request_id per trajectory; as a header it lets sticky_session pin its turns.
+# verl's request_id is the same for every turn of a trajectory. Sent in this header, it lets
+# sticky_session keep those turns on one engine.
 SESSION_HEADER = "x-rls-session"
 
 # Must apply at module level to patch classes before use across distributed
