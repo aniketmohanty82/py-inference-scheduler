@@ -154,13 +154,8 @@ async def main() -> int:
     assert verl_hook._VERL_LAYOUT == "modern", "expected modern layout on this verl build"  # noqa: S101
 
     servers = {f"srv-{i}": FakeServer.remote(f"srv-{i}") for i in range(3)}  # type: ignore[attr-defined]
-    # Some verl builds ship the balancer as a Ray actor class, others as a plain class.
-    lb_cls = (
-        GlobalRequestLoadBalancer
-        if hasattr(GlobalRequestLoadBalancer, "remote")
-        else ray.remote(GlobalRequestLoadBalancer)
-    )
-    lb = lb_cls.options(num_cpus=0).remote(servers)
+    # verl 0.9.x ships the balancer as a plain class, so wrap it as an actor here.
+    lb = ray.remote(GlobalRequestLoadBalancer).options(num_cpus=0).remote(servers)
 
     config = OmegaConf.create({"actor_rollout_ref": {"rollout": {"ignore_eos": False}}})
     clients = [
