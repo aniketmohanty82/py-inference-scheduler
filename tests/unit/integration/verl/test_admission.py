@@ -134,7 +134,7 @@ async def test_capacity_from_the_first_poll_admits_waiting_requests():
     assert await asyncio.wait_for(waiter, timeout=1) is engine
 
 
-async def test_a_waiting_caller_sees_why_placement_failed():
+async def test_a_waiting_caller_sees_why_admission_failed():
     engine = _engine("e1")
     admission, _ = _admission([engine])
     waiter = await _queued(admission, _turn("t1", 10))
