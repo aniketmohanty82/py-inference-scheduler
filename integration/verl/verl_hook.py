@@ -60,7 +60,7 @@ except ImportError:  # modern layout (verl v0.9.x)
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from integration.verl.fleet import FleetSnapshot, fleet_actor, place
+from integration.verl.fleet import FleetSnapshot, PendingFinishes, fleet_actor, place
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
@@ -90,6 +90,7 @@ class _SchedulerCore:
         self.scheduler = Scheduler()
         self.fleet = fleet_actor()
         self.admits = self.scheduler.has_flow_control()
+        self.finishes = PendingFinishes(self.fleet)
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
@@ -106,6 +107,7 @@ class _SchedulerCore:
         """Pick an engine's id and handle. None means fall back to verl's LB."""
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
+            await self.finishes.wait(request_id)
             return await place(self.fleet, request)
         async with self.lock:
             snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
@@ -129,7 +131,7 @@ class _SchedulerCore:
         self, endpoint_name: str, request_id: str, output_tokens: int | None
     ) -> None:
         if self.admits:
-            self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
+            self.finishes.start(request_id, endpoint_name, output_tokens)
         else:
             self.fleet.decrement.remote(endpoint_name)
 
