@@ -175,10 +175,10 @@ def _hand_back(
 
 
 class PendingFinishes:
-    """Each trajectory's last finish, until the fleet actor has run it.
+    """Sends each turn's finish to the fleet and holds the trajectory's next turn until it has run.
 
-    The fleet actor is async, so Ray does not keep one caller's calls in order. A trajectory's next
-    turn waits for its last finish, or that finish could free the new turn's reservation instead.
+    The fleet actor is async, so Ray does not keep one caller's calls in order. Without the wait,
+    the previous turn's finish could run after the next turn's admit and free the new reservation.
     Unlike holding verl's output until the finish lands, this lets the finish overlap the tool call.
     """
 
