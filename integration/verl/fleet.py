@@ -102,12 +102,25 @@ async def _fetch(ep: Endpoint, inflight: InflightStore, session: aiohttp.ClientS
 _FleetActor = ray.remote(Fleet)
 
 
+def _worker_node() -> str:
+    """The caller's node if it advertises CPUs, otherwise the first live node that does.
+
+    verl places agent-loop workers only on nodes with CPUs, so a head node without them runs none.
+    """
+    here: str = ray.get_runtime_context().get_node_id()
+    with_cpus: list[str] = [
+        n["NodeID"] for n in ray.nodes() if n["Alive"] and n["Resources"].get("CPU")
+    ]
+    return here if here in with_cpus or not with_cpus else with_cpus[0]
+
+
 def fleet_actor() -> ray.actor.ActorHandle:
     """The fleet actor, created by the first caller and shared with the rest by name."""
     interval_ms = int(os.environ.get("RLS_METRICS_INTERVAL_MS", "100"))
     # num_cpus=0: an actor pending behind verl's CPU reservations would stall every worker. Zero
-    # CPUs also lets Ray pick a head node that runs no workers, so keep it on the caller's node.
-    near_caller = NodeAffinitySchedulingStrategy(ray.get_runtime_context().get_node_id(), soft=True)
+    # CPUs also lets Ray pick a head node that runs no workers, so pin it to a node that runs them.
+    # The pin is hard because Ray often ignores a soft one for an actor that asks for no CPUs.
+    near_workers = NodeAffinitySchedulingStrategy(_worker_node(), soft=False)
     return _FleetActor.options(
-        name=_ACTOR_NAME, get_if_exists=True, num_cpus=0, scheduling_strategy=near_caller
+        name=_ACTOR_NAME, get_if_exists=True, num_cpus=0, scheduling_strategy=near_workers
     ).remote(interval_ms)
