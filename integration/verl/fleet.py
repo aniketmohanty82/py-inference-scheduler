@@ -21,6 +21,7 @@ from typing import cast
 
 import aiohttp
 import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.datalayer.metrics.poller import MetricsPoller
@@ -104,5 +105,9 @@ _FleetActor = ray.remote(Fleet)
 def fleet_actor() -> ray.actor.ActorHandle:
     """The fleet actor, created by the first caller and shared with the rest by name."""
     interval_ms = int(os.environ.get("RLS_METRICS_INTERVAL_MS", "100"))
-    # num_cpus=0: an actor pending behind verl's CPU reservations would stall every worker.
-    return _FleetActor.options(name=_ACTOR_NAME, get_if_exists=True, num_cpus=0).remote(interval_ms)
+    # num_cpus=0: an actor pending behind verl's CPU reservations would stall every worker. Zero
+    # CPUs also lets Ray pick a head node that runs no workers, so keep it on the caller's node.
+    near_caller = NodeAffinitySchedulingStrategy(ray.get_runtime_context().get_node_id(), soft=True)
+    return _FleetActor.options(
+        name=_ACTOR_NAME, get_if_exists=True, num_cpus=0, scheduling_strategy=near_caller
+    ).remote(interval_ms)
