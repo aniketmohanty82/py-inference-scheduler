@@ -63,7 +63,7 @@ working_dir: "https://github.com/llm-d-incubation/py-inference-scheduler/archive
 env_vars:
   PYTHONPATH: "."
   ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml" # Relative to CWD (repo root)
-  # RLS_METRICS_INTERVAL_MS: "100" # Optional: how often the hook polls engine metrics, in milliseconds
+  RLS_METRICS_INTERVAL_MS: "100" # Optional, default 100: how often the hook polls engine metrics, in milliseconds
 ```
 Ray unpacks the zip, sets the CWD to the repo root, and resolves the relative path to the default config.
 
