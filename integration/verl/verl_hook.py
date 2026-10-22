@@ -83,13 +83,13 @@ class _SchedulerCore:
     """Per-worker routing on state shared by the whole fleet.
 
     - Without flow control, routes on one fleet snapshot per decision, under a lock.
-    - With flow control, asks the fleet actor, which admits and queues requests for every worker.
+    - With flow control, asks the AdmissionFleet, which admits and queues requests for every worker.
     """
 
     def __init__(self) -> None:
         self.scheduler = Scheduler()
-        self.fleet = fleet_actor()
         self.admits = self.scheduler.has_flow_control()
+        self.fleet = fleet_actor(admits=self.admits)
         self.finishes = PendingFinishes(self.fleet)
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
@@ -108,6 +108,8 @@ class _SchedulerCore:
             await self.finishes.wait(request_id)
             return await admit(self.fleet, request)
         async with self.lock:
+            # Ray runs one caller's actor calls in order, so this worker's last
+            # dispatch is already counted in the snapshot.
             snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
             endpoints = self.endpoints
             for ep in endpoints:
@@ -117,9 +119,7 @@ class _SchedulerCore:
             if not selected:
                 return None
             winner: Endpoint = selected[0].endpoint
-            # The fleet actor is async, so Ray does not keep one caller's calls in order.
-            # Awaiting the count makes sure the next decision's snapshot includes it.
-            await self.fleet.increment.remote(winner.name)
+            self.record_dispatch(winner.name)
             return winner
 
     def record_dispatch(self, endpoint_name: str) -> None:
@@ -347,6 +347,6 @@ class PyInferenceAgentLoopManager(AgentLoopManager):
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         # Ray ties an actor's life to its creator: created here, the fleet outlives any one worker.
-        self._rls_fleet = fleet_actor()
+        self._rls_fleet = fleet_actor(admits=Scheduler().has_flow_control())
         self.agent_loop_workers_class = ray.remote(PyInferenceAgentLoopWorker)
         super().__init__(*args, **kwargs)
