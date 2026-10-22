@@ -83,7 +83,8 @@ class _SchedulerCore:
     """Per-worker routing on state shared by the whole fleet.
 
     - Without flow control, routes on one fleet snapshot per decision, under a lock.
-    - With flow control, asks the AdmissionFleet, which admits and queues requests for every worker.
+    - With flow control, ranks the engines the same way, then asks the AdmissionFleet to admit the
+      request to the highest-ranked engine with room.
     """
 
     def __init__(self) -> None:
@@ -106,21 +107,30 @@ class _SchedulerCore:
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
             await self.finishes.wait(request_id)
-            return await admit(self.fleet, request)
+            async with self.lock:
+                result = self.scheduler.schedule(request, await self._snapshot())
+            primary = result.profile_results.get(result.primary_profile_name or "")
+            ranking = [scored.endpoint.name for scored in primary.ranked] if primary else []
+            # admit() sends its call before it first awaits, so it goes out ahead of this
+            # worker's next snapshot. A count that lands late only shifts a score.
+            return await admit(self.fleet, request, ranking)
         async with self.lock:
             # Ray runs one caller's actor calls in order, so this worker's last
             # dispatch is already counted in the snapshot.
-            snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
-            endpoints = self.endpoints
-            for ep in endpoints:
-                ep.attributes["routing_stats"] = snapshot.stats.get(ep.name, {})
-                ep.attributes["queue_len"] = snapshot.inflight.get(ep.name, 0)
-            selected = self.scheduler.run(request, candidates=endpoints)
+            selected = self.scheduler.run(request, candidates=await self._snapshot())
             if not selected:
                 return None
             winner: Endpoint = selected[0].endpoint
             self.record_dispatch(winner.name)
             return winner
+
+    async def _snapshot(self) -> list[Endpoint]:
+        """This worker's endpoints, carrying the fleet's latest stats and in-flight counts."""
+        snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
+        for ep in self.endpoints:
+            ep.attributes["routing_stats"] = snapshot.stats.get(ep.name, {})
+            ep.attributes["queue_len"] = snapshot.inflight.get(ep.name, 0)
+        return self.endpoints
 
     def record_dispatch(self, endpoint_name: str) -> None:
         self.fleet.increment.remote(endpoint_name)

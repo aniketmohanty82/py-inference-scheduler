@@ -94,7 +94,8 @@ class Fleet(InflightStore):
 class AdmissionFleet(Fleet):
     """The fleet for a profile with flow control, which also admits every request.
 
-    - Admits each request to an engine with room and queues those that fit nowhere.
+    - Admits each request to the engine its worker ranked highest among those with room, and
+      queues those that fit nowhere.
     - Runs as an async actor, so a queued admit waits without blocking the finishes that free room.
     """
 
@@ -113,9 +114,9 @@ class AdmissionFleet(Fleet):
             self.watch(handles)
             return handles
 
-    async def admit(self, request: LLMRequest) -> Endpoint:
-        """Admit a request to an engine with room, waiting in line until one has it."""
-        return await self._get_admission().admit(request)
+    async def admit(self, request: LLMRequest, ranking: list[str]) -> Endpoint:
+        """Admit a request to its highest-ranked engine with room, waiting until one has it."""
+        return await self._get_admission().admit(request, ranking)
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
         """Release an admitted request's reservation and retry the requests waiting for one."""
@@ -125,12 +126,10 @@ class AdmissionFleet(Fleet):
         if self._admission is None:
             # Loaded once, because a hot reload would replace the plugin and drop its reservations.
             config = SchedulerConfig.from_file(os.environ["ROUTER_CONFIG_PATH"])
-            scheduler = Scheduler.new_with_config(config)
-            plugins = scheduler.get_flow_control_plugins()
+            plugins = Scheduler.new_with_config(config).get_flow_control_plugins()
             if len(plugins) != 1:
                 raise ValueError("verl admission needs exactly one flow_control plugin.")
             self._admission = Admission(
-                scheduler,
                 plugins[0],
                 self,
                 lambda: list(self._endpoints.values()),
@@ -204,15 +203,15 @@ def fleet_actor(*, admits: bool = False) -> ray.actor.ActorHandle:
 
 
 async def admit(
-    fleet: ray.actor.ActorHandle, request: LLMRequest
+    fleet: ray.actor.ActorHandle, request: LLMRequest, ranking: list[str]
 ) -> Endpoint:
-    """Ask the fleet actor to admit a request.
+    """Ask the fleet actor to admit a request to its highest-ranked engine with room.
 
     If the caller is cancelled first, an admission that completes later is handed back, since Ray
     keeps the call running.
     """
     admitting: asyncio.Future[Endpoint] = asyncio.ensure_future(
-        fleet.admit.remote(request)
+        fleet.admit.remote(request, ranking)
     )
     try:
         return await asyncio.shield(admitting)

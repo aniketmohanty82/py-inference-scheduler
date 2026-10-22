@@ -17,14 +17,13 @@ from __future__ import annotations
 import asyncio
 from typing import Callable, Sequence
 
-from py_inference_scheduler import Scheduler
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.framework import Endpoint, FlowControlPlugin, LLMRequest
 from py_inference_scheduler.framework.helpers import prefill_tokens
 
 
 class Admission:
-    """Admits requests with a flow-control plugin and the profile's scorers.
+    """Admits requests with a flow-control plugin, in the order each worker ranked the engines.
 
     - Reserves and counts each admission in the same step, so later decisions see it.
     - Holds requests that fit nowhere and retries them longest prompt first.
@@ -32,27 +31,25 @@ class Admission:
 
     def __init__(
         self,
-        scheduler: Scheduler,
         plugin: FlowControlPlugin,
         counts: InflightStore,
         endpoints: Callable[[], Sequence[Endpoint]],
         retry_interval_s: float,
     ) -> None:
-        self._scheduler = scheduler
         self._plugin = plugin
         self._counts = counts
         self._endpoints = endpoints
         self._retry_interval_s = retry_interval_s
-        self._waiting: list[tuple[LLMRequest, asyncio.Future[Endpoint]]] = []
+        self._waiting: list[tuple[LLMRequest, Sequence[str], asyncio.Future[Endpoint]]] = []
         self._retrying: asyncio.Task[None] | None = None
 
-    async def admit(self, request: LLMRequest) -> Endpoint:
-        """Admit the request to an engine with room, waiting in line until one has it."""
-        winner = self._try_admit(request)
+    async def admit(self, request: LLMRequest, ranking: Sequence[str]) -> Endpoint:
+        """Admit the request to its highest-ranked engine with room, waiting until one has it."""
+        winner = self._try_admit(request, ranking)
         if winner is not None:
             return winner
         future: asyncio.Future[Endpoint] = asyncio.get_running_loop().create_future()
-        self._waiting.append((request, future))
+        self._waiting.append((request, ranking, future))
         if self._retrying is None or self._retrying.done():
             self._retrying = asyncio.get_running_loop().create_task(self._retry_until_empty())
         return await future
@@ -63,17 +60,15 @@ class Admission:
         self._plugin.release(LLMRequest(request_id=request_id), endpoint_name, output_tokens)
         self._retry()
 
-    def _try_admit(self, request: LLMRequest) -> Endpoint | None:
-        candidates = self._endpoints()
-        for ep in candidates:
-            ep.attributes["queue_len"] = self._counts.get(ep.name)
-        allowed = self._plugin.get_allowed_candidates(request, candidates)
+    def _try_admit(self, request: LLMRequest, ranking: Sequence[str]) -> Endpoint | None:
+        allowed = {
+            ep.name: ep for ep in self._plugin.get_allowed_candidates(request, self._endpoints())
+        }
         if not allowed:
             return None
-        picked = self._scheduler.run(request, allowed)
-        if not picked:
-            raise RuntimeError("the profile picked no engine among those with room")
-        winner = picked[0].endpoint
+        # An engine the worker has not discovered yet is not ranked, so it comes last.
+        name = next((n for n in ranking if n in allowed), next(iter(allowed)))
+        winner = allowed[name]
         self._plugin.reserve(request, winner)
         self._counts.increment(winner.name)
         return winner
@@ -81,19 +76,19 @@ class Admission:
     def _retry(self) -> None:
         # Longest prompt first: late turns are the step's critical path and the costliest to stall.
         waiting = sorted(
-            (w for w in self._waiting if not w[1].done()),
+            (w for w in self._waiting if not w[2].done()),
             key=lambda w: prefill_tokens(w[0].body),
             reverse=True,
         )
         self._waiting = []
-        for request, future in waiting:
+        for request, ranking, future in waiting:
             try:
-                winner = self._try_admit(request)
+                winner = self._try_admit(request, ranking)
             except Exception as e:  # noqa: BLE001 - the waiting caller must see the failure
                 future.set_exception(e)
                 continue
             if winner is None:
-                self._waiting.append((request, future))
+                self._waiting.append((request, ranking, future))
             else:
                 future.set_result(winner)
 

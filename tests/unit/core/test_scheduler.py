@@ -123,6 +123,7 @@ def test_filter_scorer_picker_combined():
     chosen = pr.endpoint_list[0].endpoint
     # pod2 has the smallest queue size, but is in the wrong zone, so pod 1 should be chosen
     assert chosen.name == "pod1"
+    assert [scored.endpoint.name for scored in pr.ranked] == ["pod1", "pod3"]
 
 
 WITH_FLOW_CONTROL = textwrap.dedent(

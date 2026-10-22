@@ -41,6 +41,8 @@ class ScoredEndpoint:
 class ProfileRunResult:
     # list of chosen pods (may be empty)
     endpoint_list: list[ScoredEndpoint] = field(default_factory=list)
+    # every pod that passed the filters, best score first
+    ranked: list[ScoredEndpoint] = field(default_factory=list)
     # arbitrary result metadata
     metadata: dict[str, object] = field(default_factory=dict)
 
