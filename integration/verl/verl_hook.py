@@ -30,6 +30,7 @@ Both layouts expose the same entrypoint for the trainer flag:
 from __future__ import annotations
 
 import asyncio
+import time
 import logging
 import uuid
 from typing import Any
@@ -77,6 +78,21 @@ def _rollout_config(config: DictConfig):
     if config.get("actor_rollout_ref"):
         return config.actor_rollout_ref.rollout
     return config.rollout
+
+
+_DECISIONS: list[float] = []  # VERIFY-ONLY
+
+
+def _note_decision(seconds: float) -> None:  # VERIFY-ONLY
+    _DECISIONS.append(seconds)
+    if len(_DECISIONS) % 500 == 0:
+        w = sorted(_DECISIONS)
+        n = len(w)
+        print(
+            f"[DECISION] n={n} p50={w[n // 2] * 1e3:.2f}ms p90={w[int(n * 0.9)] * 1e3:.2f}ms "
+            f"p99={w[int(n * 0.99)] * 1e3:.2f}ms max={w[-1] * 1e3:.2f}ms",
+            flush=True,
+        )
 
 
 class _SchedulerCore:
@@ -262,7 +278,9 @@ else:  # modern layout
             prompt_ids: list[int] | None = None,
         ) -> tuple[str, ray.actor.ActorHandle]:
             await self._ensure_endpoints()
+            started = time.monotonic()  # VERIFY-ONLY
             winner = await self.core.schedule(request_id, prompt_ids)
+            _note_decision(time.monotonic() - started)  # VERIFY-ONLY
             if winner is None:
                 logger.warning(
                     "py-inference-scheduler returned no endpoints, falling back to verl global LB."
