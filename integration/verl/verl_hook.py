@@ -101,10 +101,8 @@ class _SchedulerCore:
             for name, handle in handles.items()
         ]
 
-    async def schedule(
-        self, request_id: str, prompt_ids: list[int] | None
-    ) -> tuple[str, ray.actor.ActorHandle] | None:
-        """Pick an engine's id and handle. None means fall back to verl's LB."""
+    async def schedule(self, request_id: str, prompt_ids: list[int] | None) -> Endpoint | None:
+        """Pick an endpoint. None means fall back to verl's LB."""
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
             await self.finishes.wait(request_id)
@@ -122,7 +120,7 @@ class _SchedulerCore:
             # The fleet actor is async, so Ray does not keep one caller's calls in order.
             # Awaiting the count makes sure the next decision's snapshot includes it.
             await self.fleet.increment.remote(winner.name)
-            return winner.name, winner.attributes["replica_obj"]
+            return winner
 
     def record_dispatch(self, endpoint_name: str) -> None:
         self.fleet.increment.remote(endpoint_name)
@@ -160,8 +158,8 @@ if _VERL_LAYOUT == "legacy":
             request_id: str,
             prompt_ids: list[int] | None = None,
         ) -> tuple[str, ray.actor.ActorHandle]:
-            picked = await self.core.schedule(request_id, prompt_ids)
-            if picked is None:
+            winner = await self.core.schedule(request_id, prompt_ids)
+            if winner is None:
                 logger.warning(
                     "py-inference-scheduler returned no endpoints, falling back to verl global LB."
                 )
@@ -169,7 +167,7 @@ if _VERL_LAYOUT == "legacy":
                 server_id, handle = await super()._acquire_server(request_id)  # type: ignore[no-any-return]
                 self.core.record_dispatch(server_id)
                 return server_id, handle
-            return picked
+            return winner.name, winner.attributes["replica_obj"]
 
         def _release_server(
             self, server_id: str, request_id: str = "", output_tokens: int | None = None
@@ -264,8 +262,8 @@ else:  # modern layout
             prompt_ids: list[int] | None = None,
         ) -> tuple[str, ray.actor.ActorHandle]:
             await self._ensure_endpoints()
-            picked = await self.core.schedule(request_id, prompt_ids)
-            if picked is None:
+            winner = await self.core.schedule(request_id, prompt_ids)
+            if winner is None:
                 logger.warning(
                     "py-inference-scheduler returned no endpoints, falling back to verl global LB."
                 )
@@ -273,7 +271,7 @@ else:  # modern layout
                 server_id, handle = await super()._acquire_server(request_id)
                 self.core.record_dispatch(server_id)
                 return server_id, handle
-            return picked
+            return winner.name, winner.attributes["replica_obj"]
 
         def _release_server(
             self, server_id: str, request_id: str = "", output_tokens: int | None = None
