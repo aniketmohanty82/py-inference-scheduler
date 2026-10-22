@@ -20,11 +20,13 @@ from types import SimpleNamespace
 import pytest
 
 from integration.verl.fleet import admit
-from py_inference_scheduler.framework import LLMRequest
+from py_inference_scheduler.framework import Endpoint, LLMRequest
+
+ENGINE = Endpoint(name="e1", attributes={"replica_obj": "handle"})
 
 
 def _fleet() -> SimpleNamespace:
-    admitting: asyncio.Future[tuple[str, object]] = asyncio.get_running_loop().create_future()
+    admitting: asyncio.Future[Endpoint] = asyncio.get_running_loop().create_future()
     finished: list[tuple[object, ...]] = []
     return SimpleNamespace(
         admitting=admitting,
@@ -44,9 +46,9 @@ async def _cancelled_caller(fleet: SimpleNamespace) -> None:
 
 async def test_returns_the_engine_the_fleet_admitted_to():
     fleet = _fleet()
-    fleet.admitting.set_result(("e1", "handle"))
+    fleet.admitting.set_result(ENGINE)
 
-    assert await admit(fleet, LLMRequest(request_id="t1")) == ("e1", "handle")
+    assert await admit(fleet, LLMRequest(request_id="t1")) is ENGINE
     assert fleet.finished == []
 
 
@@ -54,7 +56,7 @@ async def test_hands_back_an_admission_made_after_the_caller_gave_up():
     fleet = _fleet()
     await _cancelled_caller(fleet)
 
-    fleet.admitting.set_result(("e1", "handle"))
+    fleet.admitting.set_result(ENGINE)
     await asyncio.sleep(0)
 
     assert fleet.finished == [("t1", "e1", None)]
