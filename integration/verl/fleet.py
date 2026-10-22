@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
 from dataclasses import dataclass
@@ -71,27 +72,38 @@ class Fleet(InflightStore):
         - Acquires with unique request ids until every engine is visited, then releases them.
         - Runs in this actor, so concurrent workers never drain the balancer at the same time.
         """
-        handles = {name: ep.attributes["replica_obj"] for name, ep in self._endpoints.items()}
-        acquired: list[str] = []
-        # Live traffic skews the balancer's counters, so an engine can be visited twice.
-        for _ in range(expected * 3):
-            if len(handles) >= expected:
-                break
-            server_id, handle = ray.get(
-                balancer.acquire_server.remote(request_id=f"rls-discover-{uuid.uuid4().hex}")
-            )
-            acquired.append(server_id)
-            handles[server_id] = handle
-        for server_id in acquired:
-            balancer.release_server.remote(server_id=server_id)
+        handles = asyncio.run(_walk(balancer, expected, self._handles()))
         self.watch(handles)
         return handles
+
+    def _handles(self) -> dict[str, ray.actor.ActorHandle]:
+        return {name: ep.attributes["replica_obj"] for name, ep in self._endpoints.items()}
 
     def snapshot(self) -> FleetSnapshot:
         stats = {
             name: ep.attributes.get("routing_stats", {}) for name, ep in self._endpoints.items()
         }
         return FleetSnapshot(cast("dict[str, dict[str, object]]", stats), self.get_all())
+
+
+async def _walk(
+    balancer: ray.actor.ActorHandle, expected: int, known: dict[str, ray.actor.ActorHandle]
+) -> dict[str, ray.actor.ActorHandle]:
+    """Acquire engines from verl's balancer until `expected` are known, then release them."""
+    handles = dict(known)
+    acquired: list[str] = []
+    # Live traffic skews the balancer's counters, so an engine can be visited twice.
+    for _ in range(expected * 3):
+        if len(handles) >= expected:
+            break
+        server_id, handle = await balancer.acquire_server.remote(
+            request_id=f"rls-discover-{uuid.uuid4().hex}"
+        )
+        acquired.append(server_id)
+        handles[server_id] = handle
+    for server_id in acquired:
+        balancer.release_server.remote(server_id=server_id)
+    return handles
 
 
 async def _fetch(ep: Endpoint, inflight: InflightStore, session: aiohttp.ClientSession) -> None:
