@@ -60,7 +60,7 @@ except ImportError:  # modern layout (verl v0.9.x)
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from integration.verl.fleet import FleetSnapshot, PendingFinishes, admit, fleet_actor
+from integration.verl.fleet import FleetSnapshot, admit, fleet_actor
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
@@ -90,7 +90,6 @@ class _SchedulerCore:
         self.scheduler = Scheduler()
         self.fleet = fleet_actor()
         self.admits = self.scheduler.has_flow_control()
-        self.finishes = PendingFinishes(self.fleet)
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
@@ -107,7 +106,6 @@ class _SchedulerCore:
         """Pick an engine's id and handle. None means fall back to verl's LB."""
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
-            await self.finishes.wait(request_id)
             return await admit(self.fleet, request)
         async with self.lock:
             snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
@@ -127,11 +125,13 @@ class _SchedulerCore:
     def record_dispatch(self, endpoint_name: str) -> None:
         self.fleet.increment.remote(endpoint_name)
 
-    def record_release(
+    async def record_release(
         self, endpoint_name: str, request_id: str, output_tokens: int | None
     ) -> None:
         if self.admits:
-            self.finishes.start(request_id, endpoint_name, output_tokens)
+            # The fleet actor is async, so Ray does not keep one caller's calls in order. Finishing
+            # before verl gets the output keeps the finish ahead of the trajectory's next admit.
+            await self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
         else:
             self.fleet.decrement.remote(endpoint_name)
 
@@ -171,10 +171,7 @@ if _VERL_LAYOUT == "legacy":
                 return server_id, handle
             return picked
 
-        def _release_server(
-            self, server_id: str, request_id: str = "", output_tokens: int | None = None
-        ) -> None:
-            self.core.record_release(server_id, request_id, output_tokens)
+        def _release_server(self, server_id: str, request_id: str = "") -> None:
             if request_id in self.core.lb_acquired_requests:
                 super()._release_server(server_id)
                 self.core.lb_acquired_requests.remove(request_id)
@@ -213,7 +210,8 @@ if _VERL_LAYOUT == "legacy":
                 output_tokens = len(output.token_ids)
                 return output
             finally:
-                self._release_server(server_id, request_id, output_tokens)
+                self._release_server(server_id, request_id)
+                await self.core.record_release(server_id, request_id, output_tokens)
 
     class PyInferenceAgentLoopWorker(AgentLoopWorker):  # type: ignore[misc]
         """Inject the custom ServerManager before calling super().__init__."""
@@ -275,10 +273,7 @@ else:  # modern layout
                 return server_id, handle
             return picked
 
-        def _release_server(
-            self, server_id: str, request_id: str = "", output_tokens: int | None = None
-        ) -> None:
-            self.core.record_release(server_id, request_id, output_tokens)
+        def _release_server(self, server_id: str, request_id: str = "") -> None:
             if request_id in self.core.lb_acquired_requests:
                 super()._release_server(server_id)
                 self.core.lb_acquired_requests.remove(request_id)
@@ -321,7 +316,8 @@ else:  # modern layout
                 output_tokens = len(output.token_ids)
                 return output
             finally:
-                self._release_server(server_id, request_id, output_tokens)
+                self._release_server(server_id, request_id)
+                await self.core.record_release(server_id, request_id, output_tokens)
 
     class PyInferenceAgentLoopWorker(AgentLoopWorker):  # type: ignore[misc,no-redef]
         """Swap the incoming LLMServerClient for the scheduler-backed client."""
