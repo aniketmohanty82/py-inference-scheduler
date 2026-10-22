@@ -103,10 +103,9 @@ class Fleet(InflightStore):
         }
         return FleetSnapshot(cast("dict[str, dict[str, object]]", stats), self.get_all())
 
-    async def admit(self, request: LLMRequest) -> tuple[str, ray.actor.ActorHandle]:
+    async def admit(self, request: LLMRequest) -> Endpoint:
         """Admit a request to an engine with room, waiting in line until one has it."""
-        winner = await self._get_admission().admit(request)
-        return winner.name, winner.attributes["replica_obj"]
+        return await self._get_admission().admit(request)
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
         """Release an admitted request's reservation and retry the requests waiting for one."""
@@ -149,13 +148,13 @@ def fleet_actor() -> ray.actor.ActorHandle:
 
 async def admit(
     fleet: ray.actor.ActorHandle, request: LLMRequest
-) -> tuple[str, ray.actor.ActorHandle]:
+) -> Endpoint:
     """Ask the fleet actor to admit a request.
 
     If the caller is cancelled first, an admission that completes later is handed back, since Ray
     keeps the call running.
     """
-    admitting: asyncio.Future[tuple[str, ray.actor.ActorHandle]] = asyncio.ensure_future(
+    admitting: asyncio.Future[Endpoint] = asyncio.ensure_future(
         fleet.admit.remote(request)
     )
     try:
@@ -168,10 +167,10 @@ async def admit(
 def _hand_back(
     fleet: ray.actor.ActorHandle,
     request_id: str,
-    admitting: asyncio.Future[tuple[str, ray.actor.ActorHandle]],
+    admitting: asyncio.Future[Endpoint],
 ) -> None:
     if not admitting.cancelled() and admitting.exception() is None:
-        fleet.finish.remote(request_id, admitting.result()[0], None)
+        fleet.finish.remote(request_id, admitting.result().name, None)
 
 
 class PendingFinishes:
