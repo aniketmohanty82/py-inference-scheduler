@@ -1,0 +1,28 @@
+profile_handler:
+  type: single_profile
+profiles:
+  overscheduling:
+    flow_control:
+      type: kv_saturation
+      # The load runs fixed-length turns, so a first turn's output is known: keep in step with --output-tokens.
+      default_osl: 256
+      # Sticky routing places a first-turn burst unevenly, faster than engine metrics move; this cap
+      # holds the busiest engine below preemption, allowing for the ledger counting tokens where
+      # vLLM allocates whole blocks.
+      budget_fraction: 0.94
+    scorers:
+      # Affinity first: each trajectory prefers the engine holding its prefix. When kv_saturation
+      # finds that engine full, the backpressure scorers below pick among the engines with room.
+      - type: sticky_session
+        header_name: x-rls-session-id
+        weight: 4.0
+      - type: prefix_cache
+        weight: 4.0
+      - type: least_queue
+        weight: 1.0
+      - type: waiting_queue
+        weight: 1.0
+      - type: kv_cache
+        weight: 1.0
+    picker:
+      type: max_score

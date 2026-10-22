@@ -30,6 +30,7 @@ Both layouts expose the same entrypoint for the trainer flag:
 from __future__ import annotations
 
 import asyncio
+import time
 import logging
 import uuid
 from typing import Any
@@ -77,6 +78,21 @@ def _rollout_config(config: DictConfig):
     if config.get("actor_rollout_ref"):
         return config.actor_rollout_ref.rollout
     return config.rollout
+
+
+_FINISH_WAITS: list[float] = []  # VERIFY-ONLY
+
+
+def _note_finish_wait(seconds: float) -> None:  # VERIFY-ONLY
+    _FINISH_WAITS.append(seconds)
+    if len(_FINISH_WAITS) % 500 == 0:
+        w = sorted(_FINISH_WAITS)
+        n = len(w)
+        print(
+            f"[FINISH-WAIT] n={n} p50={w[n // 2] * 1e3:.2f}ms p90={w[int(n * 0.9)] * 1e3:.2f}ms "
+            f"p99={w[int(n * 0.99)] * 1e3:.2f}ms max={w[-1] * 1e3:.2f}ms",
+            flush=True,
+        )
 
 
 class _SchedulerCore:
@@ -131,7 +147,9 @@ class _SchedulerCore:
         if self.admits:
             # The fleet actor is async, so Ray does not keep one caller's calls in order. Finishing
             # before verl gets the output keeps the finish ahead of the trajectory's next admit.
+            started = time.monotonic()  # VERIFY-ONLY
             await self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
+            _note_finish_wait(time.monotonic() - started)  # VERIFY-ONLY
         else:
             self.fleet.decrement.remote(endpoint_name)
 
