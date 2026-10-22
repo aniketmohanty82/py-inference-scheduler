@@ -17,11 +17,12 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Awaitable, Callable, Iterator
+from types import SimpleNamespace
 
 import pytest
 import ray
 
-from integration.verl.fleet import Fleet, FleetSnapshot, fleet_actor
+from integration.verl.fleet import Fleet, FleetSnapshot, _worker_node, fleet_actor
 
 _FleetActor = ray.remote(Fleet)
 
@@ -124,3 +125,26 @@ async def test_watched_engines_are_polled_in_the_background(ray_session: None) -
 
     expected = {"e0": 0.0, "e1": 0.1, "e2": 0.2}
     assert await _eventually(polled_kv, expected) == expected
+
+
+@pytest.mark.parametrize(
+    ("caller", "cpus", "expected"),
+    [
+        ("worker-a", {"head": 0, "worker-a": 100, "worker-b": 100}, "worker-a"),
+        ("head", {"head": 0, "worker-a": 100, "worker-b": 100}, "worker-a"),
+        ("head", {"head": 0}, "head"),
+    ],
+)
+def test_the_fleet_goes_to_a_node_that_runs_workers(
+    monkeypatch: pytest.MonkeyPatch, caller: str, cpus: dict[str, int], expected: str
+) -> None:
+    nodes = [
+        {"NodeID": node, "Alive": True, "Resources": {"CPU": n} if n else {}}
+        for node, n in cpus.items()
+    ]
+    monkeypatch.setattr(ray, "nodes", lambda: nodes)
+    monkeypatch.setattr(
+        ray, "get_runtime_context", lambda: SimpleNamespace(get_node_id=lambda: caller)
+    )
+
+    assert _worker_node() == expected
