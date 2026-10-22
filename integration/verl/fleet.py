@@ -51,7 +51,6 @@ class Fleet(InflightStore):
     - Recovers the engine handles from verl's balancer once for the whole fleet.
     - Polls engine metrics in the background, so no decision scrapes an engine.
     - Counts in-flight requests per engine across all workers.
-    - With flow control in the profile, admits every request and queues those that fit nowhere.
     """
 
     def __init__(self, interval_ms: int) -> None:
@@ -61,9 +60,6 @@ class Fleet(InflightStore):
             lambda: list(self._endpoints.values()), self, _fetch, interval_ms=interval_ms
         )
         self._poller.start()
-        self._retry_interval_s = interval_ms / 1000
-        self._discovery = asyncio.Lock()
-        self._admission: Admission | None = None
 
     def watch(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
         """Add these engines to the background poll."""
@@ -73,36 +69,50 @@ class Fleet(InflightStore):
                     name=name, attributes={"replica_obj": handle, "routing_stats": {}}
                 )
 
-    async def discover(
+    def discover(
         self, balancer: ray.actor.ActorHandle, expected: int
     ) -> dict[str, ray.actor.ActorHandle]:
         """Recover the engine handles from verl's balancer, which enumerates only ids.
 
         - Acquires with unique request ids until every engine is visited, then releases them.
-        - Runs one walk at a time, so concurrent workers never drain the balancer together.
+        - Runs in this actor, so concurrent workers never drain the balancer at the same time.
         """
-        async with self._discovery:
-            handles = {name: ep.attributes["replica_obj"] for name, ep in self._endpoints.items()}
-            acquired: list[str] = []
-            # Live traffic skews the balancer's counters, so an engine can be visited twice.
-            for _ in range(expected * 3):
-                if len(handles) >= expected:
-                    break
-                server_id, handle = await balancer.acquire_server.remote(
-                    request_id=f"rls-discover-{uuid.uuid4().hex}"
-                )
-                acquired.append(server_id)
-                handles[server_id] = handle
-            for server_id in acquired:
-                balancer.release_server.remote(server_id=server_id)
-            self.watch(handles)
-            return handles
+        handles = {name: ep.attributes["replica_obj"] for name, ep in self._endpoints.items()}
+        acquired: list[str] = []
+        # Live traffic skews the balancer's counters, so an engine can be visited twice.
+        for _ in range(expected * 3):
+            if len(handles) >= expected:
+                break
+            server_id, handle = ray.get(
+                balancer.acquire_server.remote(request_id=f"rls-discover-{uuid.uuid4().hex}")
+            )
+            acquired.append(server_id)
+            handles[server_id] = handle
+        for server_id in acquired:
+            balancer.release_server.remote(server_id=server_id)
+        self.watch(handles)
+        return handles
 
     def snapshot(self) -> FleetSnapshot:
         stats = {
             name: ep.attributes.get("routing_stats", {}) for name, ep in self._endpoints.items()
         }
         return FleetSnapshot(cast("dict[str, dict[str, object]]", stats), self.get_all())
+
+
+class AdmissionFleet(Fleet):
+    """The fleet for a profile with flow control, which also admits every request.
+
+    - Admits each request to an engine with room and queues those that fit nowhere.
+    - Runs as an async actor, so a queued admit waits without blocking the finishes that free room.
+    - Keeps Fleet's blocking discover, which holds the actor for the short startup walk and so never
+      runs two walks at once.
+    """
+
+    def __init__(self, interval_ms: int) -> None:
+        super().__init__(interval_ms)
+        self._retry_interval_s = interval_ms / 1000
+        self._admission: Admission | None = None
 
     async def admit(self, request: LLMRequest) -> Endpoint:
         """Admit a request to an engine with room, waiting in line until one has it."""
@@ -136,6 +146,7 @@ async def _fetch(ep: Endpoint, inflight: InflightStore, session: aiohttp.ClientS
 
 
 _FleetActor = ray.remote(Fleet)
+_AdmissionFleetActor = ray.remote(AdmissionFleet)
 
 
 def _worker_node() -> str:
@@ -150,20 +161,27 @@ def _worker_node() -> str:
     return here if here in with_cpus or not with_cpus else with_cpus[0]
 
 
-def fleet_actor() -> ray.actor.ActorHandle:
-    """The fleet actor, created by the first caller and shared with the rest by name."""
+def fleet_actor(*, admits: bool = False) -> ray.actor.ActorHandle:
+    """The job's fleet actor, created by the first caller and shared with the rest by name.
+
+    A profile with flow control gets an AdmissionFleet, any other profile the plain Fleet.
+    """
     interval_ms = int(os.environ.get("RLS_METRICS_INTERVAL_MS", "100"))
     # num_cpus=0: an actor pending behind verl's CPU reservations would stall every worker. Zero
     # CPUs also lets Ray pick a head node that runs no workers, so pin it to a node that runs them.
     # The pin is hard because Ray often ignores a soft one for an actor that asks for no CPUs.
     near_workers = NodeAffinitySchedulingStrategy(_worker_node(), soft=False)
-    return _FleetActor.options(
-        name=_ACTOR_NAME,
-        get_if_exists=True,
-        num_cpus=0,
-        max_concurrency=_MAX_CALLS,
-        scheduling_strategy=near_workers,
-    ).remote(interval_ms)
+    shared = {
+        "name": _ACTOR_NAME,
+        "get_if_exists": True,
+        "num_cpus": 0,
+        "scheduling_strategy": near_workers,
+    }
+    if admits:
+        actor = _AdmissionFleetActor.options(max_concurrency=_MAX_CALLS, **shared)
+    else:
+        actor = _FleetActor.options(**shared)
+    return actor.remote(interval_ms)
 
 
 async def admit(
@@ -196,7 +214,7 @@ def _hand_back(
 class PendingFinishes:
     """Sends each turn's finish to the fleet and holds the trajectory's next turn until it has run.
 
-    The fleet actor is async, so Ray does not keep one caller's calls in order. Without the wait,
+    The AdmissionFleet is async, so Ray does not keep one caller's calls in order. Without the wait,
     the previous turn's finish could run after the next turn's admit and free the new reservation.
     Unlike holding verl's output until the finish lands, this lets the finish overlap the tool call.
     """
