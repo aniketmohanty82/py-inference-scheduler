@@ -30,12 +30,13 @@ To debug effectively without making assumptions, you must understand how the int
 
 ### 2.1 Control Flow (Scheduling & Routing)
 1.  **Entry Point**: verl loads `PyInferenceAgentLoopManager` ([verl_hook.py](../../../integration/verl/verl_hook.py)), which overrides the worker actor class with `PyInferenceAgentLoopWorker`.
-2.  **Fleet**: The manager creates one named `Fleet` actor ([fleet.py](../../../integration/verl/fleet.py)) shared by every worker. It discovers the engines from verl's balancer once, polls their metrics in the background, and counts in-flight requests per engine across workers.
+2.  **Fleet**: The manager creates one named `Fleet` actor ([fleet.py](../../../integration/verl/fleet.py)) shared by every worker. It discovers the engines from verl's balancer once, polls their metrics in the background, and counts in-flight requests per engine across workers. With flow control in the profile, the manager creates an `AdmissionFleet` instead, an async subclass that also admits every request.
 3.  **Scheduling Loop**: When verl requests a generation:
     *   `_acquire_server()` takes the worker's lock and reads one fleet snapshot: engine metrics plus fleet-wide in-flight counts.
     *   It queries the `Scheduler` to select the best engine.
     *   It counts the dispatch in the fleet and returns the engine's Ray handle to verl.
-4.  **Release**: Once generation completes, `_release_server()` decrements the engine's count in the fleet.
+    *   With flow control, `_acquire_server()` instead waits for the trajectory's last finish (`PendingFinishes`) and calls the fleet's `admit()`, which reserves the request's tokens, runs the scorers inside the fleet, and queues the request if no engine has room.
+4.  **Release**: Once generation completes, `_release_server()` decrements the engine's count in the fleet. With flow control it sends `finish` with the turn's output length instead, which frees the reservation and retries the queued requests.
 
 ### 2.2 Data Flow (Metrics Collection)
 *   **Step 1 (Exposure)**: vLLM/SGLang engines expose Prometheus metrics locally on the worker node (e.g., `http://localhost:8000/metrics`).
