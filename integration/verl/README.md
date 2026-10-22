@@ -67,6 +67,7 @@ env_vars:
   PYTHONPATH: "."
   PROMETHEUS_MULTIPROC_DIR: "/tmp/metrics"
   ROUTER_CONFIG_PATH: "./integration/verl/examples/scheduler.yaml" # Relative to CWD (repo root)
+  # RLS_METRICS_INTERVAL_MS: "100" # Optional: how often the hook polls engine metrics, in milliseconds
 ```
 Ray unpacks the zip, sets the CWD to the repo root, and resolves the relative path to the default config.
 
@@ -105,9 +106,6 @@ If you want to customize the scheduler settings in a VM-based cluster:
 
 > [!TIP]
 > **Designing Custom Profiles**: To learn more about the available scorers, filters, pickers, and flow-control plugins you can use to customize your scheduling policies, refer to the comprehensive [Scheduler Customization Guide](../../docs/guides/scheduler_customization.md).
-
-### Metrics polling
-The fleet actor polls every engine's routing stats in the background, so no routing decision waits on a scrape. To change the interval, set `RLS_METRICS_INTERVAL_MS` in the runtime env's `env_vars` (default `100`).
 
 ---
 
