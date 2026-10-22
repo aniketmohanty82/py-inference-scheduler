@@ -179,6 +179,7 @@ class PendingFinishes:
 
     The fleet actor is async, so Ray does not keep one caller's calls in order. A trajectory's next
     turn waits for its last finish, or that finish could free the new turn's reservation instead.
+    Unlike holding verl's output until the finish lands, this lets the finish overlap the tool call.
     """
 
     def __init__(self, fleet: ray.actor.ActorHandle) -> None:
