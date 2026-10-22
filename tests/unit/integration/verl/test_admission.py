@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from integration.verl import fleet as fleet_module
 from integration.verl.admission import Admission
 from integration.verl.fleet import PendingFinishes, admit
 from py_inference_scheduler import Scheduler
@@ -256,3 +257,23 @@ async def test_an_older_finish_does_not_drop_a_newer_one():
     assert not next_turn.done()
     newer.set_result(None)
     await next_turn
+
+
+def _recording(kind: str, created: list[tuple[str, dict[str, object]]]) -> SimpleNamespace:
+    def options(**kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(remote=lambda interval_ms: created.append((kind, kwargs)))
+
+    return SimpleNamespace(options=options)
+
+
+@pytest.mark.parametrize(("admits", "kind"), [(True, "admission"), (False, "plain")])
+def test_the_profile_decides_which_fleet_the_job_gets(monkeypatch, admits, kind):
+    created: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(fleet_module, "_AdmissionFleetActor", _recording("admission", created))
+    monkeypatch.setattr(fleet_module, "_FleetActor", _recording("plain", created))
+    monkeypatch.setattr(fleet_module, "_worker_node", lambda: "0" * 56)  # a node id's hex length
+
+    fleet_module.fleet_actor(admits=admits)
+
+    assert [k for k, _ in created] == [kind]
+    assert ("max_concurrency" in created[0][1]) is admits
