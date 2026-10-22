@@ -108,7 +108,7 @@ Pickers choose the final replica from the scored list.
     *   `max_num` (int, default: `1`): The size of the top-candidate pool to pick from.
 
 ### Flow Control (Gatekeeping)
-Flow control plugins prevent replica overload and mid-decoding preemptions by controlling the flow to affected replicas.
+Flow control plugins prevent replica overload and mid-decoding preemptions by controlling the flow to affected replicas. On verl, a profile with flow control is read once, at the first request, so restart the job to change it.
 *   **`kv_saturation`**: Admits a request only to a replica whose KV token budget has room for it. A request needs its prompt tokens plus its trajectory's previous output. The replica that served the trajectory's last turn is offered alone when it fits. Otherwise every replica that fits is offered, and the profile's scorers pick among them. When none fits, the request waits.
     *   `default_osl` (int, default: `1024`): Output tokens assumed for a trajectory's first turn, before its real output is known.
     *   `budget_fraction` (float, default: `1.0`): Share of each replica's KV capacity that may be reserved, in (0, 1]. Lower it to leave headroom for KV the ledger does not see.
