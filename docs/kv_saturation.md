@@ -1,6 +1,6 @@
 # KV Saturation Flow Control
 
-`kv_saturation` admits a request only to a replica whose KV cache has room for it, so engines are never asked to hold more context than fits and preempt running requests to make space. It runs in the Ray Serve router and the verl hook. The [verl README](../integration/verl/README.md#flow-control) covers verl's setup.
+`kv_saturation` admits a request only to a replica whose KV cache has room for it, so engines are never asked to hold more context than fits and preempt running requests to make space. It runs in the Ray Serve router and the verl hook.
 
 ## How it works
 
