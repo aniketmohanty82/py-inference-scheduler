@@ -15,10 +15,12 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
 from integration.verl.admission import Admission
+from integration.verl.fleet import PendingFinishes, admit
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.core.config import SchedulerConfig
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
@@ -111,7 +113,7 @@ async def test_a_trajectory_returns_to_its_engine_over_a_less_loaded_one():
     assert await admission.admit(_turn("t1", 30)) is home
 
 
-async def test_a_cancelled_waiter_gives_up_its_place():
+async def test_a_cancelled_waiter_leaves_the_line():
     engine = _engine("e1", 100)
     admission, counts = _admission([engine])
     await admission.admit(_turn("a", 100))
@@ -143,3 +145,114 @@ async def test_a_waiting_caller_sees_why_admission_failed():
 
     with pytest.raises(RuntimeError, match="KV capacity"):
         await asyncio.wait_for(waiter, timeout=1)
+
+
+ENGINE = Endpoint(name="e1", attributes={"replica_obj": "handle"})
+
+
+def _admitting_fleet() -> SimpleNamespace:
+    admitting: asyncio.Future[Endpoint] = asyncio.get_running_loop().create_future()
+    finished: list[tuple[object, ...]] = []
+    return SimpleNamespace(
+        admitting=admitting,
+        finished=finished,
+        admit=SimpleNamespace(remote=lambda request: admitting),
+        finish=SimpleNamespace(remote=lambda *args: finished.append(args)),
+    )
+
+
+async def _cancelled_caller(fleet: SimpleNamespace) -> None:
+    caller = asyncio.create_task(admit(fleet, LLMRequest(request_id="t1")))
+    await asyncio.sleep(0)
+    caller.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await caller
+
+
+async def test_returns_the_engine_the_fleet_admitted_to():
+    fleet = _admitting_fleet()
+    fleet.admitting.set_result(ENGINE)
+
+    assert await admit(fleet, LLMRequest(request_id="t1")) is ENGINE
+    assert fleet.finished == []
+
+
+async def test_hands_back_an_admission_made_after_the_caller_gave_up():
+    fleet = _admitting_fleet()
+    await _cancelled_caller(fleet)
+
+    fleet.admitting.set_result(ENGINE)
+    await asyncio.sleep(0)
+
+    assert fleet.finished == [("t1", "e1", None)]
+
+
+async def test_hands_back_nothing_when_admission_failed():
+    fleet = _admitting_fleet()
+    await _cancelled_caller(fleet)
+
+    fleet.admitting.set_exception(RuntimeError("no capacity"))
+    await asyncio.sleep(0)
+
+    assert fleet.finished == []
+
+
+def _finishing_fleet(*results: asyncio.Future[None]) -> SimpleNamespace:
+    """A fleet whose finish calls return the given futures in order."""
+    calls: list[tuple[object, ...]] = []
+    pending = iter(results)
+
+    def finish(*args: object) -> asyncio.Future[None]:
+        calls.append(args)
+        return next(pending)
+
+    return SimpleNamespace(calls=calls, finish=SimpleNamespace(remote=finish))
+
+
+def _future() -> asyncio.Future[None]:
+    return asyncio.get_running_loop().create_future()
+
+
+async def test_next_turn_waits_until_the_last_finish_has_run():
+    done = _future()
+    fleet = _finishing_fleet(done)
+    finishes = PendingFinishes(fleet)
+    finishes.start("t1", "e1", 32)
+    next_turn = asyncio.create_task(finishes.wait("t1"))
+    await asyncio.sleep(0)
+
+    assert not next_turn.done()
+    done.set_result(None)
+    await next_turn
+    assert fleet.calls == [("t1", "e1", 32)]
+
+
+async def test_does_not_wait_without_a_running_finish():
+    finishes = PendingFinishes(_finishing_fleet())
+
+    await asyncio.wait_for(finishes.wait("t1"), timeout=1)
+
+
+async def test_forgets_a_finish_once_it_has_run():
+    done = _future()
+    finishes = PendingFinishes(_finishing_fleet(done))
+    finishes.start("t1", "e1", 32)
+    done.set_result(None)
+    await finishes.wait("t1")
+
+    assert finishes._running == {}
+
+
+async def test_an_older_finish_does_not_drop_a_newer_one():
+    older, newer = _future(), _future()
+    finishes = PendingFinishes(_finishing_fleet(older, newer))
+    finishes.start("t1", "e1", 32)
+    finishes.start("t1", "e2", 16)
+    older.set_result(None)
+    await asyncio.sleep(0)
+    next_turn = asyncio.create_task(finishes.wait("t1"))
+    await asyncio.sleep(0)
+
+    assert not next_turn.done()
+    newer.set_result(None)
+    await next_turn
