@@ -84,9 +84,10 @@ def _rollout_config(config: DictConfig):
 class _SchedulerCore:
     """Per-worker routing on state shared by the whole fleet.
 
-    - Without flow control, routes on one fleet snapshot per decision, under a lock.
-    - With flow control, ranks the engines the same way, then asks the AdmissionFleet to admit the
-      request to the highest-ranked engine with room.
+    - Fetches fleet snapshots outside the worker's lock, shared by decisions waiting together, and
+      adds the worker's own sends since each snapshot was requested, so only scoring holds the lock.
+    - Without flow control, routes on that view. With flow control, ranks the engines the same way
+      and asks the AdmissionFleet to admit the request to the highest-ranked engine with room.
     """
 
     def __init__(self) -> None:
@@ -96,6 +97,9 @@ class _SchedulerCore:
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
+        # This worker's in-flight requests per engine as sent, and the snapshot request in flight.
+        self.local: dict[str, int] = {}
+        self.pending: tuple[asyncio.Future[FleetSnapshot], dict[str, int]] | None = None
 
     def set_endpoints(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
         self.endpoints = [
@@ -108,42 +112,61 @@ class _SchedulerCore:
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
             while True:
+                snapshot, base = await self._shared_snapshot()
                 async with self.lock:
-                    result = self.scheduler.schedule(request, await self._snapshot())
-                primary = result.profile_results.get(result.primary_profile_name or "")
-                ranking = [scored.endpoint.name for scored in primary.ranked] if primary else []
-                # admit() sends its call before it first awaits, so it goes out ahead of this
-                # worker's next snapshot, and the sync fleet runs one caller's calls in order.
+                    result = self.scheduler.schedule(request, self._apply(snapshot, base))
+                    primary = result.profile_results.get(result.primary_profile_name or "")
+                    ranking = [scored.endpoint.name for scored in primary.ranked] if primary else []
+                    if ranking:
+                        self._count(ranking[0], 1)
                 name = await admit(self.fleet, request, ranking)
+                if ranking:
+                    self._count(ranking[0], -1)
                 if name is not None:
+                    self._count(name, 1)
                     return next(ep for ep in self.endpoints if ep.name == name)
                 await asyncio.sleep(_RETRY_S)
+        snapshot, base = await self._shared_snapshot()
         async with self.lock:
-            # Ray runs one caller's actor calls in order, so this worker's last
-            # dispatch is already counted in the snapshot.
-            selected = self.scheduler.run(request, candidates=await self._snapshot())
+            selected = self.scheduler.run(request, candidates=self._apply(snapshot, base))
             if not selected:
                 return None
             winner: Endpoint = selected[0].endpoint
             self.record_dispatch(winner.name)
             return winner
 
-    async def _snapshot(self) -> list[Endpoint]:
-        """This worker's endpoints, carrying the fleet's latest stats and in-flight counts."""
-        snapshot: FleetSnapshot = await self.fleet.snapshot.remote()
+    async def _shared_snapshot(self) -> tuple[FleetSnapshot, dict[str, int]]:
+        """One fleet round trip serves every decision waiting at the same moment."""
+        if self.pending is None:
+            self.pending = (asyncio.ensure_future(self.fleet.snapshot.remote()), dict(self.local))
+        future, base = self.pending
+        try:
+            snapshot = await asyncio.shield(future)
+        finally:
+            if self.pending is not None and self.pending[0] is future:
+                self.pending = None
+        return snapshot, base
+
+    def _apply(self, snapshot: FleetSnapshot, base: dict[str, int]) -> list[Endpoint]:
         for ep in self.endpoints:
             ep.attributes["routing_stats"] = snapshot.stats.get(ep.name, {})
-            ep.attributes["queue_len"] = snapshot.inflight.get(ep.name, 0)
+            # The snapshot misses what this worker sent after the snapshot was requested.
+            unseen = self.local.get(ep.name, 0) - base.get(ep.name, 0)
+            ep.attributes["queue_len"] = snapshot.inflight.get(ep.name, 0) + unseen
         return self.endpoints
 
+    def _count(self, name: str, delta: int) -> None:
+        self.local[name] = self.local.get(name, 0) + delta
+
     def record_dispatch(self, endpoint_name: str) -> None:
+        self._count(endpoint_name, 1)
         self.fleet.increment.remote(endpoint_name)
 
     def record_release(
         self, endpoint_name: str, request_id: str, output_tokens: int | None
     ) -> None:
+        self._count(endpoint_name, -1)
         if self.admits:
-            # The sync fleet runs this before the trajectory's next admit, so nothing waits on it.
             self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
         else:
             self.fleet.decrement.remote(endpoint_name)
