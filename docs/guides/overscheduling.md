@@ -66,14 +66,14 @@ profiles:
       type: max_score
 ```
 
-- `budget_fraction` below 1 leaves headroom. The gate counts tokens while vLLM allocates whole blocks, and a burst of first turns can land before engine metrics catch up.
+- `budget_fraction` below 1 leaves headroom, so engines never need to preempt.
 - The hook sends each trajectory's id in the `x-rls-session-id` header, which `sticky_session` reads.
 - The fleet actor reads the profile once, at the first request, so restart the job to change it.
 - See the [Scheduler Customization Guide](scheduler_customization.md) for every parameter.
 
 ### 2. Mooncake master and client config
 
-Run a Mooncake master with the same version as the client. Give it at least 2 CPUs, because engines look keys up in it on every scheduler step.
+Run a Mooncake master with the same version as the client, with at least 2 CPUs.
 
 Write a client config like this one and make it available on every node:
 
@@ -104,8 +104,8 @@ Add these overrides to the verl command:
 +actor_rollout_ref.rollout.engine_kwargs.vllm.kv_transfer_config.kv_connector_extra_config.save_decode_cache=false
 ```
 
-- Keep `kv_connector_module_path`, or vLLM loads its own connector of the same name. Ours fixes two vLLM 0.29 bugs: engines on one host collide on a lookup socket, and some KV blocks are never freed.
-- Keep `save_decode_cache=false`. On vLLM 0.29, saving decode KV pins a request's whole block table, and under KV pressure an engine can stall in a loop of preempting and re-saving.
+- Keep `kv_connector_module_path`, or vLLM loads its own connector of the same name, which lacks two fixes this setup needs on vLLM 0.29.
+- Keep `save_decode_cache=false`, or engines can stall under KV pressure.
 
 Set these on every Ray worker, in the job's runtime env `env_vars` or the pod spec:
 
@@ -126,3 +126,5 @@ Watch each engine's vLLM metrics during a rollout:
 | `vllm:kv_cache_usage_perc` | Peaks near `budget_fraction`. |
 | `vllm:prompt_tokens_by_source_total{source="external_kv_transfer"}` | Grows as turns load KV from the store. |
 | `vllm:mooncake_store_operation_failed_keys_total` | Stays at 0. |
+
+If a check fails, the [overscheduling skill](../../.agents/skills/overscheduling/SKILL.md) maps each symptom to its cause and fix.
