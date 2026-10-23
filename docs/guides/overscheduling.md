@@ -2,6 +2,11 @@
 
 Overscheduling puts more trajectories on each sampler than its GPU KV can hold, by admitting only turns that fit and reloading evicted KV from a cross-node Mooncake store instead of recomputing it. It lets an agentic RL rollout run on fewer samplers.
 
+## When it helps
+
+- Trajectories alternate model turns with tool calls. While a trajectory waits on a tool, its KV can leave the GPU and come back from the store for its next turn.
+- The rollout is limited by KV memory, not compute. If decode is already compute-bound, fewer samplers only make the rollout longer.
+
 ## What it improves
 
 Overscheduling is a price/performance tool: the same rollout needs fewer GPUs.
@@ -11,11 +16,6 @@ Overscheduling is a price/performance tool: the same rollout needs fewer GPUs.
 | Samples per second per GPU | The same rollout runs on fewer samplers, so each GPU produces more samples per second and a rollout costs fewer GPU-hours. |
 | KV cache utilization | More trajectories share each sampler, and the gate fills its KV budget up to `budget_fraction` without the preemptions that overfilling would cause. |
 | GPU utilization | While some trajectories wait on tools, turns from others keep each sampler busy, and loading evicted KV from the store saves recomputing those prompts. |
-
-## When it helps
-
-- Trajectories alternate model turns with tool calls. While a trajectory waits on a tool, its KV can leave the GPU and come back from the store for its next turn.
-- The rollout is limited by KV memory, not compute. If decode is already compute-bound, fewer samplers only make the rollout longer.
 
 ## How it works
 
