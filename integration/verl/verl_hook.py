@@ -88,8 +88,10 @@ class _SchedulerCore:
 
     def __init__(self) -> None:
         self.scheduler = Scheduler()
-        self.admits = self.scheduler.has_flow_control()
-        self.fleet = fleet_actor(admits=self.admits)
+        self.fleet = fleet_actor(admits=self.scheduler.has_flow_control())
+        # The manager created the fleet before any worker, so the fleet's kind decides the mode,
+        # even if the profile changed after the manager read it.
+        self.admits = hasattr(self.fleet, "admit")
         self.finishes = PendingFinishes(self.fleet)
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
