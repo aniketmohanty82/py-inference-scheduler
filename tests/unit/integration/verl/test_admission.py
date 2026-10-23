@@ -15,9 +15,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
+import ray
 
 from integration.verl import fleet as fleet_module
 from integration.verl.admission import Admission
@@ -277,3 +279,22 @@ def test_the_profile_decides_which_fleet_the_job_gets(monkeypatch, admits, kind)
 
     assert [k for k, _ in created] == [kind]
     assert ("max_concurrency" in created[0][1]) is admits
+
+
+@pytest.fixture
+def ray_session() -> Iterator[None]:
+    ray.init(num_cpus=1, include_dashboard=False, log_to_driver=False)
+    yield
+    ray.shutdown()
+
+
+@pytest.mark.parametrize("admits", [True, False])
+def test_a_worker_sees_the_fleet_the_job_already_has(ray_session, admits):
+    # Held like the manager holds it: Ray ends an actor once its creator drops every handle.
+    job_fleet = fleet_module.fleet_actor(admits=admits)
+
+    # A worker that read a different profile still joins the job's fleet, and can tell its kind.
+    joined = fleet_module.fleet_actor(admits=not admits)
+
+    assert hasattr(job_fleet, "admit") is admits
+    assert hasattr(joined, "admit") is admits
