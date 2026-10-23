@@ -60,11 +60,13 @@ except ImportError:  # modern layout (verl v0.9.x)
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from integration.verl.fleet import FleetSnapshot, PendingFinishes, admit, fleet_actor
+from integration.verl.fleet import FleetSnapshot, admit, fleet_actor
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 logger = logging.getLogger(__name__)
+# Finishes and metrics polls free room, so a request that fits nowhere tries again after one poll.
+_RETRY_S = 0.1
 logger.info("py-inference-scheduler verl hook: %s layout detected", _VERL_LAYOUT)
 
 # Must apply at module level to patch classes before use across distributed
@@ -91,7 +93,6 @@ class _SchedulerCore:
         self.scheduler = Scheduler()
         self.admits = self.scheduler.has_flow_control()
         self.fleet = fleet_actor(admits=self.admits)
-        self.finishes = PendingFinishes(self.fleet)
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
@@ -106,14 +107,17 @@ class _SchedulerCore:
         """Pick an endpoint. None means fall back to verl's LB."""
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
-            await self.finishes.wait(request_id)
-            async with self.lock:
-                result = self.scheduler.schedule(request, await self._snapshot())
-            primary = result.profile_results.get(result.primary_profile_name or "")
-            ranking = [scored.endpoint.name for scored in primary.ranked] if primary else []
-            # admit() sends its call before it first awaits, so it goes out ahead of this
-            # worker's next snapshot. A count that lands late only shifts a score.
-            return await admit(self.fleet, request, ranking)
+            while True:
+                async with self.lock:
+                    result = self.scheduler.schedule(request, await self._snapshot())
+                primary = result.profile_results.get(result.primary_profile_name or "")
+                ranking = [scored.endpoint.name for scored in primary.ranked] if primary else []
+                # admit() sends its call before it first awaits, so it goes out ahead of this
+                # worker's next snapshot, and the sync fleet runs one caller's calls in order.
+                name = await admit(self.fleet, request, ranking)
+                if name is not None:
+                    return next(ep for ep in self.endpoints if ep.name == name)
+                await asyncio.sleep(_RETRY_S)
         async with self.lock:
             # Ray runs one caller's actor calls in order, so this worker's last
             # dispatch is already counted in the snapshot.
@@ -139,7 +143,8 @@ class _SchedulerCore:
         self, endpoint_name: str, request_id: str, output_tokens: int | None
     ) -> None:
         if self.admits:
-            self.finishes.start(request_id, endpoint_name, output_tokens)
+            # The sync fleet runs this before the trajectory's next admit, so nothing waits on it.
+            self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
         else:
             self.fleet.decrement.remote(endpoint_name)
 

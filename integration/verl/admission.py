@@ -45,7 +45,7 @@ class Admission:
 
     async def admit(self, request: LLMRequest, ranking: Sequence[str]) -> Endpoint:
         """Admit the request to its highest-ranked engine with room, waiting until one has it."""
-        winner = self._try_admit(request, ranking)
+        winner = self.try_admit(request, ranking)
         if winner is not None:
             return winner
         future: asyncio.Future[Endpoint] = asyncio.get_running_loop().create_future()
@@ -60,7 +60,8 @@ class Admission:
         self._plugin.release(LLMRequest(request_id=request_id), endpoint_name, output_tokens)
         self._retry()
 
-    def _try_admit(self, request: LLMRequest, ranking: Sequence[str]) -> Endpoint | None:
+    def try_admit(self, request: LLMRequest, ranking: Sequence[str]) -> Endpoint | None:
+        """Reserve and count the request on its highest-ranked engine with room, if any has room."""
         allowed = {
             ep.name: ep for ep in self._plugin.get_allowed_candidates(request, self._endpoints())
         }
@@ -83,7 +84,7 @@ class Admission:
         self._waiting = []
         for request, ranking, future in waiting:
             try:
-                winner = self._try_admit(request, ranking)
+                winner = self.try_admit(request, ranking)
             except Exception as e:  # noqa: BLE001 - the waiting caller must see the failure
                 future.set_exception(e)
                 continue

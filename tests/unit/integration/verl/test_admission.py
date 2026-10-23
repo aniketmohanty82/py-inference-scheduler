@@ -143,11 +143,8 @@ async def test_a_waiting_caller_sees_why_admission_failed():
         await asyncio.wait_for(waiter, timeout=1)
 
 
-ENGINE = Endpoint(name="e1", attributes={"replica_obj": "handle"})
-
-
 def _admitting_fleet() -> SimpleNamespace:
-    admitting: asyncio.Future[Endpoint] = asyncio.get_running_loop().create_future()
+    admitting: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
     finished: list[tuple[object, ...]] = []
     return SimpleNamespace(
         admitting=admitting,
@@ -167,9 +164,9 @@ async def _cancelled_caller(fleet: SimpleNamespace) -> None:
 
 async def test_returns_the_engine_the_fleet_admitted_to():
     fleet = _admitting_fleet()
-    fleet.admitting.set_result(ENGINE)
+    fleet.admitting.set_result("e1")
 
-    assert await admit(fleet, LLMRequest(request_id="t1"), []) is ENGINE
+    assert await admit(fleet, LLMRequest(request_id="t1"), []) == "e1"
     assert fleet.finished == []
 
 
@@ -177,7 +174,7 @@ async def test_hands_back_an_admission_made_after_the_caller_gave_up():
     fleet = _admitting_fleet()
     await _cancelled_caller(fleet)
 
-    fleet.admitting.set_result(ENGINE)
+    fleet.admitting.set_result("e1")
     await asyncio.sleep(0)
 
     assert fleet.finished == [("t1", "e1", None)]
@@ -271,4 +268,5 @@ def test_the_profile_decides_which_fleet_the_job_gets(monkeypatch, admits, kind)
     fleet_module.fleet_actor(admits=admits)
 
     assert [k for k, _ in created] == [kind]
-    assert ("max_concurrency" in created[0][1]) is admits
+    # Concurrent calls would make Ray run a fleet's calls out of order, so neither kind allows them.
+    assert "max_concurrency" not in created[0][1]

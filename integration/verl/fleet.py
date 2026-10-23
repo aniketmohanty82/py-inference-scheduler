@@ -33,8 +33,6 @@ from py_inference_scheduler.datalayer.metrics.verl.fetch_metrics import fetch_wo
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 _ACTOR_NAME = "rls_fleet"
-# A queued admit holds a call slot until it returns, so finish must always find a free one.
-_MAX_CALLS = 1_000_000
 
 
 @dataclass
@@ -94,29 +92,20 @@ class Fleet(InflightStore):
 class AdmissionFleet(Fleet):
     """The fleet for a profile with flow control, which also admits every request.
 
-    - Admits each request to the engine its worker ranked highest among those with room, and
-      queues those that fit nowhere.
-    - Runs as an async actor, so a queued admit waits without blocking the finishes that free room.
+    - Admits each request to the engine its worker ranked highest among those with room.
+    - Runs as a sync actor like Fleet, so Ray keeps each worker's calls in order: a turn's finish
+      always runs before the trajectory's next admit.
     """
 
     def __init__(self, interval_ms: int) -> None:
         super().__init__(interval_ms)
         self._retry_interval_s = interval_ms / 1000
         self._admission: Admission | None = None
-        self._discovery = asyncio.Lock()
 
-    async def discover(  # type: ignore[override]  # Ray calls either kind the same way
-        self, balancer: ray.actor.ActorHandle, expected: int
-    ) -> dict[str, ray.actor.ActorHandle]:
-        """Fleet's walk, awaited one at a time, so the event loop keeps serving meanwhile."""
-        async with self._discovery:
-            handles = await _walk(balancer, expected, self._handles())
-            self.watch(handles)
-            return handles
-
-    async def admit(self, request: LLMRequest, ranking: list[str]) -> Endpoint:
-        """Admit a request to its highest-ranked engine with room, waiting until one has it."""
-        return await self._get_admission().admit(request, ranking)
+    def admit(self, request: LLMRequest, ranking: list[str]) -> str | None:
+        """Admit a request to its highest-ranked engine with room. None means no engine has room."""
+        winner = self._get_admission().try_admit(request, ranking)
+        return winner.name if winner is not None else None
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
         """Release an admitted request's reservation and retry the requests waiting for one."""
@@ -195,22 +184,19 @@ def fleet_actor(*, admits: bool = False) -> ray.actor.ActorHandle:
         "num_cpus": 0,
         "scheduling_strategy": near_workers,
     }
-    if admits:
-        actor = _AdmissionFleetActor.options(max_concurrency=_MAX_CALLS, **shared)
-    else:
-        actor = _FleetActor.options(**shared)
+    actor = (_AdmissionFleetActor if admits else _FleetActor).options(**shared)
     return actor.remote(interval_ms)
 
 
 async def admit(
     fleet: ray.actor.ActorHandle, request: LLMRequest, ranking: list[str]
-) -> Endpoint:
+) -> str | None:
     """Ask the fleet actor to admit a request to its highest-ranked engine with room.
 
-    If the caller is cancelled first, an admission that completes later is handed back, since Ray
-    keeps the call running.
+    Returns the engine's name, or None if no engine has room. If the caller is cancelled first, an
+    admission that completes later is handed back, since Ray keeps the call running.
     """
-    admitting: asyncio.Future[Endpoint] = asyncio.ensure_future(
+    admitting: asyncio.Future[str | None] = asyncio.ensure_future(
         fleet.admit.remote(request, ranking)
     )
     try:
@@ -223,10 +209,10 @@ async def admit(
 def _hand_back(
     fleet: ray.actor.ActorHandle,
     request_id: str,
-    admitting: asyncio.Future[Endpoint],
+    admitting: asyncio.Future[str | None],
 ) -> None:
-    if not admitting.cancelled() and admitting.exception() is None:
-        fleet.finish.remote(request_id, admitting.result().name, None)
+    if not admitting.cancelled() and admitting.exception() is None and admitting.result():
+        fleet.finish.remote(request_id, admitting.result(), None)
 
 
 class PendingFinishes:
