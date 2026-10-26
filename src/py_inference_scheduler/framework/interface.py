@@ -162,4 +162,4 @@ class SchedulerProfile:
         elif scored:
             chosen = [scored[0]]
 
-        return ProfileRunResult(endpoint_list=chosen)
+        return ProfileRunResult(endpoint_list=chosen, ranked=scored)
