@@ -156,12 +156,19 @@ def _finish_turns(plugin: KVSaturationPlugin, trajectory: str, outputs: list[int
         plugin.release(_turn(trajectory, 10), "e1", output_tokens=output)
 
 
-def test_next_turn_assumes_a_moving_average_of_earlier_outputs():
+def test_next_turn_assumes_the_average_of_earlier_outputs():
     plugin = KVSaturationPlugin(default_osl=0)
-    _finish_turns(plugin, "t1", [100, 20])
+    _finish_turns(plugin, "t1", [100, 20, 300])
 
-    # Half the newest output plus half the average before it: 20 / 2 + 100 / 2.
-    assert plugin.need(_turn("t1", 10)) == 10 + 60
+    # Every finished turn counts the same: (100 + 20 + 300) / 3.
+    assert plugin.need(_turn("t1", 10)) == 10 + 140
+
+
+def test_a_fractional_average_rounds_up():
+    plugin = KVSaturationPlugin(default_osl=0)
+    _finish_turns(plugin, "t1", [10, 11])
+
+    assert plugin.need(_turn("t1", 10)) == 10 + 11
 
 
 def test_outputs_of_one_length_reserve_exactly_that_length():
