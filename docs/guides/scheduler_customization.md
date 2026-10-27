@@ -116,9 +116,9 @@ Pickers choose the final replica from the scored list.
 
 ### Flow Control (Gatekeeping)
 Flow control plugins prevent replica overload and mid-decoding preemptions by controlling the flow to affected replicas. On verl, a profile with flow control is read once, at the first request, so restart the job to change it.
-*   **`kv_saturation`**: Admits a request only to a replica whose KV token budget has room for it. A request needs its prompt tokens plus the average of its trajectory's earlier output lengths, a simple estimate that a much longer turn can exceed. The replica that served the trajectory's last turn is offered alone when it fits. Otherwise every replica that fits is offered, and the profile's scorers pick among them. When none fits, the request waits.
+*   **`kv_saturation`**: Admits a request only to a replica whose KV token budget has room for it. A request needs room for its prompt plus its output. The output length is unknown until the turn ends, so the plugin reserves the prompt plus the trajectory's average output so far. The replica that served the trajectory's last turn is offered alone when it fits. Otherwise every replica that fits is offered, and the profile's scorers pick among them. When none fits, the request waits.
     *   `default_osl` (int, default: `1024`): Output tokens assumed for a trajectory's first turn, before its real output is known.
-    *   `budget_fraction` (float, default: `1.0`): Share of each replica's KV capacity that may be reserved, in (0, 1]. Lower it to leave headroom for KV the ledger does not see.
+    *   `budget_fraction` (float, default: `1.0`): Share of each replica's KV capacity that may be reserved, in (0, 1]. Lower it a little below 1.0 to leave headroom for turns longer than predicted and for KV the ledger does not see.
     *   *More Info*: See the [KV Saturation Guide](../kv_saturation.md).
 
 ---
