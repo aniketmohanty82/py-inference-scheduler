@@ -227,12 +227,12 @@ def fleet_actor(*, admits: bool = False) -> ray.actor.ActorHandle:
     return actor.remote(interval_ms)
 
 
-async def admit(
+async def request_admission(
     fleet: ray.actor.ActorHandle, request: LLMRequest, worker_id: str, ticket: str
 ) -> str | None:
     """Ask the fleet actor to admit a request: its engine's name, or None if it was queued.
 
-    If the caller is cancelled first, an admission that completes later is handed back and a queued
+    If the caller is cancelled first, an admission that completes later is undone and a queued
     request leaves the line, since Ray keeps the call running.
     """
     admitting: asyncio.Future[str | None] = asyncio.ensure_future(
@@ -242,12 +242,12 @@ async def admit(
         return await asyncio.shield(admitting)
     except asyncio.CancelledError:
         admitting.add_done_callback(
-            lambda done: _hand_back(fleet, request.request_id, ticket, done)
+            lambda done: _undo_admission(fleet, request.request_id, ticket, done)
         )
         raise
 
 
-def _hand_back(
+def _undo_admission(
     fleet: ray.actor.ActorHandle,
     request_id: str,
     ticket: str,
