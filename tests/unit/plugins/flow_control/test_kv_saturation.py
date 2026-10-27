@@ -38,7 +38,7 @@ def test_is_registered():
     assert isinstance(build_flow_control("kv_saturation", default_osl=8), KVSaturationPlugin)
 
 
-def test_rejects_a_negative_output_estimate():
+def test_rejects_a_negative_default_osl():
     with pytest.raises(ValueError, match="default_osl"):
         KVSaturationPlugin(default_osl=-1)
 
@@ -58,16 +58,7 @@ def test_budget_fraction_keeps_headroom_unreserved():
     assert _offered(plugin, _turn("t2", 1), [engine]) == []
 
 
-def test_oversize_request_reserves_the_whole_budget():
-    plugin = KVSaturationPlugin(default_osl=0, budget_fraction=0.5)
-    engine = _engine("e1", 200)
-
-    assert _offered(plugin, _turn("big", 500), [engine]) == ["e1"]
-    plugin.reserve(_turn("big", 500), engine)
-    assert _offered(plugin, _turn("t2", 1), [engine]) == []
-
-
-def test_needs_prompt_plus_default_output():
+def test_a_first_turn_needs_its_prompt_plus_default_osl():
     plugin = KVSaturationPlugin(default_osl=10)
     fits, short = _engine("fits", 200), _engine("short", 200)
     plugin.reserve(_turn("a", 90), fits)
@@ -149,17 +140,18 @@ def test_next_turn_assumes_the_average_output():
     assert _offered(plugin, _turn("t1", 61), [engine]) == []
 
 
-def test_oversize_request_reserves_a_whole_idle_engine():
+def test_an_oversize_request_waits_for_an_idle_engine_and_fills_it():
     plugin = KVSaturationPlugin(default_osl=0)
     engine = _engine("e1", 100)
     big, small = _turn("big", 150), _turn("small", 1)
 
+    plugin.reserve(small, engine)
+    assert _offered(plugin, big, [engine]) == []
+    plugin.release(small, "e1")
     assert _offered(plugin, big, [engine]) == ["e1"]
+
     plugin.reserve(big, engine)
     assert _offered(plugin, small, [engine]) == []
-
-    plugin.release(big, "e1")
-    assert _offered(plugin, big, [engine]) == ["e1"]
 
 
 def test_forgets_the_oldest_trajectories(monkeypatch: pytest.MonkeyPatch):
