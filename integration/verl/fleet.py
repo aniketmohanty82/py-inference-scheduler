@@ -265,3 +265,61 @@ def _hand_back(
         fleet.cancel.remote(ticket)
     else:
         fleet.finish.remote(request_id, name, None)
+
+
+class FleetView:
+    """One worker's view of the fleet: shared snapshots plus the worker's own sends.
+
+    - One snapshot request serves every decision waiting at the same moment, so a decision holds
+      the worker's lock only while it scores.
+    - Adds what this worker sent after a snapshot was requested, which the snapshot misses.
+    """
+
+    def __init__(self, fleet: ray.actor.ActorHandle) -> None:
+        self._fleet = fleet
+        # This worker's in-flight requests per engine as sent, and the snapshot request in flight.
+        self._local: dict[str, int] = {}
+        self._pending: tuple[asyncio.Future[FleetSnapshot], dict[str, int]] | None = None
+
+    async def fetch(self) -> tuple[FleetSnapshot, dict[str, int]]:
+        """The fleet's latest snapshot, and this worker's counts when it was requested."""
+        if self._pending is None:
+            requested = asyncio.ensure_future(self._fleet.snapshot.remote())
+            self._pending = (requested, dict(self._local))
+        future, base = self._pending
+        try:
+            snapshot = await asyncio.shield(future)
+        finally:
+            if self._pending is not None and self._pending[0] is future:
+                self._pending = None
+        return snapshot, base
+
+    def apply(
+        self, snapshot: FleetSnapshot, base: dict[str, int], endpoints: list[Endpoint]
+    ) -> list[Endpoint]:
+        """The endpoints, carrying the snapshot's stats and the in-flight counts it missed."""
+        for ep in endpoints:
+            ep.attributes["routing_stats"] = snapshot.stats.get(ep.name, {})
+            unseen = self._local.get(ep.name, 0) - base.get(ep.name, 0)
+            ep.attributes["queue_len"] = snapshot.inflight.get(ep.name, 0) + unseen
+        return endpoints
+
+    def count(self, name: str, delta: int) -> None:
+        self._local[name] = self._local.get(name, 0) + delta
+
+    async def admit(
+        self, request: LLMRequest, ranking: list[str], worker_id: str, ticket: str
+    ) -> str | None:
+        """Ask the fleet to admit the request, counting the top-ranked engine until it answers.
+
+        The count goes up before this first yields, so this worker's next decisions see it, and the
+        admit call goes out before it too, ahead of this worker's next snapshot request.
+        """
+        guess = ranking[0] if ranking else None
+        if guess:
+            self.count(guess, 1)
+        try:
+            return await admit(self._fleet, request, ranking, worker_id, ticket)
+        finally:
+            if guess:
+                self.count(guess, -1)
