@@ -183,6 +183,17 @@ class _SchedulerCore:
             queued.set_exception(RuntimeError(error))
 
 
+class _AdmissionCallback:
+    """Gives the worker class of either verl layout the method the fleet calls back."""
+
+    def rls_admitted(
+        self, ticket: str, request_id: str, name: str | None, error: str | None
+    ) -> None:
+        """The fleet's callback for a request this worker queued."""
+        if _SchedulerCore.current is not None:
+            _SchedulerCore.current.admitted(ticket, request_id, name, error)
+
+
 if _VERL_LAYOUT == "legacy":
 
     class InferenceSchedulerServerManager(_LegacyServerManager):  # type: ignore[misc]
@@ -262,7 +273,7 @@ if _VERL_LAYOUT == "legacy":
             finally:
                 self._release_server(server_id, request_id, output_tokens)
 
-    class PyInferenceAgentLoopWorker(AgentLoopWorker):  # type: ignore[misc]
+    class PyInferenceAgentLoopWorker(_AdmissionCallback, AgentLoopWorker):  # type: ignore[misc]
         """Inject the custom ServerManager before calling super().__init__."""
 
         def __init__(
@@ -276,13 +287,6 @@ if _VERL_LAYOUT == "legacy":
                 config, servers, load_balancer_handle
             )
             super().__init__(config, servers, load_balancer_handle, reward_loop_worker_handles)
-
-        def rls_admitted(
-            self, ticket: str, request_id: str, name: str | None, error: str | None
-        ) -> None:
-            """The fleet's callback for a request this worker queued."""
-            if _SchedulerCore.current is not None:
-                _SchedulerCore.current.admitted(ticket, request_id, name, error)
 
 else:  # modern layout
 
@@ -377,7 +381,7 @@ else:  # modern layout
             finally:
                 self._release_server(server_id, request_id, output_tokens)
 
-    class PyInferenceAgentLoopWorker(AgentLoopWorker):  # type: ignore[misc,no-redef]
+    class PyInferenceAgentLoopWorker(_AdmissionCallback, AgentLoopWorker):  # type: ignore[misc,no-redef]
         """Swap the incoming LLMServerClient for the scheduler-backed client."""
 
         def __init__(
@@ -391,13 +395,6 @@ else:  # modern layout
                 config, load_balancer_handle=llm_client._load_balancer
             )
             super().__init__(config, scheduler_client, teacher_client, reward_loop_worker_handles)
-
-        def rls_admitted(
-            self, ticket: str, request_id: str, name: str | None, error: str | None
-        ) -> None:
-            """The fleet's callback for a request this worker queued."""
-            if _SchedulerCore.current is not None:
-                _SchedulerCore.current.admitted(ticket, request_id, name, error)
 
 
 class PyInferenceAgentLoopManager(AgentLoopManager):
