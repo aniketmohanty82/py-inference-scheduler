@@ -300,3 +300,26 @@ def test_a_worker_sees_the_fleet_the_job_already_has(ray_session, admits):
 
     assert hasattr(job_fleet, "admit") is admits
     assert hasattr(joined, "admit") is admits
+
+
+def test_a_poll_that_only_moves_load_reports_nothing_new():
+    stats = {"num_running_reqs": 2, "kv": 0.1, "error": None}
+    engine = Endpoint(name="e1", attributes={"kv_cache_size": 1000, "routing_stats": stats})
+    before = fleet_module._reported(engine)
+
+    engine.attributes["routing_stats"] = {"num_running_reqs": 30, "kv": 0.8, "error": None}
+
+    assert fleet_module._reported(engine) == before
+
+
+def test_capacity_first_stats_and_errors_each_report_something_new():
+    engine = Endpoint(name="e1", attributes={"routing_stats": {}})
+    unpolled = fleet_module._reported(engine)
+    engine.attributes["routing_stats"] = {"kv": 0.0, "error": None}
+    first_stats = fleet_module._reported(engine)
+    engine.attributes["kv_cache_size"] = 1000
+    with_capacity = fleet_module._reported(engine)
+    engine.attributes["routing_stats"] = {"error": "connection refused"}
+    failing = fleet_module._reported(engine)
+
+    assert len({unpolled, first_stats, with_capacity, failing}) == 4
