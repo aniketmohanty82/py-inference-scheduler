@@ -137,14 +137,14 @@ def test_offers_every_fitting_engine_when_the_last_engine_is_full():
     assert _offered(plugin, _turn("t1", 20), engines) == ["e1", "e3"]
 
 
-def test_next_turn_assumes_the_previous_output():
+def test_next_turn_assumes_the_average_output():
     plugin = KVSaturationPlugin(default_osl=500)
     engine = _engine("e1", 700)
     plugin.reserve(_turn("t1", 10), engine)
     plugin.release(_turn("t1", 10), "e1", output_tokens=40)
     plugin.reserve(_turn("other", 100), engine)
 
-    # other reserves 100 + 500 default, leaving 100: 60 prompt + 40 last output fits, 61 + 40 not.
+    # other books 100 + 500 default, leaving 100: 60 prompt + 40 average output fits, 61 + 40 not.
     assert _offered(plugin, _turn("t1", 60), [engine]) == ["e1"]
     assert _offered(plugin, _turn("t1", 61), [engine]) == []
 
