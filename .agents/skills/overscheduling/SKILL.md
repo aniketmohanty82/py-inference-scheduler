@@ -82,6 +82,7 @@ The fleet polls engine metrics every `RLS_METRICS_INTERVAL_MS` (default 100). It
 *   **Symptom**: `vllm:num_preemptions_total` rises.
 *   **Cause**: real KV use overshoots the gate's token count, from block rounding, a burst of first turns before metrics catch up, a `default_osl` below the real first-turn output, or the connector holding blocks while it saves.
 *   **Fix**: lower `budget_fraction` a little at a time, for example from 0.94 to 0.9. Set `default_osl` near the real output length. Confirm `save_decode_cache=false`.
+*   **Known limit**: the output estimate is the trajectory's average output so far. A turn much longer than the ones before it can outgrow its reservation, and only `budget_fraction`'s headroom absorbs that.
 
 ### 4.3 An engine stalls
 *   **Symptom**: one engine sits at full KV with nothing running and requests waiting, while its store saves repeat.
