@@ -32,7 +32,7 @@ Ask the user, unless the conversation already answers it:
 
 | Part | What it does | Code |
 |---|---|---|
-| Flow control | Admits a turn only where its prompt plus the trajectory's last output fits the engine's KV budget | `kv_saturation` in [kv_saturation.py](../../../src/py_inference_scheduler/plugins/flow_control/kv_saturation.py) |
+| Flow control | Admits a turn only where its prompt plus the trajectory's average output fits the engine's KV budget | `kv_saturation` in [kv_saturation.py](../../../src/py_inference_scheduler/plugins/flow_control/kv_saturation.py) |
 | Admission | Keeps one ledger and one queue for every agent-loop worker | `AdmissionFleet` in [fleet.py](../../../integration/verl/fleet.py), `Admission` in [admission.py](../../../integration/verl/admission.py) |
 | Fleet view | Shares one fleet snapshot among a worker's waiting decisions and counts its own sends | `FleetView` in [fleet.py](../../../integration/verl/fleet.py) |
 | Affinity | Keeps a trajectory on the engine that holds its KV | `kv_saturation`'s last-engine rule, [sticky_session.py](../../../src/py_inference_scheduler/plugins/scorers/sticky_session.py), [prefix_plugin.py](../../../src/py_inference_scheduler/plugins/scorers/prefix_plugin.py) |
@@ -45,9 +45,9 @@ Ask the user, unless the conversation already answers it:
 1. verl asks the hook for an engine (`_acquire_server` in [verl_hook.py](../../../integration/verl/verl_hook.py)).
 2. The worker reads a fleet snapshot through its `FleetView` and ranks the engines with the profile's scorers, as it does without flow control.
 3. It sends the ranking with `admit` to the `AdmissionFleet`. The fleet is a sync actor that runs each worker's calls in order, so the trajectory's previous `finish` has always landed first. verl reuses one request id for every turn, so a late finish would otherwise free the new turn's reservation.
-4. The fleet finds the engines that can hold the turn: its prompt tokens plus the trajectory's last output (`default_osl` on turn one), within `budget_fraction` of the engine's capacity minus what admitted turns reserved. If the engine that ran the trajectory's last turn fits, it wins. Otherwise the highest-ranked engine that fits wins. The fleet reserves the tokens and returns the engine, and the worker tells its scorers where the turn went.
+4. The fleet finds the engines that can hold the turn: its prompt tokens plus a moving average of the trajectory's output lengths (`default_osl` on turn one), within `budget_fraction` of the engine's capacity minus what admitted turns reserved. If the engine that ran the trajectory's last turn fits, it wins. Otherwise the highest-ranked engine that fits wins. The fleet reserves the tokens and returns the engine, and the worker tells its scorers where the turn went.
 5. If no engine fits, the turn waits in the fleet's queue, longest prompt first. A finish retries the queue on the engine it freed, a metrics poll on every engine, and the fleet calls the worker back with the engine once the turn is admitted.
-6. When generation ends, the hook sends `finish` with the turn's output length. That frees the reservation and becomes the trajectory's last output for its next turn.
+6. When generation ends, the hook sends `finish` with the turn's output length. That frees the reservation and updates the trajectory's average output for its next turn.
 
 The fleet polls engine metrics every `RLS_METRICS_INTERVAL_MS` (default 100). It loads the profile once, at the first request, because a reload would replace the plugin and drop its reservations.
 

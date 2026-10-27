@@ -21,7 +21,7 @@ Overscheduling is a price/performance tool: the same rollout needs fewer GPUs.
 
 | Part | What it does |
 |---|---|
-| Prefill-based flow control | `kv_saturation` admits a turn only to a sampler whose KV budget can hold its prompt plus the trajectory's last output. Turns that fit nowhere wait in one queue in the verl fleet actor. |
+| Prefill-based flow control | `kv_saturation` admits a turn only to a sampler whose KV budget can hold its prompt plus a moving average of the trajectory's output lengths. Turns that fit nowhere wait in one queue in the verl fleet actor. |
 | Affinity routing | `kv_saturation` keeps each trajectory on the sampler that ran its last turn while it fits there. Otherwise the scorers pick a sampler with room, weighing a hash of the trajectory id (`sticky_session`), cached prefixes (`prefix_cache`) and load (the backpressure scorers). |
 | KV offload | vLLM's Mooncake store connector saves each turn's prompt KV to host memory. A turn whose KV was evicted from the GPU loads it back instead of recomputing it. |
 | Cross-node KV transfer | Mooncake spreads that host memory across every node over RDMA, so any sampler can load KV saved on another node. |
