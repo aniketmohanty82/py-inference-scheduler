@@ -72,7 +72,7 @@ class Fleet(InflightStore):
         - Acquires with unique request ids until every engine is visited, then releases them.
         - Runs in this actor, so concurrent workers never drain the balancer at the same time.
         """
-        handles = asyncio.run(_walk(balancer, expected, self._handles()))
+        handles = asyncio.run(_collect_engine_handles(balancer, expected, self._handles()))
         self.watch(handles)
         return handles
 
@@ -86,7 +86,7 @@ class Fleet(InflightStore):
         return FleetSnapshot(cast("dict[str, dict[str, object]]", stats), self.get_all())
 
 
-async def _walk(
+async def _collect_engine_handles(
     balancer: ray.actor.ActorHandle, expected: int, known: dict[str, ray.actor.ActorHandle]
 ) -> dict[str, ray.actor.ActorHandle]:
     """Acquire engines from verl's balancer until `expected` are known, then release them."""
