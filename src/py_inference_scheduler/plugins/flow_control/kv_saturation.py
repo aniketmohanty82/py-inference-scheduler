@@ -29,8 +29,6 @@ from py_inference_scheduler.framework.helpers import prefill_tokens
 
 # Far more trajectories than one rollout holds.
 _MAX_REMEMBERED_TRAJECTORIES = 65536
-# The newest turn's share of its trajectory's average output, the turns before it sharing the rest.
-_OUTPUT_SMOOTHING = 0.5
 
 
 class _Reservation(NamedTuple):
@@ -41,10 +39,11 @@ class _Reservation(NamedTuple):
 
 
 class _LastTurn(NamedTuple):
-    """Where a trajectory's last turn ran, and a moving average of its turns' output tokens."""
+    """Where a trajectory's last turn ran, and its finished turns' total output and count."""
 
     engine: str
-    expected_output: float
+    total_output: int
+    turns: int
 
 
 @register_flow_control("kv_saturation")
@@ -97,12 +96,8 @@ class KVSaturationPlugin(FlowControlPlugin):
         if engine is None or output_tokens is None:
             return
         previous = self._last_turns.get(request.request_id)
-        # The first output starts the average, so default_osl never outlives turn one.
-        expected = float(output_tokens)
-        if previous is not None:
-            weight = _OUTPUT_SMOOTHING
-            expected = weight * output_tokens + (1 - weight) * previous.expected_output
-        self._last_turns[request.request_id] = _LastTurn(engine, expected)
+        total, turns = (previous.total_output, previous.turns) if previous else (0, 0)
+        self._last_turns[request.request_id] = _LastTurn(engine, total + output_tokens, turns + 1)
         self._last_turns.move_to_end(request.request_id)
         if len(self._last_turns) > _MAX_REMEMBERED_TRAJECTORIES:
             self._last_turns.popitem(last=False)
@@ -110,7 +105,7 @@ class KVSaturationPlugin(FlowControlPlugin):
     def need(self, request: LLMRequest) -> int:
         """The request's prompt plus its trajectory's average output, or default_osl on turn one."""
         last = self._last_turns.get(request.request_id)
-        output = math.ceil(last.expected_output) if last else self.default_osl
+        output = math.ceil(last.total_output / last.turns) if last else self.default_osl
         return prefill_tokens(request.body) + output
 
     def room(self, ep: Endpoint) -> int:
