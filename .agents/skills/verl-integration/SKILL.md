@@ -35,7 +35,7 @@ To debug effectively without making assumptions, you must understand how the int
     *   `_acquire_server()` takes the worker's lock and reads one fleet snapshot: engine metrics plus fleet-wide in-flight counts.
     *   It queries the `Scheduler` to select the best engine.
     *   It counts the dispatch in the fleet and returns the engine's Ray handle to verl.
-    *   With flow control, `_acquire_server()` instead calls the fleet's `admit()`, which reserves the request's tokens and runs the scorers inside the fleet. If no engine has room, the fleet queues the request and later calls the worker's `rls_admitted()` with the engine it admitted the request to. The fleet is a sync actor, so it runs each worker's calls in order and a turn's finish always lands before the trajectory's next admit.
+    *   With flow control, `_acquire_server()` ranks the engines the same way, then calls the fleet's `admit()` with that ranking. The fleet reserves the request's tokens on the highest-ranked engine with room, and the worker then tells its scorers which engine that was, since it can differ from the top-ranked one. If no engine has room, the fleet queues the request and later calls the worker's `rls_admitted()` with the engine it admitted the request to. The fleet is a sync actor, so it runs each worker's calls in order and a turn's finish always lands before the trajectory's next admit.
 4.  **Release**: Once generation completes, `_release_server()` decrements the engine's count in the fleet. With flow control it sends `finish` with the turn's output length instead, which frees the reservation and retries the queued requests on that engine.
 
 ### 2.2 Data Flow (Metrics Collection)

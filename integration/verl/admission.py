@@ -18,7 +18,6 @@ import bisect
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
-from py_inference_scheduler import Scheduler
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
 from py_inference_scheduler.framework import Endpoint, FlowControlPlugin, LLMRequest
 from py_inference_scheduler.framework.helpers import prefill_tokens
@@ -33,6 +32,7 @@ class _Waiting:
 
     ticket: str
     request: LLMRequest
+    ranking: Sequence[str]
     deliver: Deliver
     prompt: int
     # Fixed while queued: the trajectory's previous turn, which set it, has already finished.
@@ -44,7 +44,7 @@ class _Waiting:
 
 
 class Admission:
-    """Admits requests with a flow-control plugin and the profile's scorers.
+    """Admits requests with a flow-control plugin, in the order each worker ranked the engines.
 
     - Reserves and counts each admission in the same step, so later decisions see it.
     - Keeps requests that fit nowhere in one queue, longest prompt first, and hands each admission
@@ -53,24 +53,24 @@ class Admission:
 
     def __init__(
         self,
-        scheduler: Scheduler,
         plugin: FlowControlPlugin,
         counts: InflightStore,
         endpoints: Callable[[], Sequence[Endpoint]],
     ) -> None:
-        self._scheduler = scheduler
         self._plugin = plugin
         self._counts = counts
         self._endpoints = endpoints
         # Longest prompt first: late turns are the step's critical path and the costliest to stall.
         self._waiting: list[_Waiting] = []
 
-    def admit(self, request: LLMRequest, ticket: str, deliver: Deliver) -> Endpoint | None:
-        """Admit the request to an engine with room, or queue it under its ticket until one has."""
-        winner = self._try_admit(request, self._endpoints())
+    def admit(
+        self, request: LLMRequest, ranking: Sequence[str], ticket: str, deliver: Deliver
+    ) -> Endpoint | None:
+        """Admit the request to its highest-ranked engine with room, or queue it until one has."""
+        winner = self._try_admit(request, ranking, self._endpoints())
         if winner is None:
             prompt, need = prefill_tokens(request.body), self._plugin.need(request)
-            waiting = _Waiting(ticket, request, deliver, prompt, need)
+            waiting = _Waiting(ticket, request, ranking, deliver, prompt, need)
             bisect.insort(self._waiting, waiting)
         return winner
 
@@ -88,16 +88,14 @@ class Admission:
         # Only this engine gained room, so only it can take a queued request now.
         self.retry([ep for ep in self._endpoints() if ep.name == endpoint_name])
 
-    def _try_admit(self, request: LLMRequest, candidates: Sequence[Endpoint]) -> Endpoint | None:
-        allowed = self._plugin.get_allowed_candidates(request, candidates)
+    def _try_admit(
+        self, request: LLMRequest, ranking: Sequence[str], candidates: Sequence[Endpoint]
+    ) -> Endpoint | None:
+        allowed = {ep.name: ep for ep in self._plugin.get_allowed_candidates(request, candidates)}
         if not allowed:
             return None
-        for ep in allowed:
-            ep.attributes["queue_len"] = self._counts.get(ep.name)
-        picked = self._scheduler.run(request, allowed)
-        if not picked:
-            raise RuntimeError("the profile picked no engine among those with room")
-        winner = picked[0].endpoint
+        # An engine the worker has not discovered yet is not ranked, so it comes last.
+        winner = allowed[next((name for name in ranking if name in allowed), next(iter(allowed)))]
         self._plugin.reserve(request, winner)
         self._counts.increment(winner.name)
         return winner
@@ -112,7 +110,7 @@ class Admission:
             if 0 < largest < waiting.need:
                 continue
             try:
-                winner = self._try_admit(waiting.request, engines)
+                winner = self._try_admit(waiting.request, waiting.ranking, engines)
             except Exception as e:  # noqa: BLE001 - the waiting caller must see the failure
                 self._waiting.remove(waiting)
                 waiting.deliver(e)
