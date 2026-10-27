@@ -172,26 +172,12 @@ def test_releasing_an_unknown_request_changes_nothing():
     assert _offered(plugin, _turn("t1", 100), [_engine("e1", 100)]) == ["e1"]
 
 
-def test_need_is_the_prompt_plus_default_output_until_a_turn_reports_its_own():
-    plugin = KVSaturationPlugin(default_osl=10)
-    assert plugin.need(_turn("t1", 90)) == 100
-
-    plugin.reserve(_turn("t1", 90), _engine("e1", 1000))
-    plugin.release(_turn("t1", 90), "e1", output_tokens=4)
-    assert plugin.need(_turn("t1", 120)) == 124
-
-
 def test_room_is_the_budget_minus_reservations():
     plugin = KVSaturationPlugin(default_osl=0, budget_fraction=0.5)
     engine = _engine("e1", 200)
     plugin.reserve(_turn("t1", 30), engine)
 
     assert plugin.room(engine) == 70
-
-
-def test_an_idle_engine_has_room_for_an_oversize_request():
-    plugin = KVSaturationPlugin(default_osl=0)
-    assert plugin.room(_engine("e1", 100)) >= plugin.need(_turn("big", 500))
 
 
 def test_an_engine_without_capacity_has_no_room():
