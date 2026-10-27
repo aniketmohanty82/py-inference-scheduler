@@ -140,17 +140,11 @@ class AdmissionFleet(Fleet):
         self._workers[worker_id].rls_admitted.remote(ticket, request_id, name, error)
 
     def _retry_on_polls(self, interval_s: float) -> None:
-        # Outside finishes, room appears only when a poll reports new capacity, so retry the queue
-        # only after a poll changes what an engine reports. The retry runs as a call on this actor,
-        # so it never races the actor's other calls.
+        # Capacity also arrives with metrics polls, when no finish is coming to retry the queue. The
+        # retry runs as a call on this actor, so it never races the actor's other calls.
         actor = None
-        seen: list[tuple[object, ...]] | None = None
         while True:
             time.sleep(interval_s)
-            reported = [_reported(ep) for ep in list(self._endpoints.values())]
-            if reported == seen:
-                continue
-            seen = reported
             if self._admission is not None and self._admission.has_waiting():
                 actor = actor or ray.get_runtime_context().current_actor
                 actor.retry.remote()
@@ -195,13 +189,6 @@ async def _walk(
 async def _fetch(ep: Endpoint, inflight: InflightStore, session: aiohttp.ClientSession) -> None:
     # verl serves engine stats over a Ray call to the server actor, so the HTTP session is unused.
     await fetch_worker_metrics(ep, inflight)
-
-
-def _reported(ep: Endpoint) -> tuple[object, ...]:
-    """What a poll reports that can change an engine's room, or the error a waiting request gets."""
-    stats = ep.attributes.get("routing_stats")
-    error = stats.get("error") if isinstance(stats, dict) else None
-    return (ep.name, ep.attributes.get("kv_cache_size"), bool(stats), error)
 
 
 _FleetActor = ray.remote(Fleet)
