@@ -23,7 +23,7 @@ import ray
 
 from integration.verl import fleet as fleet_module
 from integration.verl.admission import Admission
-from integration.verl.fleet import admit
+from integration.verl.fleet import request_admission
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.core.config import SchedulerConfig
 from py_inference_scheduler.datalayer.metrics.datastore import InflightStore
@@ -205,7 +205,9 @@ def _admitting_fleet() -> SimpleNamespace:
 
 
 async def _cancelled_caller(fleet: SimpleNamespace) -> None:
-    caller = asyncio.create_task(admit(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket"))
+    caller = asyncio.create_task(
+        request_admission(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket")
+    )
     await asyncio.sleep(0)
     caller.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -216,7 +218,7 @@ async def test_returns_the_engine_the_fleet_admitted_to():
     fleet = _admitting_fleet()
     fleet.admitting.set_result("e1")
 
-    assert await admit(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket") == "e1"
+    assert await request_admission(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket") == "e1"
     assert fleet.finished == []
 
 
@@ -224,10 +226,10 @@ async def test_returns_none_for_a_queued_request():
     fleet = _admitting_fleet()
     fleet.admitting.set_result(None)
 
-    assert await admit(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket") is None
+    assert await request_admission(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket") is None
 
 
-async def test_hands_back_an_admission_made_after_the_caller_gave_up():
+async def test_undoes_an_admission_made_after_the_caller_gave_up():
     fleet = _admitting_fleet()
     await _cancelled_caller(fleet)
 
@@ -248,7 +250,7 @@ async def test_takes_a_queued_request_out_of_line_when_its_caller_gave_up():
     assert fleet.finished == []
 
 
-async def test_hands_back_nothing_when_admission_failed():
+async def test_undoes_nothing_when_admission_failed():
     fleet = _admitting_fleet()
     await _cancelled_caller(fleet)
 

@@ -77,7 +77,7 @@ class Fleet(InflightStore):
         - Acquires with unique request ids until every engine is visited, then releases them.
         - Runs in this actor, so concurrent workers never drain the balancer at the same time.
         """
-        handles = asyncio.run(_walk(balancer, expected, self._handles()))
+        handles = asyncio.run(_collect_engine_handles(balancer, expected, self._handles()))
         self.watch(handles)
         return handles
 
@@ -167,7 +167,7 @@ class AdmissionFleet(Fleet):
         return self._admission
 
 
-async def _walk(
+async def _collect_engine_handles(
     balancer: ray.actor.ActorHandle, expected: int, known: dict[str, ray.actor.ActorHandle]
 ) -> dict[str, ray.actor.ActorHandle]:
     """Acquire engines from verl's balancer until `expected` are known, then release them."""
@@ -228,7 +228,7 @@ def fleet_actor(*, admits: bool = False) -> ray.actor.ActorHandle:
     return actor.remote(interval_ms)
 
 
-async def admit(
+async def request_admission(
     fleet: ray.actor.ActorHandle,
     request: LLMRequest,
     ranking: list[str],
@@ -237,7 +237,7 @@ async def admit(
 ) -> str | None:
     """Ask the fleet to admit a request to its top-ranked engine with room, or None if queued.
 
-    If the caller is cancelled first, an admission that completes later is handed back and a queued
+    If the caller is cancelled first, an admission that completes later is undone and a queued
     request leaves the line, since Ray keeps the call running.
     """
     admitting: asyncio.Future[str | None] = asyncio.ensure_future(
@@ -247,12 +247,12 @@ async def admit(
         return await asyncio.shield(admitting)
     except asyncio.CancelledError:
         admitting.add_done_callback(
-            lambda done: _hand_back(fleet, request.request_id, ticket, done)
+            lambda done: _undo_admission(fleet, request.request_id, ticket, done)
         )
         raise
 
 
-def _hand_back(
+def _undo_admission(
     fleet: ray.actor.ActorHandle,
     request_id: str,
     ticket: str,
@@ -319,7 +319,7 @@ class FleetView:
         if guess:
             self.count(guess, 1)
         try:
-            return await admit(self._fleet, request, ranking, worker_id, ticket)
+            return await request_admission(self._fleet, request, ranking, worker_id, ticket)
         finally:
             if guess:
                 self.count(guess, -1)
