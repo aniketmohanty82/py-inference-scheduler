@@ -60,7 +60,7 @@ except ImportError:  # modern layout (verl v0.9.x)
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from integration.verl.fleet import FleetSnapshot, admit, fleet_actor
+from integration.verl.fleet import FleetSnapshot, fleet_actor, request_admission
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
@@ -120,7 +120,7 @@ class _SchedulerCore:
             queued: asyncio.Future[str] = asyncio.get_running_loop().create_future()
             self.waiting[ticket] = queued
             try:
-                name = await admit(self.fleet, request, self.worker_id, ticket)
+                name = await request_admission(self.fleet, request, self.worker_id, ticket)
                 if name is None:
                     name = await queued
             except asyncio.CancelledError:
@@ -164,7 +164,7 @@ class _SchedulerCore:
         queued = self.waiting.get(ticket)
         if queued is None or queued.done():
             if name is not None:
-                # Its caller gave up, so hand the admission back.
+                # Its caller gave up, so undo the admission.
                 self.fleet.finish.remote(request_id, name, None)
             return
         if name is not None:
