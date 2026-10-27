@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from types import SimpleNamespace
 
 import pytest
@@ -44,7 +44,7 @@ def _admission(engines: list[Endpoint]) -> tuple[Admission, InflightStore]:
     scheduler = Scheduler.new_with_config(SchedulerConfig.from_dict(config))
     plugin = scheduler.get_flow_control_plugins()[0]
     counts = InflightStore()
-    return Admission(scheduler, plugin, counts, lambda: engines), counts
+    return Admission(plugin, counts, lambda: engines), counts
 
 
 def _engine(name: str, capacity: int | None = None) -> Endpoint:
@@ -68,26 +68,26 @@ class _Inbox:
         self.received.append(result)
 
 
-def _admitted(admission: Admission, request: LLMRequest) -> Endpoint | None:
-    return admission.admit(request, request.request_id, _Inbox())
+def _admitted(
+    admission: Admission, request: LLMRequest, ranking: Sequence[str] = ()
+) -> Endpoint | None:
+    return admission.admit(request, ranking, request.request_id, _Inbox())
 
 
 def _queued(admission: Admission, request: LLMRequest) -> _Inbox:
     inbox = _Inbox()
-    assert admission.admit(request, request.request_id, inbox) is None
+    assert admission.admit(request, [], request.request_id, inbox) is None
     return inbox
 
 
-def test_scorers_pick_among_engines_with_room():
+def test_takes_the_highest_ranked_engine_with_room():
     full, busy, idle = _engine("full", 100), _engine("busy", 100), _engine("idle", 100)
     admission, counts = _admission([full, busy, idle])
-    for name in ("busy", "busy", "busy", "idle", "idle"):
-        counts.increment(name)
-    assert _admitted(admission, _turn("filler", 60)) is full
+    assert _admitted(admission, _turn("filler", 60), ["full", "busy", "idle"]) is full
 
-    # full still has the shortest queue but only 40 tokens free.
-    assert _admitted(admission, _turn("t1", 50)) is idle
-    assert counts.get("idle") == 3
+    # full still ranks first but has only 40 tokens free.
+    assert _admitted(admission, _turn("t1", 50), ["full", "idle", "busy"]) is idle
+    assert counts.get("idle") == 1
 
 
 def test_a_request_waits_until_space_frees():
@@ -143,16 +143,13 @@ def test_an_oversize_request_waits_for_an_idle_engine():
     assert oversize.received == [engine]
 
 
-def test_a_trajectory_returns_to_its_engine_over_a_less_loaded_one():
+def test_a_trajectory_returns_to_its_engine_over_a_higher_ranked_one():
     home, other = _engine("home", 100), _engine("other", 100)
-    admission, counts = _admission([home, other])
-    counts.increment("other")
-    assert _admitted(admission, _turn("t1", 10)) is home
+    admission, _ = _admission([home, other])
+    assert _admitted(admission, _turn("t1", 10), ["home", "other"]) is home
     admission.finish("t1", "home", 5)
-    for _ in range(3):
-        counts.increment("home")
 
-    assert _admitted(admission, _turn("t1", 30)) is home
+    assert _admitted(admission, _turn("t1", 30), ["other", "home"]) is home
 
 
 def test_a_cancelled_request_leaves_the_line():
@@ -201,14 +198,14 @@ def _admitting_fleet() -> SimpleNamespace:
         admitting=admitting,
         finished=finished,
         cancelled=cancelled,
-        admit=SimpleNamespace(remote=lambda request, worker_id, ticket: admitting),
+        admit=SimpleNamespace(remote=lambda request, ranking, worker_id, ticket: admitting),
         finish=SimpleNamespace(remote=lambda *args: finished.append(args)),
         cancel=SimpleNamespace(remote=cancelled.append),
     )
 
 
 async def _cancelled_caller(fleet: SimpleNamespace) -> None:
-    caller = asyncio.create_task(admit(fleet, LLMRequest(request_id="t1"), "w1", "ticket"))
+    caller = asyncio.create_task(admit(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket"))
     await asyncio.sleep(0)
     caller.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -219,7 +216,7 @@ async def test_returns_the_engine_the_fleet_admitted_to():
     fleet = _admitting_fleet()
     fleet.admitting.set_result("e1")
 
-    assert await admit(fleet, LLMRequest(request_id="t1"), "w1", "ticket") == "e1"
+    assert await admit(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket") == "e1"
     assert fleet.finished == []
 
 
@@ -227,7 +224,7 @@ async def test_returns_none_for_a_queued_request():
     fleet = _admitting_fleet()
     fleet.admitting.set_result(None)
 
-    assert await admit(fleet, LLMRequest(request_id="t1"), "w1", "ticket") is None
+    assert await admit(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket") is None
 
 
 async def test_hands_back_an_admission_made_after_the_caller_gave_up():
