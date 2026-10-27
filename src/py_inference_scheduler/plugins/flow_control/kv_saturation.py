@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import math
 import sys
 from collections import OrderedDict
 from typing import NamedTuple, Sequence
@@ -28,6 +29,8 @@ from py_inference_scheduler.framework.helpers import prefill_tokens
 
 # Far more trajectories than one rollout holds.
 _MAX_REMEMBERED_TRAJECTORIES = 65536
+# The newest turn's share of its trajectory's average output, the turns before it sharing the rest.
+_OUTPUT_SMOOTHING = 0.5
 
 
 class _Reservation(NamedTuple):
@@ -38,17 +41,17 @@ class _Reservation(NamedTuple):
 
 
 class _LastTurn(NamedTuple):
-    """Where a trajectory's last turn ran and how many tokens it generated."""
+    """Where a trajectory's last turn ran, and a moving average of its turns' output tokens."""
 
     engine: str
-    output_tokens: int
+    expected_output: float
 
 
 @register_flow_control("kv_saturation")
 class KVSaturationPlugin(FlowControlPlugin):
     """Admits a request only where its tokens fit in an engine's KV budget.
 
-    - A request needs its prompt plus its trajectory's last output, or default_osl on turn one.
+    - A request needs its prompt plus its trajectory's average output, or default_osl on turn one.
     - An engine's budget is budget_fraction of its KV capacity, minus what admitted, unfinished
       requests reserved.
     - Offers the engine that served the trajectory's last turn if it fits, otherwise every engine
@@ -93,15 +96,21 @@ class KVSaturationPlugin(FlowControlPlugin):
         engine = self._drop_reservation(request.request_id)
         if engine is None or output_tokens is None:
             return
-        self._last_turns[request.request_id] = _LastTurn(engine, output_tokens)
+        previous = self._last_turns.get(request.request_id)
+        # The first output starts the average, so default_osl never outlives turn one.
+        expected = float(output_tokens)
+        if previous is not None:
+            weight = _OUTPUT_SMOOTHING
+            expected = weight * output_tokens + (1 - weight) * previous.expected_output
+        self._last_turns[request.request_id] = _LastTurn(engine, expected)
         self._last_turns.move_to_end(request.request_id)
         if len(self._last_turns) > _MAX_REMEMBERED_TRAJECTORIES:
             self._last_turns.popitem(last=False)
 
     def need(self, request: LLMRequest) -> int:
-        """The request's prompt plus its trajectory's last output, or default_osl on turn one."""
+        """The request's prompt plus its trajectory's average output, or default_osl on turn one."""
         last = self._last_turns.get(request.request_id)
-        output = last.output_tokens if last else self.default_osl
+        output = math.ceil(last.expected_output) if last else self.default_osl
         return prefill_tokens(request.body) + output
 
     def room(self, ep: Endpoint) -> int:
