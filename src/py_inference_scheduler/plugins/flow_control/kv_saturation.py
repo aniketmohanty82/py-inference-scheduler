@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections import OrderedDict
 from typing import NamedTuple, Sequence
 
@@ -71,7 +72,7 @@ class KVSaturationPlugin(FlowControlPlugin):
     ) -> Sequence[Endpoint]:
         if candidates and all(_reports_no_capacity(ep) for ep in candidates):
             raise RuntimeError("No engine reports its KV capacity, which kv_saturation needs.")
-        need = self._need(request)
+        need = self.need(request)
         fitting = [ep for ep in candidates if self._fits(ep, need, request.request_id)]
         last = self._last_turns.get(request.request_id)
         home = [ep for ep in fitting if last and ep.name == last.engine]
@@ -82,7 +83,7 @@ class KVSaturationPlugin(FlowControlPlugin):
         # first so the request is never booked on two engines.
         self._drop_reservation(request.request_id)
         engine = selected.name
-        tokens = min(self._need(request), self._budget(selected))
+        tokens = min(self.need(request), self._budget(selected))
         self._reserved_by_engine[engine] = self._reserved_by_engine.get(engine, 0) + tokens
         self._reservations[request.request_id] = _Reservation(engine, tokens)
 
@@ -97,17 +98,29 @@ class KVSaturationPlugin(FlowControlPlugin):
         if len(self._last_turns) > _MAX_REMEMBERED_TRAJECTORIES:
             self._last_turns.popitem(last=False)
 
+    def need(self, request: LLMRequest) -> int:
+        """The request's prompt plus its trajectory's last output, or default_osl on turn one."""
+        last = self._last_turns.get(request.request_id)
+        output = last.output_tokens if last else self.default_osl
+        return prefill_tokens(request.body) + output
+
+    def room(self, ep: Endpoint) -> int:
+        """The largest request the engine can take now.
+
+        An idle engine takes any request, as an oversize one reserves a whole engine.
+        """
+        budget = self._budget(ep)
+        if budget <= 0:
+            return 0
+        reserved = self._reserved_by_engine.get(ep.name, 0)
+        return budget - reserved if reserved else sys.maxsize
+
     def _drop_reservation(self, request_id: str) -> str | None:
         reservation = self._reservations.pop(request_id, None)
         if reservation is None:
             return None
         self._reserved_by_engine[reservation.engine] -= reservation.tokens
         return reservation.engine
-
-    def _need(self, request: LLMRequest) -> int:
-        last = self._last_turns.get(request.request_id)
-        output = last.output_tokens if last else self.default_osl
-        return prefill_tokens(request.body) + output
 
     def _fits(self, ep: Endpoint, need: int, request_id: str) -> bool:
         budget = self._budget(ep)
