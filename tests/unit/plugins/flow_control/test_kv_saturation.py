@@ -149,6 +149,28 @@ def test_next_turn_assumes_the_previous_output():
     assert _offered(plugin, _turn("t1", 61), [engine]) == []
 
 
+def _finish_turns(plugin: KVSaturationPlugin, trajectory: str, outputs: list[int]) -> None:
+    engine = _engine("e1", 10_000)
+    for output in outputs:
+        plugin.reserve(_turn(trajectory, 10), engine)
+        plugin.release(_turn(trajectory, 10), "e1", output_tokens=output)
+
+
+def test_next_turn_assumes_a_moving_average_of_earlier_outputs():
+    plugin = KVSaturationPlugin(default_osl=0)
+    _finish_turns(plugin, "t1", [100, 20])
+
+    # Half the newest output plus half the average before it: 20 / 2 + 100 / 2.
+    assert plugin.need(_turn("t1", 10)) == 10 + 60
+
+
+def test_outputs_of_one_length_reserve_exactly_that_length():
+    plugin = KVSaturationPlugin(default_osl=500)
+    _finish_turns(plugin, "t1", [32, 32, 32])
+
+    assert plugin.need(_turn("t1", 10)) == 10 + 32
+
+
 def test_oversize_request_reserves_a_whole_idle_engine():
     plugin = KVSaturationPlugin(default_osl=0)
     engine = _engine("e1", 100)
