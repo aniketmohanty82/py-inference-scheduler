@@ -34,6 +34,7 @@ Ask the user, unless the conversation already answers it:
 |---|---|---|
 | Flow control | Admits a turn only where its prompt plus the trajectory's last output fits the engine's KV budget | `kv_saturation` in [kv_saturation.py](../../../src/py_inference_scheduler/plugins/flow_control/kv_saturation.py) |
 | Admission | Keeps one ledger and one queue for every agent-loop worker | `AdmissionFleet` in [fleet.py](../../../integration/verl/fleet.py), `Admission` in [admission.py](../../../integration/verl/admission.py) |
+| Fleet view | Shares one fleet snapshot among a worker's waiting decisions and counts its own sends | `FleetView` in [fleet.py](../../../integration/verl/fleet.py) |
 | Affinity | Keeps a trajectory on the engine that holds its KV | `kv_saturation`'s last-engine rule, [sticky_session.py](../../../src/py_inference_scheduler/plugins/scorers/sticky_session.py), [prefix_plugin.py](../../../src/py_inference_scheduler/plugins/scorers/prefix_plugin.py) |
 | Session id | Lets `sticky_session` tell trajectories apart | The hook sends verl's request id as `x-rls-session-id` in [verl_hook.py](../../../integration/verl/verl_hook.py) |
 | KV capacity | What `budget_fraction` is a fraction of | vLLM's block count times block size, read in [vllm.py](../../../src/py_inference_scheduler/datalayer/metrics/verl/vllm.py) and kept by [fetch_metrics.py](../../../src/py_inference_scheduler/datalayer/metrics/verl/fetch_metrics.py) |
@@ -42,10 +43,10 @@ Ask the user, unless the conversation already answers it:
 ### 2.2 One turn with flow control
 
 1. verl asks the hook for an engine (`_acquire_server` in [verl_hook.py](../../../integration/verl/verl_hook.py)).
-2. The hook waits until the trajectory's previous `finish` has run (`PendingFinishes`). verl reuses one request id for every turn, so a late finish would otherwise free the new turn's reservation.
-3. The `AdmissionFleet` finds the engines that can hold the turn: its prompt tokens plus the trajectory's last output (`default_osl` on turn one), within `budget_fraction` of the engine's capacity minus what admitted turns reserved.
-4. If the engine that ran the trajectory's last turn fits, it wins. Otherwise the profile's scorers pick among the engines that fit. The fleet reserves the tokens and returns the engine.
-5. If no engine fits, the turn waits in the fleet's queue. Each finish and each metrics poll retries the queue, longest prompt first.
+2. The worker reads a fleet snapshot through its `FleetView` and ranks the engines with the profile's scorers, as it does without flow control.
+3. It sends the ranking with `admit` to the `AdmissionFleet`. The fleet is a sync actor that runs each worker's calls in order, so the trajectory's previous `finish` has always landed first. verl reuses one request id for every turn, so a late finish would otherwise free the new turn's reservation.
+4. The fleet finds the engines that can hold the turn: its prompt tokens plus the trajectory's last output (`default_osl` on turn one), within `budget_fraction` of the engine's capacity minus what admitted turns reserved. If the engine that ran the trajectory's last turn fits, it wins. Otherwise the highest-ranked engine that fits wins. The fleet reserves the tokens and returns the engine, and the worker tells its scorers where the turn went.
+5. If no engine fits, the turn waits in the fleet's queue, longest prompt first. A finish retries the queue on the engine it freed, a metrics poll on every engine, and the fleet calls the worker back with the engine once the turn is admitted.
 6. When generation ends, the hook sends `finish` with the turn's output length. That frees the reservation and becomes the trajectory's last output for its next turn.
 
 The fleet polls engine metrics every `RLS_METRICS_INTERVAL_MS` (default 100). It loads the profile once, at the first request, because a reload would replace the plugin and drop its reservations.
@@ -104,7 +105,7 @@ The fleet polls engine metrics every `RLS_METRICS_INTERVAL_MS` (default 100). It
 ### 4.7 Rollouts slower than without flow control
 *   **Check first**: the per-engine spread (4.6), and that both runs use the same scorers, so the comparison changes only the `flow_control` block.
 *   **Check the fleet's node**: it should run on a node that runs agent-loop workers. Its log lines read `(AdmissionFleet pid=..., ip=...)`, and a missing `ip=` means the driver's node.
-*   **Known limit**: every admit and finish crosses the one `AdmissionFleet` actor. With many trajectories, short turns and almost no tool time, that actor can become the bottleneck. Rollouts with real tool calls stay far below that rate.
+*   **Known limit**: every admit and finish still crosses the one `AdmissionFleet` actor, though it only checks and books room. With many trajectories, very short turns and no tool time, that round trip per turn still makes a rollout somewhat slower than without flow control. Rollouts with real tool calls don't notice it.
 
 ### 4.8 Fallback to verl's balancer
 *   **Symptom**: "py-inference-scheduler returned no endpoints, falling back to verl global LB."
