@@ -46,7 +46,9 @@ class FlowControlPlugin(Protocol):
         self, request: LLMRequest, candidates: Sequence[Endpoint]
     ) -> Sequence[Endpoint]: ...
 
-    def reserve(self, request: LLMRequest, selected: Endpoint) -> None: ...
+    def reserve(self, request: LLMRequest, selected: Endpoint) -> None:
+        """Books the request on selected, which must come from get_allowed_candidates."""
+        ...
 
     def release(
         self, request: LLMRequest, endpoint_name: str, output_tokens: int | None = None
