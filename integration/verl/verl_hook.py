@@ -128,7 +128,7 @@ class _SchedulerCore:
             queued: asyncio.Future[str] = asyncio.get_running_loop().create_future()
             self.waiting[ticket] = queued
             try:
-                name = await self.view.admit(request, ranking, self.worker_id, ticket)
+                name = await self.view.request_admission(request, ranking, self.worker_id, ticket)
                 if name is None:
                     name = await queued
             except asyncio.CancelledError:
