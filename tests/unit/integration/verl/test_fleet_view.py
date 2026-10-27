@@ -94,7 +94,9 @@ async def test_the_view_adds_only_the_sends_a_snapshot_missed():
 async def test_the_top_ranked_engine_counts_only_until_the_fleet_answers():
     fleet = _fleet()
     view = FleetView(fleet)
-    answer = asyncio.ensure_future(view.admit(LLMRequest(request_id="t1"), ["e2", "e1"], "w", "k"))
+    answer = asyncio.ensure_future(
+        view.request_admission(LLMRequest(request_id="t1"), ["e2", "e1"], "w", "k")
+    )
     await asyncio.sleep(0)
     assert _queue_len(view, "e2") == 1
 
@@ -104,10 +106,12 @@ async def test_the_top_ranked_engine_counts_only_until_the_fleet_answers():
     assert _queue_len(view, "e2") == 0
 
 
-async def test_a_cancelled_admit_leaves_no_count():
+async def test_a_cancelled_admission_request_leaves_no_count():
     fleet = _fleet()
     view = FleetView(fleet)
-    answer = asyncio.ensure_future(view.admit(LLMRequest(request_id="t1"), ["e2"], "w", "k"))
+    answer = asyncio.ensure_future(
+        view.request_admission(LLMRequest(request_id="t1"), ["e2"], "w", "k")
+    )
     await asyncio.sleep(0)
 
     answer.cancel()
