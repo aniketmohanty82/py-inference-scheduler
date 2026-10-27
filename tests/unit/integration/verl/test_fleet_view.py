@@ -46,7 +46,7 @@ def _queue_len(view: FleetView, name: str) -> object:
     return engine.attributes["queue_len"]
 
 
-async def test_decisions_waiting_together_share_one_snapshot_request():
+async def test_decisions_share_a_snapshot_request_only_while_it_is_in_flight():
     fleet = _fleet()
     view = FleetView(fleet)
     first, second = asyncio.ensure_future(view.fetch()), asyncio.ensure_future(view.fetch())
@@ -59,20 +59,11 @@ async def test_decisions_waiting_together_share_one_snapshot_request():
     assert (await first)[0] is snapshot
     assert (await second)[0] is snapshot
 
-
-async def test_a_decision_after_the_answer_asks_again():
-    fleet = _fleet()
-    view = FleetView(fleet)
-    first = asyncio.ensure_future(view.fetch())
-    await asyncio.sleep(0)
-    fleet.snapshots[0].set_result(FleetSnapshot(stats={}, inflight={}))
-    await first
-
-    second = asyncio.ensure_future(view.fetch())
+    later = asyncio.ensure_future(view.fetch())
     await asyncio.sleep(0)
 
     assert len(fleet.snapshots) == 2
-    second.cancel()
+    later.cancel()
 
 
 async def test_the_view_adds_only_the_sends_a_snapshot_missed():
