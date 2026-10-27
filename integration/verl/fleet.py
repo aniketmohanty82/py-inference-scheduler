@@ -307,7 +307,7 @@ class FleetView:
     def count(self, name: str, delta: int) -> None:
         self._local[name] = self._local.get(name, 0) + delta
 
-    async def admit(
+    async def request_admission(
         self, request: LLMRequest, ranking: list[str], worker_id: str, ticket: str
     ) -> str | None:
         """Ask the fleet to admit the request, counting the top-ranked engine until it answers.
