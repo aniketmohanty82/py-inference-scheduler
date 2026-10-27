@@ -60,7 +60,7 @@ except ImportError:  # modern layout (verl v0.9.x)
 
 from backends.verl.sglang import SglangEnginePatch
 from backends.verl.vllm import VllmEnginePatch
-from integration.verl.fleet import FleetSnapshot, PendingFinishes, admit, fleet_actor
+from integration.verl.fleet import FleetSnapshot, admit, fleet_actor
 from py_inference_scheduler import Scheduler
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
@@ -83,8 +83,12 @@ class _SchedulerCore:
     """Per-worker routing on state shared by the whole fleet.
 
     - Without flow control, routes on one fleet snapshot per decision, under a lock.
-    - With flow control, asks the AdmissionFleet, which admits and queues requests for every worker.
+    - With flow control, asks the AdmissionFleet, which admits requests or queues them for every
+      worker and calls the worker back when a queued one is admitted.
     """
+
+    # The worker's own core, which the fleet's callback reaches through the worker actor.
+    current: _SchedulerCore | None = None
 
     def __init__(self) -> None:
         self.scheduler = Scheduler()
@@ -92,10 +96,15 @@ class _SchedulerCore:
         # The manager created the fleet before any worker, so the fleet's kind decides the mode,
         # even if the profile changed after the manager read it.
         self.admits = hasattr(self.fleet, "admit")
-        self.finishes = PendingFinishes(self.fleet)
         self.endpoints: list[Endpoint] = []
         self.lb_acquired_requests: set[str] = set()
         self.lock = asyncio.Lock()
+        self.waiting: dict[str, asyncio.Future[str]] = {}
+        self.worker_id = uuid.uuid4().hex
+        _SchedulerCore.current = self
+        if self.admits:
+            # Sent before this worker's first admit, so the fleet knows where to call back.
+            self.fleet.register.remote(self.worker_id, ray.get_runtime_context().current_actor)
 
     def set_endpoints(self, handles: dict[str, ray.actor.ActorHandle]) -> None:
         self.endpoints = [
@@ -107,8 +116,22 @@ class _SchedulerCore:
         """Pick an endpoint. None means fall back to verl's LB."""
         request = LLMRequest(request_id=request_id, body=prompt_ids)
         if self.admits:
-            await self.finishes.wait(request_id)
-            return await admit(self.fleet, request)
+            ticket = uuid.uuid4().hex
+            queued: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+            self.waiting[ticket] = queued
+            try:
+                name = await admit(self.fleet, request, self.worker_id, ticket)
+                if name is None:
+                    name = await queued
+            except asyncio.CancelledError:
+                if queued.done() and not queued.cancelled() and queued.exception() is None:
+                    self.fleet.finish.remote(request_id, queued.result(), None)
+                else:
+                    self.fleet.cancel.remote(ticket)
+                raise
+            finally:
+                self.waiting.pop(ticket, None)
+            return next(ep for ep in self.endpoints if ep.name == name)
         async with self.lock:
             # Ray runs one caller's actor calls in order, so this worker's last
             # dispatch is already counted in the snapshot.
@@ -131,9 +154,23 @@ class _SchedulerCore:
         self, endpoint_name: str, request_id: str, output_tokens: int | None
     ) -> None:
         if self.admits:
-            self.finishes.start(request_id, endpoint_name, output_tokens)
+            # The sync fleet runs this before the trajectory's next admit, so nothing waits on it.
+            self.fleet.finish.remote(request_id, endpoint_name, output_tokens)
         else:
             self.fleet.decrement.remote(endpoint_name)
+
+    def admitted(self, ticket: str, request_id: str, name: str | None, error: str | None) -> None:
+        """The fleet admitted this worker's queued request, or could not."""
+        queued = self.waiting.get(ticket)
+        if queued is None or queued.done():
+            if name is not None:
+                # Its caller gave up, so hand the admission back.
+                self.fleet.finish.remote(request_id, name, None)
+            return
+        if name is not None:
+            queued.set_result(name)
+        else:
+            queued.set_exception(RuntimeError(error))
 
 
 if _VERL_LAYOUT == "legacy":
@@ -229,6 +266,13 @@ if _VERL_LAYOUT == "legacy":
                 config, servers, load_balancer_handle
             )
             super().__init__(config, servers, load_balancer_handle, reward_loop_worker_handles)
+
+        def rls_admitted(
+            self, ticket: str, request_id: str, name: str | None, error: str | None
+        ) -> None:
+            """The fleet's callback for a request this worker queued."""
+            if _SchedulerCore.current is not None:
+                _SchedulerCore.current.admitted(ticket, request_id, name, error)
 
 else:  # modern layout
 
@@ -337,6 +381,13 @@ else:  # modern layout
                 config, load_balancer_handle=llm_client._load_balancer
             )
             super().__init__(config, scheduler_client, teacher_client, reward_loop_worker_handles)
+
+        def rls_admitted(
+            self, ticket: str, request_id: str, name: str | None, error: str | None
+        ) -> None:
+            """The fleet's callback for a request this worker queued."""
+            if _SchedulerCore.current is not None:
+                _SchedulerCore.current.admitted(ticket, request_id, name, error)
 
 
 class PyInferenceAgentLoopManager(AgentLoopManager):

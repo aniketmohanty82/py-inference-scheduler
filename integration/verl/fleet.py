@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
+import time
 import uuid
 from dataclasses import dataclass
 from typing import cast
@@ -33,8 +35,6 @@ from py_inference_scheduler.datalayer.metrics.verl.fetch_metrics import fetch_wo
 from py_inference_scheduler.framework import Endpoint, LLMRequest
 
 _ACTOR_NAME = "rls_fleet"
-# A queued admit holds a call slot until it returns, so finish must always find a free one.
-_MAX_CALLS = 1_000_000
 
 
 @dataclass
@@ -94,32 +94,60 @@ class Fleet(InflightStore):
 class AdmissionFleet(Fleet):
     """The fleet for a profile with flow control, which also admits every request.
 
-    - Admits each request to an engine with room and queues those that fit nowhere.
-    - Runs as an async actor, so a queued admit waits without blocking the finishes that free room.
+    - Admits each request to an engine with room, or queues it in one queue for every worker and
+      calls the worker back once an engine has room.
+    - Runs as a sync actor like Fleet, so Ray keeps each worker's calls in order: a turn's finish
+      always runs before the trajectory's next admit.
     """
 
     def __init__(self, interval_ms: int) -> None:
         super().__init__(interval_ms)
-        self._retry_interval_s = interval_ms / 1000
         self._admission: Admission | None = None
-        self._discovery = asyncio.Lock()
+        self._workers: dict[str, ray.actor.ActorHandle] = {}
+        retry_interval_s = interval_ms / 1000
+        threading.Thread(target=self._retry_on_polls, args=(retry_interval_s,), daemon=True).start()
 
-    async def discover(  # type: ignore[override]  # Ray calls either kind the same way
-        self, balancer: ray.actor.ActorHandle, expected: int
-    ) -> dict[str, ray.actor.ActorHandle]:
-        """Fleet's walk, awaited one at a time, so the event loop keeps serving meanwhile."""
-        async with self._discovery:
-            handles = await _walk(balancer, expected, self._handles())
-            self.watch(handles)
-            return handles
+    def register(self, worker_id: str, worker: ray.actor.ActorHandle) -> None:
+        """Remember how to call a worker back when its queued request is admitted."""
+        self._workers[worker_id] = worker
 
-    async def admit(self, request: LLMRequest) -> Endpoint:
-        """Admit a request to an engine with room, waiting in line until one has it."""
-        return await self._get_admission().admit(request)
+    def admit(self, request: LLMRequest, worker_id: str, ticket: str) -> str | None:
+        """Admit a request and return its engine's name, or queue it and return None."""
+        winner = self._get_admission().admit(
+            request,
+            ticket,
+            lambda result: self._deliver(worker_id, ticket, request.request_id, result),
+        )
+        return winner.name if winner is not None else None
+
+    def cancel(self, ticket: str) -> None:
+        """Drop a queued request whose caller gave up."""
+        self._get_admission().cancel(ticket)
 
     def finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
         """Release an admitted request's reservation and retry the requests waiting for one."""
         self._get_admission().finish(request_id, endpoint_name, output_tokens)
+
+    def retry(self) -> None:
+        """Admit the queued requests that now fit."""
+        self._get_admission().retry()
+
+    def _deliver(
+        self, worker_id: str, ticket: str, request_id: str, result: Endpoint | Exception
+    ) -> None:
+        name = result.name if isinstance(result, Endpoint) else None
+        error = None if name is not None else repr(result)
+        self._workers[worker_id].rls_admitted.remote(ticket, request_id, name, error)
+
+    def _retry_on_polls(self, interval_s: float) -> None:
+        # Capacity also arrives with metrics polls, when no finish is coming to retry the queue. The
+        # retry runs as a call on this actor, so it never races the actor's other calls.
+        actor = None
+        while True:
+            time.sleep(interval_s)
+            if self._admission is not None and self._admission.has_waiting():
+                actor = actor or ray.get_runtime_context().current_actor
+                actor.retry.remote()
 
     def _get_admission(self) -> Admission:
         if self._admission is None:
@@ -134,7 +162,6 @@ class AdmissionFleet(Fleet):
                 plugins[0],
                 self,
                 lambda: list(self._endpoints.values()),
-                self._retry_interval_s,
             )
         return self._admission
 
@@ -196,66 +223,40 @@ def fleet_actor(*, admits: bool = False) -> ray.actor.ActorHandle:
         "num_cpus": 0,
         "scheduling_strategy": near_workers,
     }
-    if admits:
-        actor = _AdmissionFleetActor.options(max_concurrency=_MAX_CALLS, **shared)
-    else:
-        actor = _FleetActor.options(**shared)
+    actor = (_AdmissionFleetActor if admits else _FleetActor).options(**shared)
     return actor.remote(interval_ms)
 
 
 async def admit(
-    fleet: ray.actor.ActorHandle, request: LLMRequest
-) -> Endpoint:
-    """Ask the fleet actor to admit a request.
+    fleet: ray.actor.ActorHandle, request: LLMRequest, worker_id: str, ticket: str
+) -> str | None:
+    """Ask the fleet actor to admit a request: its engine's name, or None if it was queued.
 
-    If the caller is cancelled first, an admission that completes later is handed back, since Ray
-    keeps the call running.
+    If the caller is cancelled first, an admission that completes later is handed back and a queued
+    request leaves the line, since Ray keeps the call running.
     """
-    admitting: asyncio.Future[Endpoint] = asyncio.ensure_future(
-        fleet.admit.remote(request)
+    admitting: asyncio.Future[str | None] = asyncio.ensure_future(
+        fleet.admit.remote(request, worker_id, ticket)
     )
     try:
         return await asyncio.shield(admitting)
     except asyncio.CancelledError:
-        admitting.add_done_callback(lambda done: _hand_back(fleet, request.request_id, done))
+        admitting.add_done_callback(
+            lambda done: _hand_back(fleet, request.request_id, ticket, done)
+        )
         raise
 
 
 def _hand_back(
     fleet: ray.actor.ActorHandle,
     request_id: str,
-    admitting: asyncio.Future[Endpoint],
+    ticket: str,
+    admitting: asyncio.Future[str | None],
 ) -> None:
-    if not admitting.cancelled() and admitting.exception() is None:
-        fleet.finish.remote(request_id, admitting.result().name, None)
-
-
-class PendingFinishes:
-    """Sends each turn's finish to the fleet and holds the trajectory's next turn until it has run.
-
-    The AdmissionFleet is async, so Ray does not keep one caller's calls in order. Without the wait,
-    the previous turn's finish could run after the next turn's admit and free the new reservation.
-    Unlike holding verl's output until the finish lands, this lets the finish overlap the tool call.
-    """
-
-    def __init__(self, fleet: ray.actor.ActorHandle) -> None:
-        self._fleet = fleet
-        self._running: dict[str, asyncio.Task[None]] = {}
-
-    def start(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
-        self._running[request_id] = asyncio.get_running_loop().create_task(
-            self._finish(request_id, endpoint_name, output_tokens)
-        )
-
-    async def wait(self, request_id: str) -> None:
-        running = self._running.get(request_id)
-        if running is not None:
-            await running
-
-    async def _finish(self, request_id: str, endpoint_name: str, output_tokens: int | None) -> None:
-        try:
-            await self._fleet.finish.remote(request_id, endpoint_name, output_tokens)
-        finally:
-            # A newer finish for the same trajectory keeps its entry.
-            if self._running.get(request_id) is asyncio.current_task():
-                del self._running[request_id]
+    if admitting.cancelled() or admitting.exception() is not None:
+        return
+    name = admitting.result()
+    if name is None:
+        fleet.cancel.remote(ticket)
+    else:
+        fleet.finish.remote(request_id, name, None)
