@@ -86,7 +86,9 @@ class Admission:
         self._counts.decrement(endpoint_name)
         self._plugin.release(LLMRequest(request_id=request_id), endpoint_name, output_tokens)
         # Only this engine gained room, so only it can take a queued request now.
-        self.retry([ep for ep in self._endpoints() if ep.name == endpoint_name])
+        freed = next((ep for ep in self._endpoints() if ep.name == endpoint_name), None)
+        if freed is not None:
+            self.retry(freed)
 
     def _try_admit(
         self, request: LLMRequest, ranking: Sequence[str], candidates: Sequence[Endpoint]
@@ -100,9 +102,9 @@ class Admission:
         self._counts.increment(winner.name)
         return winner
 
-    def retry(self, engines: Sequence[Endpoint] | None = None) -> None:
-        """Admit the queued requests that now fit on these engines, every engine by default."""
-        engines = self._endpoints() if engines is None else engines
+    def retry(self, engine: Endpoint | None = None) -> None:
+        """Admit the queued requests that now fit on this engine, or on any engine by default."""
+        engines = [engine] if engine is not None else self._endpoints()
         largest = max((self._plugin.room(ep) for ep in engines), default=0)
         for waiting in list(self._waiting):
             # A size check first, so a long queue that still fits nowhere costs little. With no
