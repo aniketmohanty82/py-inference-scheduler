@@ -144,14 +144,7 @@ WITH_FLOW_CONTROL = textwrap.dedent(
 )
 
 
-def test_sees_flow_control_before_the_first_decision(tmp_path):
-    config_file = tmp_path / "scheduler.yaml"
-    config_file.write_text(WITH_FLOW_CONTROL, encoding="utf-8")
-
-    assert Scheduler(config_path=str(config_file)).has_flow_control()
-
-
-def test_listing_plugins_leaves_reloads_to_schedule(tmp_path):
+def test_sees_flow_control_before_any_decision_and_leaves_reloads_to_schedule(tmp_path):
     config_file = tmp_path / "scheduler.yaml"
     config_file.write_text(WITH_FLOW_CONTROL, encoding="utf-8")
     scheduler = Scheduler(config_path=str(config_file))

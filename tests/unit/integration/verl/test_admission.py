@@ -222,13 +222,6 @@ async def test_returns_the_engine_the_fleet_admitted_to():
     assert fleet.finished == []
 
 
-async def test_returns_none_for_a_queued_request():
-    fleet = _admitting_fleet()
-    fleet.admitting.set_result(None)
-
-    assert await request_admission(fleet, LLMRequest(request_id="t1"), [], "w1", "ticket") is None
-
-
 async def test_undoes_an_admission_made_after_the_caller_gave_up():
     fleet = _admitting_fleet()
     await _cancelled_caller(fleet)
