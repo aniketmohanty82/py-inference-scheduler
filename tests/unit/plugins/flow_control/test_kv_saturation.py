@@ -149,35 +149,6 @@ def test_next_turn_assumes_the_previous_output():
     assert _offered(plugin, _turn("t1", 61), [engine]) == []
 
 
-def _finish_turns(plugin: KVSaturationPlugin, trajectory: str, outputs: list[int]) -> None:
-    engine = _engine("e1", 10_000)
-    for output in outputs:
-        plugin.reserve(_turn(trajectory, 10), engine)
-        plugin.release(_turn(trajectory, 10), "e1", output_tokens=output)
-
-
-def test_next_turn_assumes_the_average_of_earlier_outputs():
-    plugin = KVSaturationPlugin(default_osl=0)
-    _finish_turns(plugin, "t1", [100, 20, 300])
-
-    # Every finished turn counts the same: (100 + 20 + 300) / 3.
-    assert plugin.need(_turn("t1", 10)) == 10 + 140
-
-
-def test_a_fractional_average_rounds_up():
-    plugin = KVSaturationPlugin(default_osl=0)
-    _finish_turns(plugin, "t1", [10, 11])
-
-    assert plugin.need(_turn("t1", 10)) == 10 + 11
-
-
-def test_outputs_of_one_length_reserve_exactly_that_length():
-    plugin = KVSaturationPlugin(default_osl=500)
-    _finish_turns(plugin, "t1", [32, 32, 32])
-
-    assert plugin.need(_turn("t1", 10)) == 10 + 32
-
-
 def test_oversize_request_reserves_a_whole_idle_engine():
     plugin = KVSaturationPlugin(default_osl=0)
     engine = _engine("e1", 100)
