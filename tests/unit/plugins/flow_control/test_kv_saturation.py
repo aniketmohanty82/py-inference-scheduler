@@ -172,20 +172,20 @@ def test_releasing_an_unknown_request_changes_nothing():
     assert _offered(plugin, _turn("t1", 100), [_engine("e1", 100)]) == ["e1"]
 
 
-def test_room_is_the_budget_minus_reservations():
+def test_max_admissible_kv_tokens_is_the_budget_minus_reservations():
     plugin = KVSaturationPlugin(default_osl=0, budget_fraction=0.5)
     engine = _engine("e1", 200)
     plugin.reserve(_turn("t1", 30), engine)
 
-    assert plugin.room(engine) == 70
+    assert plugin.max_admissible_kv_tokens(engine) == 70
 
 
 def test_an_engine_without_capacity_has_no_room():
-    assert KVSaturationPlugin().room(Endpoint(name="e1", attributes={})) == 0
+    assert KVSaturationPlugin().max_admissible_kv_tokens(Endpoint(name="e1", attributes={})) == 0
 
 
 @pytest.mark.parametrize(("held", "prompt"), [(0, 500), (30, 70), (30, 71), (100, 1)])
-def test_need_and_room_agree_with_the_offer(held: int, prompt: int):
+def test_the_size_check_agrees_with_the_offer(held: int, prompt: int):
     plugin = KVSaturationPlugin(default_osl=0)
     engine = _engine("e1", 100)
     if held:
@@ -193,5 +193,5 @@ def test_need_and_room_agree_with_the_offer(held: int, prompt: int):
 
     # A queue may skip a request by size alone only when the full check turns it away too.
     request = _turn("t1", prompt)
-    fits_by_size = plugin.need(request) <= plugin.room(engine)
+    fits_by_size = plugin.kv_tokens_needed(request) <= plugin.max_admissible_kv_tokens(engine)
     assert fits_by_size == (_offered(plugin, request, [engine]) == ["e1"])
