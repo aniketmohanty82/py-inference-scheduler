@@ -56,11 +56,11 @@ class FlowControlPlugin(Protocol):
         """Frees the request's reservation. output_tokens is what it generated, when known."""
         ...
 
-    def need(self, request: LLMRequest) -> int:
-        """The request's size, in the units room() reports."""
+    def kv_tokens_needed(self, request: LLMRequest) -> int:
+        """The request's size, in the units max_admissible_kv_tokens() reports."""
         ...
 
-    def room(self, endpoint: Endpoint) -> int:
+    def max_admissible_kv_tokens(self, endpoint: Endpoint) -> int:
         """The largest request the endpoint can take now."""
         ...
 
