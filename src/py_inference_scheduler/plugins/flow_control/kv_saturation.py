@@ -71,7 +71,7 @@ class KVSaturationPlugin(FlowControlPlugin):
     ) -> Sequence[Endpoint]:
         if candidates and all(_reports_no_capacity(ep) for ep in candidates):
             raise RuntimeError("No engine reports its KV capacity, which kv_saturation needs.")
-        need = self._need(request)
+        need = self._kv_tokens_needed(request)
         fitting = [ep for ep in candidates if self._fits(ep, need, request.request_id)]
         last = self._last_turns.get(request.request_id)
         home = [ep for ep in fitting if last and ep.name == last.engine]
@@ -82,7 +82,7 @@ class KVSaturationPlugin(FlowControlPlugin):
         # first so the request is never booked on two engines.
         self._drop_reservation(request.request_id)
         engine = selected.name
-        tokens = min(self._need(request), self._budget(selected))
+        tokens = min(self._kv_tokens_needed(request), self._kv_token_budget(selected))
         self._reserved_by_engine[engine] = self._reserved_by_engine.get(engine, 0) + tokens
         self._reservations[request.request_id] = _Reservation(engine, tokens)
 
@@ -104,13 +104,13 @@ class KVSaturationPlugin(FlowControlPlugin):
         self._reserved_by_engine[reservation.engine] -= reservation.tokens
         return reservation.engine
 
-    def _need(self, request: LLMRequest) -> int:
+    def _kv_tokens_needed(self, request: LLMRequest) -> int:
         last = self._last_turns.get(request.request_id)
         output = last.output_tokens if last else self.default_osl
         return prefill_tokens(request.body) + output
 
     def _fits(self, ep: Endpoint, need: int, request_id: str) -> bool:
-        budget = self._budget(ep)
+        budget = self._kv_token_budget(ep)
         # A request routed again must not compete with its own old reservation.
         reservation = self._reservations.get(request_id)
         own = reservation.tokens if reservation and reservation.engine == ep.name else 0
@@ -118,7 +118,7 @@ class KVSaturationPlugin(FlowControlPlugin):
         # An oversize request reserves the whole budget, so it waits for an idle engine.
         return budget > 0 and reserved + min(need, budget) <= budget
 
-    def _budget(self, ep: Endpoint) -> int:
+    def _kv_token_budget(self, ep: Endpoint) -> int:
         return int(_capacity(ep) * self.budget_fraction)
 
 
